@@ -1,3 +1,84 @@
+# Latest continuation — 2026-10-01 (sesi 13: akar kegagalan build gate — dua gate, bukan satu)
+
+> Block ini yang terbaru. Blok sebelumnya: sesi 12, 11, 10, 9, 8, 7.
+
+## KOREKSI: akar masalahnya DUA gate, dan `quality:full` yang utama
+
+Sesi sebelumnya menyimpulkan akar hanya di `scripts/run-build-gate.mjs`. Itu **tidak lengkap**.
+`npm run quality:full` punya urutan yang salah sendiri, di `package.json`:
+
+```
+quality:fast = workflow:validate && validate:repo && lint && npm test      <- test tanpa prepare
+quality:full = quality:fast && db:local:prepare && test:db:smoke && ...   <- prepare SESUDAH test
+```
+
+Jadi `npm test` jalan saat Prisma Client masih PostgreSQL (setelah `db:postgres:generate`),
+lalu SQLite baru disiapkanrq afterwards. Akibatnya **59 test gagal** dengan
+`the URL must start with the protocol postgresql://` — di folder kerja sendiri, bukan hanya
+di checkout bersih. Yang green earlier (`build:gate`) tidak menutup ini karena `build:gate`
+sudah diperbaiki terpisah.
+
+Perbaikan: `db:local:prepare` dipindah ke dalam `quality:fast` SEBELUM `npm test`, dan dihapus
+dari `quality:full` supaya tidak prepping dua kali (generate + push + seed itu mahal).
+
+`tests/quality-fast-sqlite-prepare-order.test.mjs` (2 test) mengunci urutan itu. Test kedua
+menangkap apa yang saya lewatkan diFix pertama: `quality:full` masih prepping juga.
+
+Pelajaran: **perbaiki SEMUA jalur yang menjalankan test yang sama, bukan hanya yang merah
+lebih dulu.** `build:gate` dan `quality:full` memanggil `npm test` dari dua tempat berbeda;
+memperbaiki satu tidak memperbaiki yang lain. `grep` semua pemanggil sebelum menyatakan selesai.
+
+g terbaru. Blok sebelumnya: sesi 12 (checkout bersih), sesi 11 (repo GitHub),
+> sesi 10 (audit data statis UI Admin + F9/F10), sesi 9, 8, 7.
+
+## Akar kegagalan build gate di GitHub: KALIMAT SAYA SENDIRI DI HANDOFF
+
+`REGRESSION_TESTS` gagal 2 hit di `tests/post1c-telegram-polling.test.mjs`. Akarnya:
+
+```
+test at tests/chat-handoff.test.mjs:22
+✖ dynamic first-chat generator produces safe current context
+  assert.ok(!first.includes(<nama-variabel-db> + '='))   # nama variabel sengaja tidak ditulis
+```
+
+`tests/chat-handoff.test.mjs` guarding bahwa `handoff/generated/FIRST-CHAT.md` — file yang
+dikirim ke chat AI — tidak memuat kredensial. Guard-nya bekerja **benar**. Yang memicu adalah
+saya menulis di `handoff/CURRENT-WORK.md`:
+
+```
+Runtime test instantiate `PrismaClient` dengan URL SQLite.
+```
+
+Nilai yang bocor hanya `file:...` (bukan password), dan `scripts/generate-chat-context.mjs`
+sudah menyensor env sungguhan jadi `<REDACTED>`. Tapi test menolak **literal-nya**, dan itu
+benar: bentuk `KEY=` di dalam dokumen handoff adalah persis yang harus dilarang, karena
+dokumen itu dikirim keluar.
+
+Perbaikan: kalimatnya ditulis ulang tanpa bentuk `NAMA_VARIABEL=`. Bukti: `chat-handoff.test.mjs`
+4/4 hijau; literal dikembalikan -> merah tepat di assertion itu.
+
+Pelajaran: **dokumen handoff adalah artefak keluar**, bukan catatan internal. Ia masuk
+`FIRST-CHAT.md`. Menulis nama variabel env dengan `=` di sana Selbstzerstört guard yang
+melindungi kredensial. Tulis "dengan URL SQLite", bukan menyebut nama variabel env yang diikuti tanda `=`.
+
+## Kegagalan `TYPESCRIPT_LINT` sebelumnya: state, bukan kode
+
+Run `cc2` pertama gagal di `TYPESCRIPT_LINT` (POS). Tapi `npm run lint -w @toko360/pos`
+di folder yang sama langsung hijau. Penyebabnya `.next/` dan `*.tsbuildinfo` yang belum
+dibersihkan pada run pertama — keduanya sudah di-`.gitignore` (terverifikasi: `git ls-files`
+tidak memuat satupun), jadi bukan kebocoran dari git.
+
+Pelajaran: kegagalan gate yang **hilang saat diulang tanpa perubahan kode** adalah state,
+bukan regresi. Jangan.record sebagai bug sebelum mengulangi di folder yang sama.
+
+## Status GitHub (repo `reyvo1/testoko`, commit `a9d8a4b`)
+
+- `Workflow Governance`: **success** di semua push.
+- `Toko360 CI` / `Full System Simulation`: `build_gate` reported `conclusion=success` tetapi
+  `outcome=null` karena `continue-on-error: true`. **Selalu baca `.outcome`, bukan
+  `.conclusion`** — keduanya berbeda dan conclusion menipu.
+- `Full Automated UAT` run `36895535785`: masih `in_progress` saat sesi berakhir.
+
 # Latest continuation — 2026-10-01 (sesi 12: UAT GitHub earnest, checkout BERSIH, 2 gate bug)
 
 > Block ini yang terbaru. Blok sebelumnya: sesi 11 (repo GitHub dibuat), sesi 10 (audit data
@@ -42,7 +123,7 @@ REGRESSION_TESTS                         <- 59 test FAIL
 SQLITE_DB_PREPARE                        <- baru menyiapkan SQLite, TERLAMBAT
 ```
 
-Runtime test instantiate `PrismaClient` dengan `DATABASE_URL=file:...` (SQLite). Client-nya
+Runtime test instantiate `PrismaClient` dengan URL SQLite. Client-nya
 postgres → `Error validating datasource 'db': the URL must start with the protocol
 'postgresql://'`. Di laptop ini tidak pernah muncul karena `db:local:prepare` sudah pernah jalan
 sebelumya, jadi client-nya kebetulan SQLite.

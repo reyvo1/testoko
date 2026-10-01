@@ -42,7 +42,7 @@ html[data-t360-theme='dark']{background:#07111f;color-scheme:dark} body{margin:0
   .product strong{@apply block truncate text-xs font-semibold text-slate-950;}
   .product small{@apply mt-1 block text-[9px] leading-4 text-slate-500;}
   .unitActions{@apply mt-3 flex flex-wrap gap-1.5;}
-  /* Pemilih jenis: satu produk dengan beberapa jenis (Dji Samso vs Kretek Menthol) harus bisa
+  /* Pemilih jenis: satu produk dengan beberapa jenis (mis. ukuran atau varian rasa) harus bisa
      diganti dari layar kasir. Labelnya screen-reader-only supaya tidak menambah tinggi kartu,
      karena yang terlihat sudah nama jenis pada option-nya sendiri. */
   .variantPick{@apply mt-2 block min-w-0;}

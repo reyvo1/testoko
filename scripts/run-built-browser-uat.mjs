@@ -140,7 +140,22 @@ async function main() {
       browserChild.once('error', reject);
       browserChild.once('exit', (code) => {
         evidence.browserExitCode = code ?? 1;
-        code === 0 ? resolve() : reject(new Error(`Browser UAT gagal (exit ${code ?? 1}).`));
+        if (code === 0) return resolve();
+        // `scripts/browser-uat.mjs` menulis evidence-nya sendiri termasuk pesan kegagalan yang
+        // sudah terperinci (mis. stderr Chrome). Bacanya di sini supaya artifact wrapper
+        // menyimpan PENYEBAB, bukan cuma "exit 1". Sebelumnya stdout child memakai `inherit`
+        // sehingga hanya masuk log runner yang mruby.ai/retire, dan `browser-uat-latest.json`
+        // tidak pernah terunggah kalau run gagal sebelum evidence ditulis - membuat kegagalan
+        // browser mustahil ditelusuri tanpa menjalankan ulang.
+        let detail = '';
+        try {
+          const childEvidence = path.join(root, 'handoff', 'quality', 'browser-uat-latest.json');
+          if (fs.existsSync(childEvidence)) {
+            const parsed = JSON.parse(fs.readFileSync(childEvidence, 'utf8'));
+            if (typeof parsed.error === 'string') detail = parsed.error;
+          }
+        } catch { /* evidence tidak terbaca; pesan exit saja yang tersisa */ }
+        reject(new Error(`Browser UAT gagal (exit ${code ?? 1}).${detail ? ` Penyebab: ${detail}` : ''}`));
       });
     });
     await Promise.race([browserDone, earlyExit]);

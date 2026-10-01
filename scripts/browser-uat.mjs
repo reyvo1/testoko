@@ -30,7 +30,15 @@ async function waitForBrowserDevTools(tempDir, browser, stderrText, requestedPor
     }
     await sleep(250);
   }
-  throw new Error(`Chrome DevTools tidak siap${last ? ` (${last})` : ''}. ${stderrText().slice(-1200)}`);
+  // Pesan sebelumnya hanya melaporkan "tidak siap", sehingga ALEH karena timeout (runner lambat)
+  // dan ALEH karena Chrome menolak start (mis. D-Bus rusak) menjadi tidak bisa dibedakan.
+  // Bedakan keduanya supaya kegagalan berikutnya bisa diperbaiki tanpa menebak.
+  const stderr = stderrText();
+  const refusedToStart = /Could not parse server address|Failed to connect to the bus|No usable sandbox|DevToolsActivePort.*permission/i.test(stderr);
+  const reason = refusedToStart
+    ? 'Chrome menolak start (bukan timeout) - lihat stderr Chrome di bawah'
+    : `timeout ${timeoutMs}ms tanpa DevToolsActivePort`;
+  throw new Error(`Chrome DevTools tidak siap: ${reason}${last ? ` (${last})` : ''}. ${stderr.slice(-1200)}`);
 }
 const root = process.cwd();
 const output = path.resolve(root, process.env.T360_BROWSER_UAT_OUTPUT || 'handoff/quality/browser-uat-latest.json');
@@ -496,10 +504,27 @@ async function main() {
     if (requestedDebugPortRaw && (!Number.isInteger(requestedDebugPort) || requestedDebugPort < 1024 || requestedDebugPort > 65535)) {
       throw new Error('T360_BROWSER_DEBUG_PORT tidak valid.');
     }
+    // Runner GitHub menyetel DBUS_SESSION_BUS_ADDRESS ke nilai yang tidak bisa di-parse, dan
+    // Chrome MEMBEKUK saat start karena itu:
+    //   ERROR:dbus/bus.cc:405 Failed to connect to the bus: Could not parse server address:
+    //   Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+    // Gejalanya downstream menyesatkan: proses tetap hidup, tapi `DevToolsActivePort` tidak pernah
+    // ditulis, jadi UAT melaporkan "Chrome DevTools tidak siap" - seolah-olah timeout, padahal
+    // Chrome menolak start. Menambah timeout tidak akan menolong; `--disable-features` +
+    // sanitasi env-lah yang memperbaiki.
     browser = spawn(executable, [
       '--headless=new', `--remote-debugging-port=${requestedDebugPort}`, `--user-data-dir=${tempDir}`,
-      '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage', '--no-sandbox', 'about:blank',
-    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+      '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage', '--no-sandbox',
+      // Jangan sampai siklus D-Bus yang rusak menghentikan Chrome; headless tidak membutuhkannya.
+      '--disable-features=DBusMenu,MediaRouter,OptimizationHints',
+      '--disable-dbus',
+      'about:blank',
+    ], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      // `DBUS_SESSION_BUS_ADDRESS` yang rusak di-inherit ke Chrome. D-Bus tidak diperlukan untuk
+      // headless, jadi address yang tidak bisa di-parse ini harus dihapus, bukan diteruskan.
+      env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: '/dev/null' },
+    });
     let browserErr = ''; browser.stderr?.on('data', (chunk) => { browserErr = (browserErr + String(chunk)).slice(-8000); });
     const debugPort = await waitForBrowserDevTools(tempDir, browser, () => browserErr, requestedDebugPort);
     const targetResponse = await http(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(adminUrl)}`, { method: 'PUT' });

@@ -192,6 +192,47 @@ async function evaluateValue(cdp, expression) {
   return result?.result?.value;
 }
 
+// Kumpulkan rantai ancestor untuk elemen yang meluber. Dipanggil PADA SAAT error sudah terjadi,
+// jadi tujuannya menjelaskan penyebab - bukan memverifikasi layout. Wajib tidak melempar:
+// diagnostik yang menutupi bukti adalah regresi, bukan bantuan.
+async function describeOverflowChains(cdp) {
+  try {
+    return await evaluateValue(cdp, `(() => {
+      const limit = Number(innerWidth) + 3;
+      const offenders = [...document.querySelectorAll('body *')].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.right > limit;
+      }).slice(0, 6);
+      return offenders.map((el) => {
+        const chain = [];
+        let n = el;
+        let depth = 0;
+        while (n && n.nodeType === 1 && depth < 9) {
+          const r = n.getBoundingClientRect();
+          let cs = null;
+          try { cs = getComputedStyle(n); } catch (e) { cs = null; }
+          chain.push([
+            n.tagName + (n.className ? '.' + String(n.className).trim().split(/\s+/).join('.') : ''),
+            'L' + Math.round(r.left),
+            'R' + Math.round(r.right),
+            'W' + Math.round(r.width),
+            cs ? ('minW:' + cs.minWidth) : 'minW:?',
+            cs ? cs.display : '?',
+            cs ? ('ovx:' + cs.overflowX) : 'ovx:?',
+            cs ? ('sw:' + n.scrollWidth + '/cw:' + n.clientWidth) : 'sw:?',
+          ].join(' '));
+          if (n.tagName === 'HTML') break;
+          n = n.parentElement;
+          depth += 1;
+        }
+        return chain;
+      });
+    })()`);
+  } catch {
+    return ['<chain collection failed>'];
+  }
+}
+
 async function assertViewportIntegrity(cdp, label, width, height) {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
   await sleep(250);
@@ -260,6 +301,12 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       // Kalau elemen ini berada di dalam (atau adalah) container yang bisa di-scroll, kelebihannya
       // itu ditangani container itu, bukan overflow dokumen. scrollable dihitung sekali di atas
       // supaya filter ini tidak O(n^2) pada halaman dengan ribuan elemen.
+      //
+      // PENTING: body overflow-x hidden membuat scrollWidth dokumen SELALU sama dengan
+      // clientWidth, jadi scrollWidth tidak bisa membedakan "ter-clip" dari "bocor". Bukti di
+      // halaman Accounting: scrollWidth=1425 (=clientWidth) sementara .tr menjangkau R1519.
+      // Artinya .tr sudah ter-clip .table dan itu konten yang bisa di-scroll - bukan kebocoran.
+      // Satu-satunya sumber kebenaran adalah clipping ancestor, jadi itu yang dipakai di sini.
       if (scrollableAncestors(el)) return false;
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
@@ -272,7 +319,12 @@ async function assertViewportIntegrity(cdp, label, width, height) {
   // pengecualian anak container scrollable menjadi jalan keluar tanpa pengawas: tabel yang
   // isinya meluber tapi tidak bisa digeser akan lolos. Dua-duanya wajib kosong.
   if (!closed || closed.scrollWidth > width + 3 || closed.overflow.length || closed.clippedScrollables.length) {
-    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}`);
+    // Kumpulkan rantai ancestor di panggilan CDP TERPISAH, bukan di dalam evaluate yang sama.
+    // Kalau diukur inline, satu error runtime di sana menutupi pesan overflow yang
+    // justru informatif (terbukti: attempt inline menghasilkan "Uncaught" kosong).
+    // Fungsi ini tidak boleh melempar - diagnostik tidak boleh mengganti bukti.
+    const chains = await describeOverflowChains(cdp);
+    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}; chains=${JSON.stringify(chains)}`);
   }
 
   // Kalau ada drawer off-canvas di halaman ini, buka lewat tombolnya dan pastikan isinya

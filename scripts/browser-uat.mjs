@@ -228,6 +228,28 @@ async function assertViewportIntegrity(cdp, label, width, height) {
     const parkedDrawer = document.querySelector('.adminV4Sidebar:not(.mobileOpen)');
     const drawerOpen = Boolean(document.querySelector('.adminV4Sidebar.mobileOpen'));
     const drawerParked = Boolean(parkedDrawer) && !drawerOpen;
+    // Elemen di dalam container yang SENGAJA bisa di-scroll (overflow-x/y auto|scroll) boleh lebih
+    // lebar dari viewport - itu justru makna overflow-x auto. Kelas .table di Admin punya
+    // overflow-x: auto dan kelas .tr punya min-width: 660px, jadi setiap baris tabel PASTI lebih
+    // lebar dari area konten di 1440. Menandainya sebagai overflow dokumen sama salahnya dengan
+    // menandai drawer tertutup sebagai konten terpotong.
+    // Kontainer scrollable sendiri yang tetap diperiksa (lihat clippedScrollables) - supaya
+    // tabel yang benar-benar tidak bisa digeser tidak lolos hanya karena anak-anaknya dikecualikan.
+    const isScrollable = (el) => {
+      const cs = getComputedStyle(el);
+      return /(auto|scroll)/.test(cs.overflowX) || /(auto|scroll)/.test(cs.overflowY);
+    };
+    const all = [...document.querySelectorAll('body *')];
+    const scrollables = all.filter(isScrollable);
+    const scrollableAncestors = (el) => el !== document.body && Boolean(el.closest('*')) && scrollables.some((c) => c !== el && c.contains(el));
+    // Kontainer yang isinya meluber tapi TIDAK bisa digeser = konten hilang permanen.
+    const clippedScrollables = scrollables
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return el.scrollWidth > el.clientWidth + 1 && r.right > innerWidth + 3;
+      })
+      .slice(0, 6)
+      .map((el) => ({ tag: el.tagName, className: String(el.className || '').slice(0,120), rect: el.getBoundingClientRect().toJSON() }));
     const overflow = [...document.querySelectorAll('body *')].filter((el) => {
       const style = getComputedStyle(el);
       if (style.position === 'fixed' && el.classList.contains('modalOverlay')) return false;
@@ -235,15 +257,22 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       // Memverifikasi bahwa drawer bisa dibuka dan isinya terjangkau dilakukan terpisah, dengan
       // mengklik tombol "Buka menu" sungguhan.
       if (drawerParked && el.closest('.adminV4Sidebar')) return false;
+      // Kalau elemen ini berada di dalam (atau adalah) container yang bisa di-scroll, kelebihannya
+      // itu ditangani container itu, bukan overflow dokumen. scrollable dihitung sekali di atas
+      // supaya filter ini tidak O(n^2) pada halaman dengan ribuan elemen.
+      if (scrollableAncestors(el)) return false;
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
     }).slice(0, 12).map((el) => ({ tag: el.tagName, className: String(el.className || '').slice(0,120), text: String(el.textContent || '').trim().slice(0,100), rect: el.getBoundingClientRect().toJSON() }));
-    return { innerWidth, scrollWidth, overflow, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
+    return { innerWidth, scrollWidth, overflow, clippedScrollables, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
   })()`);
 
   const closed = await measure();
-  if (!closed || closed.scrollWidth > width + 3 || closed.overflow.length) {
-    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}`);
+  // clippedScrollables WAJIB ikut digagalkan. Kalau hanya `overflow` yang diperiksa, maka
+  // pengecualian anak container scrollable menjadi jalan keluar tanpa pengawas: tabel yang
+  // isinya meluber tapi tidak bisa digeser akan lolos. Dua-duanya wajib kosong.
+  if (!closed || closed.scrollWidth > width + 3 || closed.overflow.length || closed.clippedScrollables.length) {
+    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}`);
   }
 
   // Kalau ada drawer off-canvas di halaman ini, buka lewat tombolnya dan pastikan isinya
@@ -252,9 +281,9 @@ async function assertViewportIntegrity(cdp, label, width, height) {
   if (opened?.found) {
     await sleep(320);
     const metrics = await measure();
-    if (!metrics || metrics.scrollWidth > width + 3 || metrics.overflow.length) {
+    if (!metrics || metrics.scrollWidth > width + 3 || metrics.overflow.length || metrics.clippedScrollables.length) {
       await closeOffCanvasDrawer();
-      throw new Error(`${label} overflow pada ${width}x${height} (drawer TERBUKA): scrollWidth=${metrics?.scrollWidth}; elements=${JSON.stringify(metrics?.overflow || [])}`);
+      throw new Error(`${label} overflow pada ${width}x${height} (drawer TERBUKA): scrollWidth=${metrics?.scrollWidth}; elements=${JSON.stringify(metrics?.overflow || [])}; clippedScrollables=${JSON.stringify(metrics?.clippedScrollables || [])}`);
     }
     await closeOffCanvasDrawer();
     await sleep(220);
@@ -662,7 +691,25 @@ async function main() {
       const clicked = await evaluateValue(cdp, `(() => { const el=document.querySelector('.navItem[data-admin-route=${JSON.stringify(entry.route)}]'); if(!(el instanceof HTMLElement) || el.offsetParent===null)return false; el.click(); return true; })()`);
       if (!clicked) throw new Error(`Admin workspace hilang saat domain sweep: ${entry.label}`);
       await sleep(350);
-      await waitExpression(cdp, `Boolean(document.querySelector('.navItem[data-admin-route=${JSON.stringify(entry.route)}][aria-current="page"]'))`, `Admin workspace aktif: ${entry.label}`);
+      // Navigasi Admin punya DUA tingkat, dan keduanya harus dihitung sebagai "aktif":
+//   1. Workspace tanpa subdomain -> tombol root diberi aria-current="page".
+//      (app-shell.tsx: aria-current={active && !activeDomainView ? 'page' : undefined})
+//   2. Workspace DENGAN subdomain -> setelah klik, activeDomainView selalu terisi, jadi
+//      aria-current="page" pada tombol root TIDAK PERNAH muncul. Root ditandai dengan class
+//      isActive, dan badge subdomain yang aktif memakai aria-current="page".
+// Check lama hanya menunggu (1), jadi untuk setiap workspace bersubdomain - termasuk
+// /commerce (domain-workspaces.ts:35) - ia menunggu selector yang secara desain mustahil
+// terjadi, lalu timeout dengan pesan yang terlihat seperti produk rusak.
+// Di sini keduanya dikenali, DAN root wajib benar-benar isActive supaya tidak lolos hanya
+// karena ada subdomain lain yang kebetulan aktif.
+const rootSel = `.navItem[data-admin-route=${JSON.stringify(entry.route)}]`;
+await waitExpression(cdp, `(() => {
+  const root = document.querySelector(${JSON.stringify(rootSel)});
+  if (!root) return false;
+  if (root.getAttribute('aria-current') === 'page') return true;
+  if (!root.classList.contains('isActive')) return false;
+  return Boolean(root.closest('.adminNavCluster')?.querySelector('.adminSidebarSubdomains button[aria-current="page"]'));
+})()`, `Admin workspace aktif: ${entry.label}`);
       await assertViewportIntegrity(cdp, `Admin workspace: ${entry.label}`, 1440, 900);
       const domains = await clickAllNavigation(cdp, '.adminSidebarSubdomains button', `Admin subdomain ${entry.label}`);
       adminDomainViews.push({ workspace: entry.label, domains });

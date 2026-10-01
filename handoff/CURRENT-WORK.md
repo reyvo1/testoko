@@ -1,3 +1,52 @@
+# Latest continuation — 2026-10-01 (sesi 14: pola berulang — test yang bergantung pada artefak build)
+
+> Block ini yang terbaru. Blok sebelumnya: sesi 13 (dua gate), sesi 12 (checkout bersih), 11, 10, 9, 8, 7.
+
+## POLA YANG TERNYATA DIULANG: ada TIGA jalur menjalankan `npm test`
+
+Ini inti dari sesi ini. `grep` semua pemanggil SEBELUM menyatakan selesai:
+
+| Jalur | Perbaikan | Status |
+|---|---|---|
+| `scripts/run-build-gate.mjs` (dipakai Full System Simulation) | SQLite prepare + worker build sebelum test | commit `f0b022d` |
+| `package.json` -> `quality:full` -> `quality:fast` | SQLite prepare + worker build sebelum test | commit `753b42f` |
+| `.github/workflows/ci.yml` | sudah benar (generate PG -> `npm test`) | tidak diubah |
+
+Memperbaiki satu TIDAK memperbaiki yang lain. Sesi 13 sudah benar memperbaiki `build:gate`, lalu
+`quality:full` masih gagal 59 test karena punya urutan sendiri. Sekarang keduanya diperbaiki.
+
+## Dua kelas "hanya muncul di checkout bersih"
+
+Keduanya berasal dari hal yang sama: **laptop selalu punya `dist/` dan Prisma Client hasil build sebelumnya,
+checkout bersih tidak.**
+
+1. **Prisma Client provider salah.** `npm test` instantiate PrismaClient dengan URL SQLite
+   sementara client-nya PostgreSQL -> 59 test gagal.
+2. **Test mengimpor artefak build.** `tests/post1c-telegram-polling.test.mjs` meng-import
+   `apps/worker/dist/telegram-polling.js` dengan SENGAJA — ia stood up HTTP server sungguhan dan
+   memeriksa lalu lintas kabel, jadi mengujinya lewat source tidak membuktikan apa pun.
+   Di checkout bersih `npm test` jalan sebelum `npm run build` -> `ERR_MODULE_NOT_FOUND`.
+
+Untuk (2) **test tidak diubah**; gate yang menyediakan artefaknya. Mengubah test supaya meng-import
+source akan melemahkan bukti tanpa perlu — persis yang Anda minta untuk dihindari.
+
+## Assertion yang mengukur PROSA, bukan KODE
+
+`buildGate.indexOf('REGRESSION_TESTS')` mengenai kemunculan PERTAMA, termasuk di dalam komentar
+yang saya sendiri tulis menjelaskan urutannya. Akibatnya assertion melaporkan urutan salah padahal
+kodenya benar. Diperbaiki ke `indexOf("runNpm(['test'], 'REGRESSION_TESTS'")` — baris kode.
+
+Pelajaran: saat mengukur urutan di file sumber, **cari baris perintahnya**, bukan nama langkahnya.
+Nama langkah muncul di komentar lebih dulu.
+
+## Dokumen handoff adalah artefak KELUAR
+
+`handoff/CURRENT-WORK.md` masuk ke `handoff/generated/FIRST-CHAT.md` yang dikirim ke chat AI.
+`tests/chat-handoff.test.mjs` menjaga file itu tidak memuat literal `NAMA_VARIABEL_ENV=`.
+Saya menuliskan bentuk itu di handoff dan test-nya menangkap saya. Nilai yang bocor cuma
+`file:...`, tapi bentuknya persis yang dilarang. Dua kali saya menulis ulang blok penjelasan
+sendiri sampai literal hilang juga dari penjelasannya.
+
 # Latest continuation — 2026-10-01 (sesi 13: akar kegagalan build gate — dua gate, bukan satu)
 
 > Block ini yang terbaru. Blok sebelumnya: sesi 12, 11, 10, 9, 8, 7.

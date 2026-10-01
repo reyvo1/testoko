@@ -1,0 +1,335 @@
+{
+  "routeCount": 454,
+  "staticCallCount": 379,
+  "unmatched": [
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 174,
+      "method": "GET",
+      "path": "/finance/fiscal-periods"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 176,
+      "method": "GET",
+      "path": "/finance/bank-statements"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 177,
+      "method": "GET",
+      "path": "/finance/reconciliations"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 254,
+      "method": "POST",
+      "path": "/finance/fiscal-periods"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 263,
+      "method": "PATCH",
+      "path": "/finance/fiscal-periods/:dynamic/:dynamic"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 302,
+      "method": "POST",
+      "path": "/finance/bank-statements/import"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 319,
+      "method": "POST",
+      "path": "/finance/reconciliations"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 323,
+      "method": "GET",
+      "path": "/finance/reconciliations/:dynamic/details"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 327,
+      "method": "POST",
+      "path": "/finance/reconciliations/:dynamic/auto-match"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 333,
+      "method": "POST",
+      "path": "/finance/reconciliations/:dynamic/match"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/accounting.tsx",
+      "line": 338,
+      "method": "POST",
+      "path": "/finance/reconciliations/:dynamic/unmatch"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 41,
+      "method": "GET",
+      "path": "/forecasts"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 42,
+      "method": "GET",
+      "path": "/operator-insights"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 43,
+      "method": "GET",
+      "path": "/operator-assistant/history"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 62,
+      "method": "POST",
+      "path": "/forecasts/run"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 70,
+      "method": "POST",
+      "path": "/operator-insights/refresh"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 77,
+      "method": "PATCH",
+      "path": "/operator-insights/:dynamic/status"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/ai-workspace.tsx",
+      "line": 85,
+      "method": "POST",
+      "path": "/operator-assistant/query"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/automation-workspace.tsx",
+      "line": 42,
+      "method": "GET",
+      "path": "/platform/automation-jobs:dynamic"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 48,
+      "method": "GET",
+      "path": "/retention/policies"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 49,
+      "method": "GET",
+      "path": "/retention/archive-runs"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 50,
+      "method": "GET",
+      "path": "/analytics/daily-summaries"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 61,
+      "method": "POST",
+      "path": "/retention/policies"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 69,
+      "method": "POST",
+      "path": "/retention/policies"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 77,
+      "method": "POST",
+      "path": "/analytics/daily-summaries/materialize"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/data-governance.tsx",
+      "line": 86,
+      "method": "POST",
+      "path": "/retention/archive-runs"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/delivery-lifecycle.tsx",
+      "line": 46,
+      "method": "GET",
+      "path": "/shipments"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/operations.tsx",
+      "line": 100,
+      "method": "GET",
+      "path": "/inventory-batches"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/operations.tsx",
+      "line": 101,
+      "method": "GET",
+      "path": "/inventory-serials"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/operations.tsx",
+      "line": 348,
+      "method": "POST",
+      "path": "/inventory-batches"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/operations.tsx",
+      "line": 358,
+      "method": "POST",
+      "path": "/inventory-serials"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 71,
+      "method": "GET",
+      "path": "/reports/multi-outlet"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 72,
+      "method": "GET",
+      "path": "/sales/cashier-targets"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 73,
+      "method": "GET",
+      "path": "/devices"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 75,
+      "method": "GET",
+      "path": "/marketplace-orders"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 92,
+      "method": "GET",
+      "path": "/devices/:dynamic/sync/diagnostics"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 97,
+      "method": "GET",
+      "path": "/integrations/:dynamic/mappings"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 124,
+      "method": "POST",
+      "path": "/sales/cashier-targets"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 125,
+      "method": "GET",
+      "path": "/sales/cashier-targets"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 135,
+      "method": "POST",
+      "path": "/devices/:dynamic/sync/ack"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 146,
+      "method": "POST",
+      "path": "/devices/:dynamic/offline-transactions/:dynamic/requeue"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 160,
+      "method": "POST",
+      "path": "/integrations/:dynamic/mappings"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 177,
+      "method": "DELETE",
+      "path": "/integrations/:dynamic/mappings/:dynamic"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 189,
+      "method": "POST",
+      "path": "/marketplace-orders/import"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/modules/r3-operations.tsx",
+      "line": 197,
+      "method": "GET",
+      "path": "/marketplace-orders"
+    },
+    {
+      "app": "pos",
+      "file": "apps/pos/app/page.tsx",
+      "line": 151,
+      "method": "GET",
+      "path": "/customers"
+    },
+    {
+      "app": "pos",
+      "file": "apps/pos/app/page.tsx",
+      "line": 210,
+      "method": "GET",
+      "path": "/loyalty/accounts/:dynamic"
+    }
+  ]
+}

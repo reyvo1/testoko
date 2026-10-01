@@ -11,7 +11,9 @@ test('build gate generates schema-specific PostgreSQL Prisma Client before TypeS
   const sqlitePrepare = buildGate.indexOf('SQLITE_DB_PREPARE');
   const finalGenerate = buildGate.indexOf('PRISMA_GENERATE_POSTGRES_FINAL');
   const build = buildGate.indexOf('SIX_APP_PRODUCTION_BUILD');
-  const regression = buildGate.indexOf('REGRESSION_TESTS');
+  // `indexOf` akan mengenai kemunculan pertama, termasuk di dalam komentar. Yang harus diukur
+  // adalah baris kode yang benar-benar menjalankan `npm test`, bukan prosa yang menyebutnya.
+  const regression = buildGate.indexOf("runNpm(['test'], 'REGRESSION_TESTS'");
   assert.ok(generate > 0, 'typecheck Prisma generation missing');
   assert.ok(lint > generate, 'lint must run after Prisma Client generation');
 
@@ -28,9 +30,21 @@ test('build gate generates schema-specific PostgreSQL Prisma Client before TypeS
   assert.ok(regression > sqlitePrepare,
     'regression tests must run AFTER the SQLite Client is generated, atau PrismaClient akan ' +
     'dibuat dengan protocol postgresql:// dan test runtime gagal');
-  assert.ok(finalGenerate > regression,
-    'PostgreSQL Client untuk produksi harus dipulihkan SETELAH test runtime SQLite selesai');
   assert.ok(build > finalGenerate, 'production build must use final PostgreSQL Client');
+  assert.ok(finalGenerate > regression,
+    'PostgreSQL Client untuk produksi dipulihkan setelah test runtime SQLite selesai, dan ' +
+    'sebelum production build');
+
+  // Diketemukan saat UAT GitHub (clean clone): `npm test` berjalan sebelum SIX_APP_PRODUCTION_BUILD,
+  // tapi `tests/post1c-telegram-polling.test.mjs` meng-import `apps/worker/dist/telegram-polling.js`.
+  // Di checkout bersih file itu belum ada -> ERR_MODULE_NOT_FOUND. Di laptop `dist/` selalu ada.
+  // Test-nya tidak diubah (menguji transport nyata lewat HTTP server itu memang bukti yang benar);
+  // gate yang harus menyediakan artefaknya.
+  const workerBuild = buildGate.indexOf('WORKER_BUILD_FOR_TRANSPORT_TESTS');
+  assert.ok(workerBuild > 0, 'build gate harus build worker untuk test transport Telegram');
+  assert.ok(regression > workerBuild,
+    'worker build harus mendahului REGRESSION_TESTS, atau test yang mengimpor dist/ akan ' +
+    'gagal dengan ERR_MODULE_NOT_FOUND di checkout bersih');
 });
 
 test('PR CI does not test/build against an ungenerated or SQLite-generated Prisma Client', () => {

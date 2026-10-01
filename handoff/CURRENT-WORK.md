@@ -1,3 +1,93 @@
+# Latest continuation — 2026-10-01 (sesi 12: UAT GitHub earnest, checkout BERSIH, 2 gate bug)
+
+> Block ini yang terbaru. Blok sebelumnya: sesi 11 (repo GitHub dibuat), sesi 10 (audit data
+> statis UI Admin + F9/F10), sesi 9 (pemilih JENIS + bug harga per jenis), sesi 8, sesi 7.
+
+## Pelajaran metode: UAT lokal hijau TIDAK berarti apa-apa kalau repo-nya tidak bersih
+
+`quality:full` di laptop hijau 1533/1533 berulang kali. Di GitHub merah. Bedanya bukan kode:
+
+| | laptop | runner GitHub |
+|---|---|---|
+| `node_modules/@prisma/client` | **sudah ter-generate** | hasil `npm ci`, belum ter-generate untuk skema repo ini |
+| `dist/`, `.next/`, `.env` | ada | tidak ada |
+| DB | SQLite file lokal | PostgreSQL 16 |
+
+Jadi **cara mengambil bukti saya sebelumnya salah**: saya menjalankan gate di folder yang sudah
+terbuka oleh banyak build sebelumnya, jadi tidak bisa mereproduksi kondisi pertama kali.
+
+## Bukti yang benar: `git clone` bersih, lalu jalankan gate yang sama
+
+```
+git clone /home/ivo/Desktop/test /tmp/clean-clone   # dist/ tidak ada, node_modules kosong
+cd clean-clone && npm ci && npm run build:gate
+```
+
+Hasil **sebelum** fix: `BUILD_GATE_EXIT=1`, 59 test gagal, 15 langkah succeed lalu
+`REGRESSION_TESTS FAIL`.
+Hasil **sesudah** fix: **1533/1533, 0 fail**.
+
+Perbedaan kedua diperbaiki hanya urutan generate client Prisma — bukan kode aplikasi.
+
+## Dua bug gate yang ditemukan (bukan bug aplikasi)
+
+### Bug A — `npm test` memakai client Prisma PostgreSQL
+
+`scripts/run-build-gate.mjs` mengurutkan:
+
+```
+PRISMA_GENERATE_POSTGRES_FOR_TYPECHECK   <- client jadi postgresql://
+TYPESCRIPT_LINT                          PASS
+REGRESSION_TESTS                         <- 59 test FAIL
+SQLITE_DB_PREPARE                        <- baru menyiapkan SQLite, TERLAMBAT
+```
+
+Runtime test instantiate `PrismaClient` dengan `DATABASE_URL=file:...` (SQLite). Client-nya
+postgres → `Error validating datasource 'db': the URL must start with the protocol
+'postgresql://'`. Di laptop ini tidak pernah muncul karena `db:local:prepare` sudah pernah jalan
+sebelumya, jadi client-nya kebetulan SQLite.
+
+Perbaikan: `db:local:prepare` dipindah ke **sebelum** `npm test`. Dua client tetap dipakai untuk
+dua keperluan berbeda: PostgreSQL untuk typecheck (typecheck harus terhadap skema produksi),
+SQLite untuk runtime test. Tidak ada test yang dipilih, tidak ada assertion yang dilonggarkan.
+
+**Yang membuat bug ini bertahan: assertion-nya mengunci bug.** `tests/build-gate-prisma-client-order.test.mjs`
+saya baca ulang dan assertion lamanya `sqlitePrepare > lint` — persis urutan yang salah. Test itu
+tidak mencegah bug; ia menjaganya. Assertion-nya ditulis ulang ke urutan yang benar
+(`sqlitePrepare < lint < regression < finalGenerate`) dengan komentar akar masalahnya.
+
+### Bug B (sudah_FOUND di sesi 11) — `git rev-parse HEAD^` di push pertama
+
+Sudah diperbaiki dan TERVERIFIKASI di run kedua dengan baseline nyata.
+
+## `continue-on-error: true` di build_gate BUKAN gate yang dilemahkan
+
+Pertanyaan proprietor dijawab dengan baca kode, bukan asumsi:
+
+```yaml
+- id: build_gate
+  continue-on-error: true
+  run: npm run build:gate
+- name: Stop artifact-dependent simulation ... when build fails
+  if: steps.build_gate.outcome != 'success'
+  run: |
+    echo "Build gate failed. Independent diagnostics were still collected..."
+    exit 1
+```
+
+Gunanya: agar diagnosa lain (audit, dependency scan, UAT coverage, docker config) **tetap terkumpul**
+walau build gagal, lalu run dipaksa gagal oleh `exit 1`. Gate-nya tetap fail-closed; tidak ada
+jalur hijau palsukan. Yang penting: yang dipakai untuk menggatekan adalah `steps.X.outcome`, BUKAN
+`.conclusion` — dengan `continue-on-error` keduanya berbeda, dan saya sempat salah baca yang
+kedua sehingga sempat menyimpulkan "build sukses" padahal build gate-nya FAIL.
+
+## Regresi yang harus Dijaga
+
+`tests/worker-dist-import-runtime.test.mjs` (3 test) menjaga import literal `apps/api/dist` tidak
+kembali. Test kedua **menciptakan kondisi CI-nya sendiri** — menyembunyikan `dist/`, typecheck,
+memulihkan di `finally` — supaya tidak bergantung pada keadaan folder dan tidak merah sendiri di
+dalam `quality:full`.
+
 # Latest continuation — 2026-10-01 (sesi 11: repo GitHub `reyvo1/testoko` dibuat, UAT GitHub jalan)
 
 > Block ini yang terbaru. Blok di bawahnya adalah histori (sesi 10 audit data statis UI Admin +

@@ -11,10 +11,25 @@ test('build gate generates schema-specific PostgreSQL Prisma Client before TypeS
   const sqlitePrepare = buildGate.indexOf('SQLITE_DB_PREPARE');
   const finalGenerate = buildGate.indexOf('PRISMA_GENERATE_POSTGRES_FINAL');
   const build = buildGate.indexOf('SIX_APP_PRODUCTION_BUILD');
+  const regression = buildGate.indexOf('REGRESSION_TESTS');
   assert.ok(generate > 0, 'typecheck Prisma generation missing');
   assert.ok(lint > generate, 'lint must run after Prisma Client generation');
-  assert.ok(sqlitePrepare > lint, 'SQLite rehearsal must happen after typecheck');
-  assert.ok(finalGenerate > sqlitePrepare, 'PostgreSQL Client must be restored after SQLite rehearsal');
+
+  // Diperbaiki setelah UAT GitHub 2026-10-01 (clean clone, commit 095e42a): `npm test` instantiate
+  // PrismaClient lewat URL SQLite, tapi client aktif saat itu hasil PRISMA_GENERATE_POSTGRES_FOR_
+  // TYPECHECK. Akibatnya 59 test gagal dengan "the URL must start with the protocol
+  // postgresql://" - HANYA di checkout bersih. Assertion lama justru MENGUNCI urutan salah ini
+  // (`sqlitePrepare > lint`), jadi ia menjaga bug, bukan mencegahnya.
+  //
+  // Dua client dipakai untuk dua keperluan berbeda, keduanya tetap wajib:
+  //   - typecheck terhadap skema produksi  -> PostgreSQL client, sebelum lint
+  //   - runtime test lewat URL SQLite     -> SQLite client, sebelum `npm test`
+  assert.ok(sqlitePrepare > lint, 'SQLite Client must be generated after typecheck');
+  assert.ok(regression > sqlitePrepare,
+    'regression tests must run AFTER the SQLite Client is generated, atau PrismaClient akan ' +
+    'dibuat dengan protocol postgresql:// dan test runtime gagal');
+  assert.ok(finalGenerate > regression,
+    'PostgreSQL Client untuk produksi harus dipulihkan SETELAH test runtime SQLite selesai');
   assert.ok(build > finalGenerate, 'production build must use final PostgreSQL Client');
 });
 

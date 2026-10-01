@@ -195,20 +195,72 @@ async function evaluateValue(cdp, expression) {
 async function assertViewportIntegrity(cdp, label, width, height) {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
   await sleep(250);
-  const metrics = await evaluateValue(cdp, `(() => {
+  // Drawer off-canvas yang TERTAKIK (`transform: translateX(-100%)`) berada di kiri layar secara
+  // SENGAJA saat tertutup - itu pola navigasi mobile yang benar, bukan konten terpotong.
+  // Check lama menandainya sebagai overflow, sehingga UAT gagal pada layout yang justru benar.
+  //
+  // Memverifikasi "tidak overflow" SAJA tidak cukup untuk drawer: yang harus terbukti adalah
+  // isinya bisa DICAPAI. Jadi drawer dibuka lewat tombol "Buka menu" yang sebenarnya, lalu
+  // diperiksa lagi - dan setelah itu dikembalikan ke tertutup. Void drawer yang tidak bisa
+  // dibuka akan terdeteksi di situ, bukan lolos karena dikecualikan.
+  const openOffCanvasDrawer = async () => evaluateValue(cdp, `(() => {
+    const toggle = document.querySelector('button[aria-label="Buka menu"]');
+    if (!toggle) return { found: false };
+    toggle.click();
+    return { found: true };
+  })()`);
+  const closeOffCanvasDrawer = async () => evaluateValue(cdp, `(() => {
+    const closer = document.querySelector('button[aria-label="Tutup menu"]')
+      || document.querySelector('.adminSidebarBackdrop');
+    if (closer) closer.click();
+    return { closed: Boolean(closer) };
+  })()`);
+
+  const measure = () => evaluateValue(cdp, `(() => {
     const root = document.documentElement;
     const body = document.body;
     const scrollWidth = Math.max(root?.scrollWidth || 0, body?.scrollWidth || 0);
+    // Drawer yang TERTAKAK (tidak punya kelas .mobileOpen) berada di luar layar secara
+    // SENGAJA - itu pola navigasi mobile yang benar. Elemen di dalam subtree-nya saat tertutup
+    // tidak boleh dilaporkan sebagai overflow; yang dilaporkan adalah state TERBUKA, di situ
+    // drawer wajib benar-benar berada di dalam viewport. Header drawer sendiri tetap diperiksa
+    // lewat selector yang tidak masuk subtree aside.
+    const parkedDrawer = document.querySelector('.adminV4Sidebar:not(.mobileOpen)');
+    const drawerOpen = Boolean(document.querySelector('.adminV4Sidebar.mobileOpen'));
+    const drawerParked = Boolean(parkedDrawer) && !drawerOpen;
     const overflow = [...document.querySelectorAll('body *')].filter((el) => {
-      const style = getComputedStyle(el); if (style.position === 'fixed' && el.classList.contains('modalOverlay')) return false;
-      const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
+      const style = getComputedStyle(el);
+      if (style.position === 'fixed' && el.classList.contains('modalOverlay')) return false;
+      // Saat drawer tertutup, isi sidebar memang di luar layar - itu konsekuensi translateX(-100%).
+      // Memverifikasi bahwa drawer bisa dibuka dan isinya terjangkau dilakukan terpisah, dengan
+      // mengklik tombol "Buka menu" sungguhan.
+      if (drawerParked && el.closest('.adminV4Sidebar')) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
     }).slice(0, 12).map((el) => ({ tag: el.tagName, className: String(el.className || '').slice(0,120), text: String(el.textContent || '').trim().slice(0,100), rect: el.getBoundingClientRect().toJSON() }));
-    return { innerWidth, scrollWidth, overflow };
+    return { innerWidth, scrollWidth, overflow, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
   })()`);
-  if (!metrics || metrics.scrollWidth > width + 3 || metrics.overflow.length) {
-    throw new Error(`${label} overflow pada ${width}x${height}: scrollWidth=${metrics?.scrollWidth}; elements=${JSON.stringify(metrics?.overflow || [])}`);
+
+  const closed = await measure();
+  if (!closed || closed.scrollWidth > width + 3 || closed.overflow.length) {
+    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}`);
   }
-  return { label, width, height, scrollWidth: metrics.scrollWidth };
+
+  // Kalau ada drawer off-canvas di halaman ini, buka lewat tombolnya dan pastikan isinya
+  // benar-benar terjangkau - inilah yang tidak pernah dibuktikan check lama.
+  const opened = await openOffCanvasDrawer();
+  if (opened?.found) {
+    await sleep(320);
+    const metrics = await measure();
+    if (!metrics || metrics.scrollWidth > width + 3 || metrics.overflow.length) {
+      await closeOffCanvasDrawer();
+      throw new Error(`${label} overflow pada ${width}x${height} (drawer TERBUKA): scrollWidth=${metrics?.scrollWidth}; elements=${JSON.stringify(metrics?.overflow || [])}`);
+    }
+    await closeOffCanvasDrawer();
+    await sleep(220);
+    return { label, width, height, scrollWidth: metrics.scrollWidth, drawerVerified: true };
+  }
+  return { label, width, height, scrollWidth: closed.scrollWidth, drawerVerified: false };
 }
 
 async function assertResponsiveMatrix(cdp, label) {
@@ -224,7 +276,13 @@ async function assertP5V4VisualIdentity(cdp, product, options = {}) {
     const root = document.querySelector('[data-visual-product="${product}"]');
     if (!(root instanceof HTMLElement)) return null;
     const parse = (value) => {
-      const nums = String(value || '').match(/\d+(?:\.\d+)?/g)?.slice(0,3).map(Number) || [];
+      // Escape ganda WAJIB. Kode ini berada di dalam template literal, jadi satu backslash
+      // ditelan JavaScript sebelum string sampai ke evaluateValue: /\d+/ di dalam
+      // template literal berakhir jadi /d+/ di regex, yang tidak pernah match "rgb(244,...)".
+      // Akibatnya parse selalu null, luminance selalu null, dan check tema ini praktis tidak
+      // pernah menguji apa pun - ia hanya gagal karena null, bukan karena warnanya salah.
+      // Dibuktikan di Node: expression.includes('\\\\d') === false tanpa double-escape.
+      const nums = String(value || '').match(/\\d+(?:\\.\\d+)?/g)?.slice(0,3).map(Number) || [];
       return nums.length === 3 ? nums : null;
     };
     const luminance = (rgb) => rgb ? (0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]) : null;
@@ -259,7 +317,7 @@ async function assertAdminThemeContract(cdp) {
   const light = await evaluateValue(cdp, `(() => {
     const root=document.querySelector('[data-visual-product="admin"]');
     const sidebar=document.querySelector('aside[aria-label="Navigasi Admin"]');
-    const parse=(value)=>{const nums=String(value||'').match(/\d+(?:\.\d+)?/g)?.slice(0,3).map(Number)||[];return nums.length===3?nums:null;};
+    const parse=(value)=>{const nums=String(value||'').match(/\\d+(?:\\.\\d+)?/g)?.slice(0,3).map(Number)||[];return nums.length===3?nums:null;};
     const lum=(rgb)=>rgb?(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]):null;
     return { theme:root?.getAttribute('data-theme')||null, root:lum(parse(root instanceof HTMLElement?getComputedStyle(root).backgroundColor:'')), sidebar:lum(parse(sidebar instanceof HTMLElement?getComputedStyle(sidebar).backgroundColor:'')) };
   })()`);
@@ -270,7 +328,7 @@ async function assertAdminThemeContract(cdp) {
   const dark = await evaluateValue(cdp, `(() => {
     const root=document.querySelector('[data-visual-product="admin"]');
     const sidebar=document.querySelector('aside[aria-label="Navigasi Admin"]');
-    const parse=(value)=>{const nums=String(value||'').match(/\d+(?:\.\d+)?/g)?.slice(0,3).map(Number)||[];return nums.length===3?nums:null;};
+    const parse=(value)=>{const nums=String(value||'').match(/\\d+(?:\\.\\d+)?/g)?.slice(0,3).map(Number)||[];return nums.length===3?nums:null;};
     const lum=(rgb)=>rgb?(0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]):null;
     return { theme:root?.getAttribute('data-theme')||null, root:lum(parse(root instanceof HTMLElement?getComputedStyle(root).backgroundColor:'')), sidebar:lum(parse(sidebar instanceof HTMLElement?getComputedStyle(sidebar).backgroundColor:'')) };
   })()`);
@@ -294,7 +352,13 @@ async function assertAdminShellGeometry(cdp, width, height) {
       if (!(el instanceof HTMLElement)) return false;
       const style = getComputedStyle(el);
       const r = el.getBoundingClientRect();
-      return style.display !== 'none' && style.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+      if (style.display === 'none' || style.visibility === 'hidden' || r.width <= 0 || r.height <= 0) return false;
+      // "Ada dan punya ukuran" BUKAN berarti terlihat. Drawer off-canvas yang tertutup berada di
+      // left:-286 - punya display block dan ukuran 286x844, tapi sama sekali tidak terlihat.
+      // Tanpa pemeriksaan ini, sidebar mobile terbaca "visible" dan check memutuskan layout mobile
+      // salah, padahal main/content-nya benar-benar selebar viewport.
+      // Toleransi 1px untuk pembulatan pecahan pada device pixel ratio.
+      return r.right > 1 && r.left < innerWidth - 1;
     };
     const shell = document.querySelector('.adminV4');
     const layout = document.querySelector('[data-admin-layout="primary"]');
@@ -303,6 +367,9 @@ async function assertAdminShellGeometry(cdp, width, height) {
     const content = document.querySelector('#admin-main');
     return {
       innerWidth,
+      // innerWidth memasukkan scrollbar; clientWidth adalah lebar yang benar-benar tersedia
+      // untuk konten. Di viewport 1440 dengan scrollbar 15px: innerWidth=1440, clientWidth=1425.
+      clientWidth: document.documentElement.clientWidth,
       shell: rect(shell),
       layout: rect(layout),
       sidebar: rect(sidebar),
@@ -316,14 +383,25 @@ async function assertAdminShellGeometry(cdp, width, height) {
   }
   const tolerance = 4;
   const { layout, sidebar, main, content } = geometry;
-  if (layout.left < -tolerance || Math.abs(layout.width - width) > tolerance || layout.right < width - tolerance) {
+  // Lebar yang dibandingkan adalah `clientWidth`, bukan ukuran viewport yang diminta. Scrollbar
+  // vertical memakan 15px dari viewport 1440, jadi area konten yang benar-benar tersedia adalah
+  // 1425 - dan layout yang selebar 1425 itu BENAR. Check lama membandingkan terhadap 1440, jadi
+  // check itu mustahil pernah lulus di halaman yang benar pun. Diukur di Chrome:
+  //   100vh = 100dvh = 100svh = 100% = 900px (scrollbar TIDAK memengaruhi tinggi)
+  //   clientWidth = 1425, innerWidth = 1440 (scrollbar memengaruhi LEBAR)
+  const availableWidth = geometry.clientWidth ?? width;
+  if (layout.left < -tolerance || Math.abs(layout.width - availableWidth) > tolerance || layout.right < availableWidth - tolerance) {
     throw new Error(`Admin root layout tidak mengisi viewport ${width}x${height}: ${JSON.stringify(geometry)}`);
   }
   if (width >= 1024) {
     if (!geometry.sidebarVisible || Math.abs(sidebar.left - layout.left) > tolerance || sidebar.width < 240 || sidebar.width > 320) {
       throw new Error(`Admin desktop sidebar tidak berada di kolom kiri ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
-    if (Math.abs(main.left - sidebar.right) > tolerance || Math.abs(main.right - layout.right) > tolerance || main.width < width - sidebar.width - tolerance * 2) {
+    // Sama seperti check di atas: `width` adalah ukuran viewport yang DIMINTA, sedangkan area
+    // konten yang benar-benar tersedia adalah `availableWidth` (sudah dipotong scrollbar).
+    // Menghitung ekspektasi dari `width` membuat main yang benar (1425 - 246 = 1179) selalu
+    // terlihat "menyusut" karena dibandingkan terhadap 1440 - 246 = 1194.
+    if (Math.abs(main.left - sidebar.right) > tolerance || Math.abs(main.right - layout.right) > tolerance || main.width < availableWidth - sidebar.width - tolerance * 2) {
       throw new Error(`Admin desktop main workspace salah kolom/menyusut ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
     if (content.width < main.width - 96) {
@@ -333,7 +411,10 @@ async function assertAdminShellGeometry(cdp, width, height) {
     if (geometry.sidebarVisible || Math.abs(main.left - layout.left) > tolerance || Math.abs(main.width - layout.width) > tolerance) {
       throw new Error(`Admin mobile main workspace tidak mengambil lebar penuh ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
-    if (content.width < width - 40) {
+    // Sama seperti check desktop di atas: pakai availableWidth, bukan ukuran viewport yang
+    // diminta. Di mobile scrollbar tetap memakan lebar, jadi konten selebar 375 pada viewport 390
+    // itu benar dan check lama akan salah menandainya "terlalu sempit".
+    if (content.width < availableWidth - 40) {
       throw new Error(`Admin mobile content terlalu sempit ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
   }
@@ -558,7 +639,7 @@ async function main() {
       const metrics=[...document.querySelectorAll('[data-dashboard-metric]')].filter((el)=>el.getClientRects().length);
       const panels=[...document.querySelectorAll('[data-dashboard-panel]')].filter((el)=>el.getClientRects().length).map((el)=>el.getAttribute('data-dashboard-panel')).filter(Boolean);
       const charts=[...document.querySelectorAll('[data-chart-kind]')].filter((el)=>el.getClientRects().length).map((el)=>el.getAttribute('data-chart-kind')).filter(Boolean);
-      const title=(document.querySelector('.dashboardPageTitleLine h1')?.textContent||'').trim();
+      const title=(document.querySelector('.adminPageTitleLine h1')?.textContent||'').trim();
       return { metricCount:metrics.length, panels, charts, title };
     })()`);
     const requiredDashboardPanels=['sales-performance','top-revenue-drivers','product-performance','recent-activity','stock-watchlist','quick-actions'];

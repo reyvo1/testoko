@@ -62,3 +62,4 @@ logs/report-exports/
 logs/stage20-release-readiness/
 handoff/quality/*.json
 handoff/quality/*.md
+logs/browser-uat/

@@ -29,7 +29,22 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api/v1');
-  app.enableCors({ origin: origins.length ? origins : !protectedEnvironment, credentials: true });
+  // Header yang diizinkan pada preflight harus lengkap. Default Nest hanya mencantumkan header
+  // "simple" plus Authorization. Aplikasi Admin (page.tsx:196) mengirim `Content-Type:
+  // application/json` pada SETIAP request lewat authFetch, jadi preflight menanyakan
+  // `content-type` - yang tidak ada di allow-list - dan browser menolak seluruh request dengan
+  // net::ERR_FAILED tanpa status HTTP. Gejalanya: "Gagal memuat: Produk, Konfigurasi aplikasi,
+  // Konteks cabang" di UI, padahal API sehat dan endpoint-nya 200.
+  app.enableCors({
+    origin: origins.length ? origins : !protectedEnvironment,
+    credentials: true,
+    // Jangan pakai '*': with credentials, browser menolak, dan protectedEnvironment di atas
+    // sudah melarangnya. Daftar eksplisit di sini yang penting: client nyata mengirim
+    // content-type, authorization, dan Accept.
+    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'X-Requested-With'],
+    exposedHeaders: ['Content-Disposition'],
+    maxAge: 600,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));
 
   const swaggerConfig = new DocumentBuilder()

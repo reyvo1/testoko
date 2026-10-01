@@ -4,6 +4,7 @@ import { isIP } from 'node:net';
 import { existsSync, mkdirSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -1608,11 +1609,18 @@ async function startTelegram(): Promise<void> {
     // Import dari BUILD ARTIFACT API, bukan source. Worker punya tsconfig sendiri dan tidak boleh
     // mengompilasi source app lain; `apps/api/dist` adalah output yang sama persis dengan yang
     // dijalankan API, jadi tidak ada permukaan keamanan atau perilaku yang berbeda dari produksi.
-    // Urutan build root sudah membangun api sebelum worker, jadi artefaknya ada saat ini.
+    //
+    // Specifier harus RUNTIME (dihitung dari __dirname), bukan literal._build gate menjalankan
+    // `lint`/`tsc` SEBELUM build apa pun, di checkout bersih tanpa `dist/`. Dengan literal,
+    // TypeScript mencoba me-resolve `apps/api/dist/...` saat typecheck dan gagal dengan TS2307 -
+    // padahal saat runtime file itu memang ada, karena `npm run build` sudah membangun api lebih
+    // dulu. Specifier yang dihitung membuat typecheck tidak ikut.rules runtime tidak berubah.
+    const apiDist = (relative: string): string =>
+      pathToFileURL(resolve(__dirname, '..', '..', 'api', 'dist', relative)).href;
     const [{ mountTelegramPolling }, { MobileOpsService }, { TelegramCommandService }] = await Promise.all([
       import('./telegram-runtime.js'),
-      import('../../api/dist/mobile-ops/mobile-ops.service.js'),
-      import('../../api/dist/mobile-ops/telegram-command.service.js'),
+      import(apiDist('mobile-ops/mobile-ops.service.js')),
+      import(apiDist('mobile-ops/telegram-command.service.js')),
     ]);
     const result = mountTelegramPolling({ prisma, MobileOpsService, TelegramCommandService } as never, process.env, console.log);
     stopTelegram = result.stop ?? null;

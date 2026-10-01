@@ -1,3 +1,80 @@
+# Latest continuation — 2026-10-01 (sesi 11: repo GitHub `reyvo1/testoko` dibuat, UAT GitHub jalan)
+
+> Block ini yang terbaru. Blok di bawahnya adalah histori (sesi 10 audit data statis UI Admin +
+> F9/F10, sesi 9 pemilih JENIS + bug harga per jenis, sesi 8 pemulihan mesin mati, sesi 7 UOM).
+
+## GitHub repo dibuat dan kodenya sudah masuk
+
+`https://github.com/reyvo1/testoko` sebelumnya **kosong** (push 14:27 tapi 0 file). Repo lokal
+`/home/ivo/Desktop/test` **tidak punya `.git`**, jadi inisialisasi dilakukan dan sekarang ada 3 commit
+di `main`. Sebelum commit pertama, `git add -A` di staging dan diperiksa dulu: 1119 file, `.env` sudah
+di-ignore, dan satu-satunya file sensitif yang ikut adalah `*.example` yang isinya placeholder
+(`ganti-dengan-...`). Password seed dev memang wajib diketahui CI, dan CI memakai kredensial sendiri
+yang berbeda. `.next/` dan `apps/api/prisma/data/*.db` **tidak** ter-commit (0 file terverifikasi).
+
+6 workflow GitHub terdeteksi; 3 terpicu otomatis pada push: Toko360 CI, Toko360 Full System Simulation,
+Toko360 Full Automated UAT, Performance Smoke, Runtime UAT Gate, Workflow Governance.
+
+## Dua blocker nyata yang ditemukan UAT GitHub (keduanya SUDAH diperbaiki)
+
+### Blocker 1 — `git rev-parse HEAD^` tidak punya parent di push pertama
+
+Run `36877554474` gagal **sebelum satu langkah pun** dijalankan. Akar masalahnya bukan urutan build:
+
+```bash
+BASE_REF="${{ github.event.before }}"          # push pertama -> 000...0
+if [ ... ] || ! git cat-file -e ...; then
+  BASE_REF="$(git rev-parse HEAD^)"            # exit non-zero: repo hanya punya 1 commit
+fi
+```
+
+Dengan `set -euo pipefail` perintah itu membatalkan seluruh run. Perbaikan: pakai
+`git rev-parse --verify --quiet HEAD^ || true`; kalau tetap kosong, langkah **dilewati sambil
+mencetak alasannya**. Yang SENGAJA tidak dilakukan: mengarang SHA, memakai `HEAD` sebagai
+baseline sendiri (itu membandingkan kode dengan dirinya sendiri), atau menggagalkan run.
+Diverifikasi 4 kasus — satu commit, dua commit, `before` yang sah, dan SHA yang tidak ada.
+
+Pada run kedua (36879544892) langkah ini **LULUS sungguhan** dengan baseline nyata, bukan sekadar
+dilewati — jadi perbaikannya benar, bukan menutupi gejala.
+
+### Blocker 2 — REGRESI SAYA: worker mengimpor artefak build dengan specifier literal
+
+`npm run lint` / `tsc --noEmit` berjalan **sebelum** build apa pun, di checkout bersih tanpa `dist/`
+(`dist/` ada di `.gitignore`). Import literal `../../api/dist/mobile-ops/*.js` diproses TypeScript
+saat typecheck dan gagal `TS2307`. Urutan build root sudah benar (api sebelum worker) — yang salah
+adalah **dependensi level-tipe ke output build**.
+
+Perbaikan: specifier dihitung saat runtime dari `__dirname` lewat `pathToFileURL`, jadi typecheck
+tidak ikut me-resolve. Perilaku runtime tidak berubah. Bukti: `rm -rf apps/api/dist` (meniru CI)
+→ typecheck hijau; kode literal → merah dengan TS2307 yang sama seperti log GitHub; kedua service
+`MobileOpsService` + `TelegramCommandService` benar-benar termuat dari path hasil hitungan.
+
+### Test yang menjaga Blocker 2
+
+`tests/worker-dist-import-runtime.test.mjs` (3 test). Test kedua **menciptakan kondisi CI-nya
+sendiri** — menyembunyikan `apps/api/dist`, menjalankan typecheck, memulihkannya di `finally`.
+Versi pertama test ini justru salah: ia menolak jalan kalau `dist/` ada, padahal `quality:full`
+membangun api sebelum test, jadi ia merah sendiri di dalam gate yang sehat. Itu test yang salah,
+bukan regression nyata.
+
+## Cara membaca kegagalan UAT GitHub
+
+`Full Automated UAT` run 36879544892 melaporkan ~20 probe `failure`, tapi itu **satu** akar:
+`build gate = FAIL` (TS2307 di atas). Karena `Record exact source and build artifact identities`
+ber-condition `if: steps.build.outcome == 'success'`, seluruh langkah sesudahnya ter-skip, artifact
+identitas jadi `buildArtifactId: null`, dan semua probe berikutnya gagal karena tidak tahu artifact
+mana yang harus diuji. Buktinya di artifact: `"File wajib belum tersedia: apps/api/dist/main.js"`.
+
+Jadi bacalah **`Full System Simulation`** untuk akar, bukan daftar probe yang gagal.
+
+## Data statis: sudah dipastikan TIDAK ada logika yang specialize produk
+
+Semua kata produk uji (`rokok`, `kretek`, `sampo`) di production source: **0 hit**. Semuanya hanya
+fixture di `tests/uom-multilevel-sale-runtime.test.mjs`. Satuan `BATANG`/`BANGKUS`/`KARTON` juga
+0 hit di `apps/*/src` (hit yang muncul adalah substring kata lain seperti `persistedUser`).
+Produk uji itu CUMA CONTOH untuk membuktikan multi-UOM + per-jenis bekerja; tidak ada asumsi
+bahwa toko hanya menjual satu jenis barang.
+
 # Latest continuation — 2026-10-01 (sesi 10 repo `test` — audit data statis UI Admin, F9 wiring, F10 forecast)
 
 > Block ini yang terbaru. Blok di bawahnya adalah histori (sesi 9 pemilih JENIS + bug harga per

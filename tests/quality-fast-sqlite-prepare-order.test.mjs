@@ -25,6 +25,25 @@ test('quality:fast menyiapkan SQLite sebelum menjalankan npm test', () => {
     'dengan protocol yang salah');
 });
 
+test('quality:fast membangun worker SEBELUM npm test', () => {
+  // Test yang mengimpor artefak build: tests/post1c-telegram-polling.test.mjs meng-import
+  // `apps/worker/dist/telegram-polling.js` dengan sengaja, karena ia stood up HTTP server sungguhan
+  // dan memeriksa lalu lintas kabel. Itu bukti yang benar, jadi TIDAK diubah jadi import source.
+  //
+  // Karena itu dist/ harus ADA sebelum `npm test`. Di checkout bersih `npm test` berjalan sebelum
+  // `npm run build`, jadi tanpa build worker lebih dulu hasilnya:
+  //   ERR_MODULE_NOT_FOUND: apps/worker/dist/telegram-polling.js
+  // Di laptop `dist/` selalu ada dari build sebelumnya, jadi bug ini tidak pernah terlihat.
+  const fast = scripts['quality:fast'];
+  assert.match(fast, /build -w @toko360\/worker/,
+    'quality:fast harus build worker sebelum npm test');
+  const buildWorker = fast.indexOf('build -w @toko360/worker');
+  const test = fast.indexOf('npm test');
+  assert.ok(buildWorker < test,
+    'build worker harus mendahului `npm test`, atau test yang mengimpor dist/ akan gagal dengan ' +
+    'ERR_MODULE_NOT_FOUND di checkout bersih');
+});
+
 test('quality:full dan quality:fast tidak prepping SQLite dua kali', () => {
   // Keduanya dipanggil berurutan. `db:local:prepare` itu mahal (generate + push + seed),
   // jadi genau satu yangceland harus llevarlo.

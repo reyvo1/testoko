@@ -51,7 +51,7 @@
     "workflow:status": "node scripts/workflow.mjs status",
     "workflow:advance": "node scripts/workflow.mjs advance",
     "workflow:complete": "node scripts/workflow.mjs complete",
-    "quality:fast": "npm run workflow:validate && npm run validate:repo && npm run lint && npm run db:local:prepare && npm test",
+    "quality:fast": "npm run workflow:validate && npm run validate:repo && npm run lint && npm run db:local:prepare && npm run build -w @toko360/worker && npm test",
     "quality:full": "npm run quality:fast && npm run test:db:smoke && npm run build && npm run audit:boot",
     "release:check": "npm run quality:full",
     "chat:generate": "node scripts/generate-chat-context.mjs generate",

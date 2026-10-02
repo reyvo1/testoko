@@ -342,7 +342,33 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
     }).slice(0, 12).map((el) => ({ tag: el.tagName, className: String(el.className || '').slice(0,120), text: String(el.textContent || '').trim().slice(0,100), rect: el.getBoundingClientRect().toJSON() }));
-    return { innerWidth, scrollWidth, overflow, clippedScrollables, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
+    // Diagnosa mentah: elemen yang menjangkau luar viewport TANPA filter apa pun, plus alasan
+    // setiap elemen tidak muncul di daftar overflow. Tanpa ini, kegagalan di runner hanya
+    // melaporkan scrollWidth besar dengan elements kosong sehingga akar masalahnya tidak diketahui.
+    const rawOffenders = [...document.querySelectorAll('body *')].map((el) => {
+      const style = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const beyond = r.right > innerWidth + 3 || r.left < -3;
+      const parked = drawerParked && Boolean(el.closest('.adminV4Sidebar'));
+      const inScrollable = scrollableAncestors(el);
+      const inClipping = clippingAncestors(el);
+      const visible = r.width > 0 && r.height > 0;
+      const excludedBecause = !beyond ? 'tidak melewati viewport'
+        : !visible ? 'ukuran nol'
+        : parked ? 'drawer admin diparkir'
+        : (inScrollable || inClipping) ? 'ter-clip ancestor'
+        : null;
+      return { el, beyond, excludedBecause };
+    });
+    const rawOverflowList = rawOffenders
+      .filter((entry) => entry.beyond)
+      .sort((a, b) => (b.el.getBoundingClientRect().right - b.el.getBoundingClientRect().left) - (a.el.getBoundingClientRect().right - a.el.getBoundingClientRect().left))
+      .slice(0, 10)
+      .map((entry) => {
+        const r = entry.el.getBoundingClientRect();
+        return { tag: entry.el.tagName, className: String(entry.el.className || '').slice(0, 110), position: getComputedStyle(entry.el).position, excludedBecause: entry.excludedBecause, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+      });
+    return { innerWidth, scrollWidth, overflow, clippedScrollables, rawOverflow: rawOverflowList, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
   })()`);
 
   const closed = await measure();
@@ -355,7 +381,7 @@ async function assertViewportIntegrity(cdp, label, width, height) {
     // justru informatif (terbukti: attempt inline menghasilkan "Uncaught" kosong).
     // Fungsi ini tidak boleh melempar - diagnostik tidak boleh mengganti bukti.
     const chains = await describeOverflowChains(cdp);
-    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}; chains=${JSON.stringify(chains)}`);
+    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}; rawOverflow=${JSON.stringify(closed?.rawOverflow || [])}; chains=${JSON.stringify(chains)}`);
   }
 
   // Kalau ada drawer off-canvas di halaman ini, buka lewat tombolnya dan pastikan isinya

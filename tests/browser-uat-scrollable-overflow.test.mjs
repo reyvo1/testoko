@@ -19,6 +19,22 @@ test('kondisi yang ditemukan benar-benar ada di CSS (tabel memang sengaja bisa d
   // Kalau salah satu hilang, regresi ini tidak akan terpicu dan testnya jadi tidak berarti.
 });
 
+test('check overflow melaporkan pelaku mentah beserta alasan pengecualian', () => {
+  // Kegagalan runner sebelumnya hanya melaporkan scrollWidth=679 dengan elements kosong,
+  // sehingga akar masalahnya tidak bisa diketahui. Diagnosa mentah wajib ada.
+  assert.match(uat, /const rawOffenders = \[\.\.\.document\.querySelectorAll\('body \*'\)\]/);
+  assert.match(uat, /const rawOverflowList = rawOffenders/);
+  assert.match(uat, /rawOverflow: rawOverflowList/);
+  // Setiap elemen yang tidak lolos harus punya alasan yang jelas, bukan sekadar hilang.
+  assert.match(uat, /excludedBecause = !beyond \? 'tidak melewati viewport'/);
+  assert.match(uat, /: parked \? 'drawer admin diparkir'/);
+  assert.match(uat, /\(inScrollable \|\| inClipping\) \? 'ter-clip ancestor'/);
+  // Diagnostik wajib ikut ke pesan error agar terlihat di log runner.
+  assert.match(uat, /rawOverflow=\$\{JSON\.stringify\(closed\?\.rawOverflow \|\| \[\]\)\}/);
+  // Diagnostik tidak boleh melemahkan gate: overflow dan clippedScrollables tetap syarat gagal.
+  assert.match(uat, /closed\.overflow\.length \|\| closed\.clippedScrollables\.length/);
+});
+
 test('check overflow mengecualikan anak container scrollable, bukan elemen arbitrary', () => {
   assert.match(uat, /const isScrollable = \(el\)/);
   // Pengecualian harus berdasarkan overflowX/overflowY auto|scroll, bukan class tertentu.

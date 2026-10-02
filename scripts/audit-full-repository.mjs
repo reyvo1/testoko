@@ -46,7 +46,15 @@ for (const app of uiRoots) {
   const postcss = path.join(root, app, 'postcss.config.mjs');
   const globals = path.join(root, app, 'app/globals.css');
   const horizontalOverflowBlocks = [...cssText.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((match) => /overflow-x\s*:\s*auto/i.test(match[2]));
-  const boundedHorizontalScrollerCount = horizontalOverflowBlocks.filter((match) => /(?:^|,)\s*\.table\b/.test(match[1])).length;
+  // Allow-list "bounded horizontal scroller": container tabel boleh overflow-x:auto karena
+  // isinya memang lebih lebar dan bisa digeser.
+  // Dua nama, alasan berbeda:
+  // - .hrTable  : Employee Portal. Sengaja tidak memakai `table` karena itu utilitas
+  //               Tailwind (display:table) yang menimpa styling hand-written.
+  // - .table    : Admin. Tetap dipakai dan aman karena rule-nya eksplisit menulis
+  //               `display:block`, sehingga utilitas Tailwind tidak bisa menimpanya.
+  //              Unlayered CSS menang atas utility Tailwind yang berlapis.
+  const boundedHorizontalScrollerCount = horizontalOverflowBlocks.filter((match) => /(?:^|,)\s*\.(?:hrTable|table)\b/.test(match[1])).length;
   const horizontalPrimaryOverflowCount = horizontalOverflowBlocks.length - boundedHorizontalScrollerCount;
   const checks = {
     postcssConfig: fs.existsSync(postcss),

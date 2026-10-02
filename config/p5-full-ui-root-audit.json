@@ -34,7 +34,7 @@
     "employee-portal": {
       "fileCount": 10,
       "lineCount": 1080,
-      "requiredSemanticClassCount": 20,
+      "requiredSemanticClassCount": 21,
       "missingSemanticClasses": []
     }
   },

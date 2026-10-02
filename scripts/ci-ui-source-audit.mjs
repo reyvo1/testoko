@@ -32,14 +32,48 @@ for(const legacy of ['className="workspaceRail"','className="domainDeck"','class
 }
 function walk(dir,out=[]){if(!fs.existsSync(dir))return out;for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(['node_modules','.next','dist'].includes(e.name))continue;const p=path.join(dir,e.name);e.isDirectory()?walk(p,out):out.push(p)}return out}
 function src(file){return fs.readFileSync(file,'utf8')}
+// Pemindai tag JSX yang seimbang. Regex atribut tidak mungkin andal di sini:
+//
+// 1. `<button\b([^>]*)>` (lama) berhenti pada `>` pertama. Tapi `>` sangat umum di JSX:
+//    `attentionCount > 0` maupun `onClick={() => ...}`. Atribut jadi terpotong sebelum
+//    onClick terlihat, sehingga button yang BERHANDLER dilaporkan inert (false positive).
+// 2. Regex yang mengizinkan `>` di dalam `{...}` (satu tingkat) sudah lebih baik, tapi
+//    melewatkan button yang punya brace bersarang lebih dalam - 455 tag menjadi 429, artinya
+//    26 button luput diperiksa. Itu melemahkan audit, jadi tidak boleh dipakai.
+//
+// Solusinya: hitung tutup kurung kurawal sungguhan, sambil menghormati string dan
+// template literal supaya `{` di dalam teks tidak ikut terhitung.
+function scanTags(source,tag){
+ const re=new RegExp(`<${tag}\\b`,'g'); const out=[]; let m;
+ while((m=re.exec(source))){
+  let i=re.lastIndex, depth=0, quote=null;
+  for(;i<source.length;i++){
+   const ch=source[i];
+   if(quote){ if(ch==='\\'){i++;continue;} if(ch===quote) quote=null; continue; }
+   if(ch==='"'||ch==="'"||ch==='`'){ quote=ch; continue; }
+   if(ch==='{'){depth++;continue;}
+   if(ch==='}'){if(depth>0)depth--;continue;}
+   if(ch==='>'&&depth===0) break;
+  }
+  out.push({index:m.index,attrs:source.slice(re.lastIndex,i)});
+  re.lastIndex=i+1;
+ }
+ return out;
+}
 for(const app of apps){
  const base=path.join(root,'apps',app); const files=walk(base); const tsx=files.filter(f=>f.endsWith('.tsx')); const css=files.filter(f=>f.endsWith('.css'));
  const source=tsx.map(src).join('\n'); const style=css.map(src).join('\n');
- const buttons=[...source.matchAll(/<button\b([^>]*)>/g)]; const links=[...source.matchAll(/<a\b([^>]*)>/g)];
- let inertButtons=0; let implicitSubmitButtons=0; for(const m of buttons){const a=m[1]; if(/onClick\s*=|type\s*=\s*["']submit["']|disabled/.test(a)) continue; const before=source.slice(0,m.index); const lastFormOpen=before.lastIndexOf('<form'); const lastFormClose=before.lastIndexOf('</form>'); if(lastFormOpen>lastFormClose){implicitSubmitButtons++;continue;} inertButtons++;}
- let inertLinks=0; for(const m of links){if(!/href\s*=/.test(m[1])) inertLinks++;}
+ const buttons=scanTags(source,'button'); const links=scanTags(source,'a');
+ let inertButtons=0; let implicitSubmitButtons=0; for(const m of buttons){const a=m.attrs; if(/onClick\s*=|type\s*=\s*["']submit["']|disabled/.test(a)) continue; const before=source.slice(0,m.index); const lastFormOpen=before.lastIndexOf('<form'); const lastFormClose=before.lastIndexOf('</form>'); if(lastFormOpen>lastFormClose){implicitSubmitButtons++;continue;} inertButtons++;}
+ let inertLinks=0; for(const m of links){if(!/href\s*=/.test(m.attrs)) inertLinks++;}
  const overflowBlocks=[...style.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m)=>/overflow-x\s*:\s*auto/i.test(m[2]));
- const boundedHorizontalScrollers=overflowBlocks.filter((m)=>/(?:^|,)\s*\.table\b/.test(m[1])).length;
+ // boundedHorizontalScrollers: container tabel boleh overflow-x:auto karena isinya memang
+ // lebih lebar (kolom Slip gaji) dan bisa digeser.
+ // - .hrTable : Employee Portal, sengaja menghindari nama `table` karena itu utilitas
+ //             Tailwind (display:table) yang menimpa styling hand-written.
+ // - .table   : Admin, tetap dipakai dan aman karena rule-nya eksplisit display:block,
+ //             dan unlayered CSS menang atas utility Tailwind yang berlapis.
+ const boundedHorizontalScrollers=overflowBlocks.filter((m)=>/(?:^|,)\s*\.(?:hrTable|table)\b/.test(m[1])).length;
  const horizontalOverflow=overflowBlocks.length-boundedHorizontalScrollers;
  const item={tsxFiles:tsx.length,cssFiles:css.length,buttons:buttons.length,links:links.length,inertButtons,implicitSubmitButtons,inertLinks,tailwind:/@import\s+["']tailwindcss["']/.test(style),gradients:(style.match(/(?:linear|radial|conic)-gradient\s*\(/gi)||[]).length,horizontalOverflow,boundedHorizontalScrollers};
  if(!item.tailwind)failures.push(`${app}: Tailwind import hilang`);

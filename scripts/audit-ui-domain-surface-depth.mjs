@@ -11,7 +11,11 @@ const requiredSemantic = {
   ],
   pos: ['logout','syncButton','shiftClose','redeem','receiptReady'],
   storefront: ['storefrontViewBody','homeDeck','homeIntro','homeSubtitle','homeActions','metricDeck','panel','sectionTitle','eyebrow','textAction','catalogControls','sortControl','compactGrid','cardActions','favoriteAction','priceRow','productSku','productDetailBody','productDetailVisual','detailPrice','checkoutGrid','cartRow','qty','total','paymentChooser','inventoryList','emptyIcon','skeletonBlock','compact','tall'],
-  'employee-portal': ['employeeNav','singleWorkspace','welcomeDeck','dashboardGrid','profileGrid','formGrid','formStack','card','cardHeading','actions','row','coords','mutedText','notice','pStat','statusPill','table','tr','skeletonList','login'],
+  // `table` dan `tr` TIDAK boleh ada di daftar ini: keduanya nama utilitas Tailwind
+  // (display:table dan utilitas warna). Dipakai sebagai class komponen, Tailwind
+  // menghasilkan utility yang menimpa styling hand-written - itu sebabnya .table
+  // terukur 642px di runner (computed display:table, overflow-x:auto tak berlaku).
+  'employee-portal': ['employeeNav','singleWorkspace','welcomeDeck','dashboardGrid','profileGrid','formGrid','formStack','card','cardHeading','actions','row','coords','mutedText','notice','pStat','statusPill','hrTable','hrRow','hrHead','skeletonList','login'],
 };
 const errors = [];
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -570,10 +570,10 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
         <label>Referensi dokumen<input name="documentObjectKey" placeholder="Wajib untuk jenis cuti tertentu" /></label>
         <button disabled={busy || !leaveTypes.length}>{busy ? 'Memproses…' : 'Kirim Pengajuan Cuti'}</button>
       </form>
-      <div className="table">
-        <div className="tr th"><span>Periode</span><span>Hari</span><span>Status</span><span>Jenis</span></div>
+      <div className="hrTable">
+        <div className="hrRow hrHead"><span>Periode</span><span>Hari</span><span>Status</span><span>Jenis</span></div>
         {leaveRequests.slice(0, 12).map((item) => (
-          <div className="tr" key={item.id}>
+          <div className="hrRow" key={item.id}>
             <span>{dateLabel(item.startDate)} – {dateLabel(item.endDate)}</span>
             <span>{String(item.totalDays)}</span>
             <span>{item.status}</span>
@@ -601,10 +601,10 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
         <label>Alasan<input name="reason" placeholder="Pekerjaan lembur" /></label>
         <button disabled={busy}>{busy ? 'Memproses…' : 'Kirim Pengajuan Lembur'}</button>
       </form>
-      <div className="table">
-        <div className="tr th"><span>Waktu</span><span>Durasi Disetujui</span><span>Status</span><span>Alasan</span></div>
+      <div className="hrTable">
+        <div className="hrRow hrHead"><span>Waktu</span><span>Durasi Disetujui</span><span>Status</span><span>Alasan</span></div>
         {overtimeRequests.slice(0, 12).map((item) => (
-          <div className="tr" key={item.id}>
+          <div className="hrRow" key={item.id}>
             <span>{dateTimeLabel(item.requestedStart)} – {dateTimeLabel(item.requestedEnd)}</span>
             <span>{item.approvedMinutes == null ? '-' : `${item.approvedMinutes} menit`}</span>
             <span>{item.status}</span>
@@ -627,10 +627,10 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
       {loading ? (
         <div className="skeletonList"><span /><span /><span /><span /></div>
       ) : attendance.length ? (
-        <div className="table">
-          <div className="tr th"><span>Tanggal</span><span>Masuk</span><span>Pulang</span><span>Status</span></div>
+        <div className="hrTable">
+          <div className="hrRow hrHead"><span>Tanggal</span><span>Masuk</span><span>Pulang</span><span>Status</span></div>
           {attendance.map((item) => (
-            <div className="tr" key={item.id}>
+            <div className="hrRow" key={item.id}>
               <span>{dateLabel(item.workDate)}</span>
               <span>{item.firstCheckInAt ? new Date(item.firstCheckInAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
               <span>{item.lastCheckOutAt ? new Date(item.lastCheckOutAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
@@ -658,7 +658,7 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
         <label>Status usulan<select name="status" defaultValue=""><option value="">Tidak diubah</option><option value="PRESENT">Hadir</option><option value="LATE">Terlambat</option><option value="EARLY_LEAVE">Pulang cepat</option><option value="SICK">Sakit</option><option value="LEAVE">Cuti / izin yang disetujui</option><option value="ABSENT">Tidak hadir</option><option value="OFF_DAY">Hari libur</option><option value="INCOMPLETE">Belum lengkap</option><option value="NEEDS_REVIEW">Perlu review</option></select></label>
         <label>Alasan<textarea name="reason" minLength={5} required rows={3} /></label><button disabled={busy}>Kirim koreksi</button>
       </form>
-      <div className="table"><div className="tr th"><span>Diajukan</span><span>Alasan</span><span>Status</span><span>Usulan</span></div>{attendanceCorrections.slice(0,12).map(item=><div className="tr" key={item.id}><span>{dateTimeLabel(item.createdAt)}</span><span>{item.reason}</span><span>{item.status}</span><span>{JSON.stringify(item.proposedData)}</span></div>)}</div>
+      <div className="hrTable"><div className="hrRow hrHead"><span>Diajukan</span><span>Alasan</span><span>Status</span><span>Usulan</span></div>{attendanceCorrections.slice(0,12).map(item=><div className="hrRow" key={item.id}><span>{dateTimeLabel(item.createdAt)}</span><span>{item.reason}</span><span>{item.status}</span><span>{JSON.stringify(item.proposedData)}</span></div>)}</div>
     </article>
   );
 
@@ -668,7 +668,7 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
       <p className="mutedText">Slip gaji hanya dikirim melalui secure link ke binding yang sudah diverifikasi. Token/kredensial provider tidak pernah disimpan di portal.</p>
       <form className="formStack" onSubmit={requestChannelBinding}><label>Kanal<select name="channel" required defaultValue="TELEGRAM"><option value="TELEGRAM">Telegram</option><option value="WHATSAPP">WhatsApp</option></select></label><label>Chat ID / nomor E.164<input name="externalUserId" required /></label><button disabled={busy}>Kirim kode verifikasi</button></form>
       <form className="formStack" onSubmit={verifyChannelBinding}><label>Kanal<select name="channel" required defaultValue="TELEGRAM"><option value="TELEGRAM">Telegram</option><option value="WHATSAPP">WhatsApp</option></select></label><label>Chat ID / nomor yang sama<input name="externalUserId" required /></label><label>Kode 6 digit<input name="code" inputMode="numeric" minLength={6} maxLength={6} required /></label><button disabled={busy}>Verifikasi kanal</button></form>
-      <div className="table"><div className="tr th"><span>Kanal</span><span>Tujuan</span><span>Verifikasi</span><span>Slip gaji</span></div>{channelBindings.map(binding=>{const pref=notificationPreferences.find(item=>item.eventCode==='PAYSLIP_PUBLISHED'&&item.channel===binding.channel);const enabled=pref?.enabled??true;return <div className="tr" key={binding.id}><span>{binding.channel}</span><span>{binding.externalUserId??'-'}</span><span>{binding.verifiedAt?'VERIFIED':'PENDING'}</span><span>{binding.verifiedAt&&['TELEGRAM','WHATSAPP'].includes(binding.channel)?<button className="secondary" type="button" disabled={busy} onClick={()=>void saveNotificationPreference(binding.channel as 'TELEGRAM'|'WHATSAPP',!enabled)}>{enabled?'Aktif':'Nonaktif'}</button>:'-'}</span></div>;})}</div>
+      <div className="hrTable"><div className="hrRow hrHead"><span>Kanal</span><span>Tujuan</span><span>Verifikasi</span><span>Slip gaji</span></div>{channelBindings.map(binding=>{const pref=notificationPreferences.find(item=>item.eventCode==='PAYSLIP_PUBLISHED'&&item.channel===binding.channel);const enabled=pref?.enabled??true;return <div className="hrRow" key={binding.id}><span>{binding.channel}</span><span>{binding.externalUserId??'-'}</span><span>{binding.verifiedAt?'VERIFIED':'PENDING'}</span><span>{binding.verifiedAt&&['TELEGRAM','WHATSAPP'].includes(binding.channel)?<button className="secondary" type="button" disabled={busy} onClick={()=>void saveNotificationPreference(binding.channel as 'TELEGRAM'|'WHATSAPP',!enabled)}>{enabled?'Aktif':'Nonaktif'}</button>:'-'}</span></div>;})}</div>
     </article>
   );
 

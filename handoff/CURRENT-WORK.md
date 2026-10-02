@@ -3003,3 +3003,64 @@ dengan runner:
 GitHub runner belum hijau untuk commit terakhir. `Full Automated UAT` gagal hanya di gate
 manusia Stage-20 yang memang dirancang fail-closed - itu bukan bug dan butuh operator manusia.
 Produksi belum disentuh; `/srv/apps/production` masih kosong.
+
+## 2026-10-02 — Akar masalah .table: tabrakan nama kelas dengan utilitas Tailwind
+
+### Bukan bug CSS, bukan bug UAT
+
+`.table` Employee Portal terukur 642px pada viewport 390 selama beberapa commit,
+meskipun `width:100%;max-width:100%;overflow-x:auto` sudah ada sejak 7f21039.
+
+Computed style yang akhirnya dilaporkan runner (b712135) memberi jawaban:
+
+    "className":"table", "display":"table"
+
+BUKAN `block`. Artinya aturan `width:100%` memang tidak pernah ditabrak - aturan itu
+tidak relevan. Elemen memakai `display:table` milik **utilitas Tailwind**.
+
+Bukti dari bundle employee-portal:
+
+    .display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}
+    .inline-flex{display:inline-flex}.table{display:table}.h-8{height:...}
+
+`.table{display:table}` berdiri persis di antara utility display Tailwind. Tailwind v4
+memindai `className="table"` di TSX lalu MENGHASILKAN utility itu. Hasilnya:
+
+- `.table` shrink-to-fit ke max-content `.tr` (min-width:640px) + 2px border = 642px
+- `overflow-x:auto` TIDAK BERLAKU pada `display:table` - scrolling butuh block/flex
+
+Jadi ini **tabrakan nama kelas semantik dengan utilitas**, bukan PROPERTY yang hilang.
+Menambah properti apa pun tidak akan pernah menyelesaikannya.
+
+### Yang diperbaiki
+
+- `.table` -> `.hrTable`, `.tr` -> `.hrRow`, `.th` -> `.hrHead` (CSS + 20 pemakaian TSX),
+  termasuk selector dark-theme `.employeeV4[data-theme='dark'] .table` dan `.tr.th`.
+- Allow-list "bounded horizontal scroller" di `audit-full-repository.mjs` dan
+  `ci-ui-source-audit.mjs` menerima KEDUA nama. Admin tetap memakai `.table` dan aman
+  karena rule-nya eksplisit `display:block` (unlayered CSS menang atas utility berlapis).
+- `audit-ui-domain-surface-depth.mjs` + `tests/ui-domain-surface-depth.test.mjs`
+  memakai nama baru, plus guard yang menolak `.table`/`.tr`/`.th` sebagai class.
+
+### Bug kedua yang ditemukan sambil itu (pre-existing)
+
+`ci-ui-source-audit.mjs` melaporkan `admin: 1 button tanpa handler/submit` - FALSE POSITIVE.
+`app-shell.tsx:295` jelas punya `onClick={() => navigate('/integrations/notifications')}`.
+
+Akar masalahnya regex atribut `<button\b([^>]*)>`: `[^>]*` berhenti pada `>` pertama, dan `>`
+sangat umum di JSX (`attentionCount > 0`, `onClick={() => ...}`). Atribut terpotong sebelum
+onClick terlihat.
+
+Penting: Regex kedua yang mengizinkan `>` di dalam `{...}` juga TIDAK boleh dipakai - diuji,
+hanya cocok 429 dari 455 tag, 26 button luput. Itu melemahkan audit. Dipakai `scanTags()`
+berbasis hitung kurung kurawal sungguhan,/string dan template literal dihormati.
+Terverifikasi 455/455 tag terdeteksi, inventory 459 kontrol utuh, dan negative control
+(hapus onClick) tetap merah.
+
+### Pelajaran
+
+`width:100%` yang sudah "benar"(iterasi 7f21039, ab6b03b) tidak pernah bisa bekerja
+karena tidak ada yang memeriksa `display` yang benar-benar dipakai browser. Geometri saja
+tidak membedakan "CSS tidak ter-apply" dari "CSS ter-apply tapi display salah warisan".
+Computed style harus dilaporkan dari runner, bukan ditebak dari reproduksi lokal - dan
+reproduksi lokal yang "mengudi aman" bisa jadi salah karena tidak meniru kondisi sebenarnya.

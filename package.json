@@ -127,7 +127,8 @@
     "ci:p4:probe": "node scripts/ci-p4-canonical-ownership-probe.mjs",
     "audit:p5:visual": "node scripts/audit-p5-visual-rebuild.mjs && node scripts/audit-p5-v4-total-ui-rebuild.mjs && node scripts/audit-ui-domain-surface-depth.mjs",
     "ci:p5:probe": "node scripts/ci-p5-visual-probe.mjs",
-    "audit:ui:domain-depth": "node scripts/audit-ui-domain-surface-depth.mjs"
+    "audit:ui:domain-depth": "node scripts/audit-ui-domain-surface-depth.mjs",
+    "uat:browser:fresh": "node scripts/fresh-state-uat.mjs"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

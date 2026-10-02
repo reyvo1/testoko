@@ -18,6 +18,7 @@ uploads/
 .env.backup
 logs/*.log
 !logs/.gitkeep
+logs/fresh-state/
 
 # Dynamic chat/session handoff output
 handoff/generated/*

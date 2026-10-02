@@ -2955,3 +2955,51 @@ Human runtime evidence after V4.9 proved two architectural regressions that stat
 V4.10 replaces that cross-product theme coupling with four isolated persistence keys (`admin`, `pos`, `storefront`, `employee`) while keeping deterministic LIGHT as the first-run default. Pre-hydration theme application now uses `next/script` with `beforeInteractive` instead of a raw script tag. Admin/POS/Employee login-only surfaces expose the same real theme toggle used by authenticated shells. Storefront dark mode is neutral charcoal with emerald accents rather than an all-green page skin.
 
 The fix is presentation/runtime-integrity only. `apps/api`, `apps/worker`, `packages`, and `database` are unchanged. Admin remains one searchable hierarchical authority for 14 domains and 63/63 permission-visible subdomains. Permanent gates now reject raw script elements in layouts, shared cross-product theme keys, missing product-scoped theme storage, missing login theme controls, and loss of V4.10 root-foundation markers. Server static verification: focused UI/theme suite 66/66 PASS; dependency-free 1035/1035 PASS; workflow/repository/product/Admin/canonical/P5/UI/full-repository audits PASS. Real four-Next build and Ubuntu Human Visual Acceptance remain mandatory; P6 and commit/push remain blocked.
+
+## 2026-10-02 — UAT lokal finally setara CI (fresh-state harness)
+
+### Akar masalah yang sebenarnya
+
+Selama beberapa hari verifikasi lokal dipakai sebagai bukti kemajuan, padahal tidak setara
+dengan runner. Akibatnya UAT lokal hijau sementara GitHub merah - terbukti di commit
+`d9160b6`: lokal `PASS 30/30`, runner gagal. Tiga hari berlalu karena tiap kegagalan baru
+baru terlihat setelah pushed, satu siklus 12 menit.
+
+Penyebabnya bukan satu check, tapi tidak ada cara menjalankan UAT terhadap kondisi SEJENAK
+dengan runner:
+
+1. **Database lokal tercemar.** `apps/api/prisma/seed.ts` tidak pernah membuat `Sale`/`SaleItem`
+   di mode mana pun (verifikasi: `prisma.sale*.create` = 0). Check yang bergantung pada data
+   - donut dashboard - hijau karena SISA DATA PROBE, bukan karena benar.
+2. **Port deviasi dari CI.** Port 3000 dipakai proses luar, storefront dipindah ke 3010, API
+   di-restart dengan `CORS_ORIGINS` tambahan. Origin berbeda, perilaku berbeda.
+3. **Bundle basi.** `quality:full` menghapus `.next`; tanpa build ulang, UAT mengukur halaman
+   yang tidak dikirim. Stale Next server menyajikan CSS hash lama.
+4. **Tidak ada state terautentikasi yang bisa diukur lokal.** Probe terakhir membalas
+   `tableCount: 0` karena belum login - dan bug `.table` hanya terlihat di CI.
+
+### Yang diperbaiki
+
+- `scripts/fresh-state-uat.mjs` (npm `uat:browser:fresh`): mematikan server lama, reset
+  database dari nol, build ulang enam app, nyalakan keenam server, tunggu readiness dengan
+  alasan kegagalan yang nyata per endpoint, lalu jalankan UAT. Harness TIDAK menyentuh gate:
+  exit code UAT tetap menjadi exit code harness.
+- `apps/employee-portal/app/globals.css`: `.table` dikunci `width:100%;max-width:100%`.
+  Runner membuktikan `.table` terukur 642px pada viewport 390 (`right=679`); `min-width:auto`
+  membuatnya mengikuti `.tr` yang `min-width:640px`, sehingga `overflow-x:auto` tidak pernah
+  dipakai. Ini bug PROGRAM, bukan UAT.
+- Bug harness sendiri ditemukan dan diperbaiki: `pending` berisi LABEL tapi loop mengiterasi
+  label itu sendiri sehingga `probe.url` undefined. Gejalanya-reported "tidak diketahui"
+  padahal server hidup - lessons: diagnosis tanpa penyebab hanya menebak.
+
+### Bukti
+
+- `npm run uat:browser:fresh` -> `HARNESS OK`, UAT hijau pada database segar.
+- Negative control harness: swallow exit code UAT -> 1 merah; iterasi label -> 1 merah.
+- `.table` negative control: tanpa `width:100%` -> 1 merah.
+
+### Yang MASIH belum hijau
+
+GitHub runner belum hijau untuk commit terakhir. `Full Automated UAT` gagal hanya di gate
+manusia Stage-20 yang memang dirancang fail-closed - itu bukan bug dan butuh operator manusia.
+Produksi belum disentuh; `/srv/apps/production` masih kosong.

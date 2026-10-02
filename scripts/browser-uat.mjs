@@ -390,7 +390,34 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       .slice(0, 10)
       .map((entry) => {
         const r = entry.el.getBoundingClientRect();
-        return { tag: entry.el.tagName, className: String(entry.el.className || '').slice(0, 110), position: getComputedStyle(entry.el).position, excludedBecause: entry.excludedBecause, left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+        const cs = getComputedStyle(entry.el);
+        // Computed style WAJIB ikut dilaporkan. Geometri saja tidak bisa membedakan
+        // "CSS tidak ter-apply" dari "CSS ter-apply tapi track grid melebar": pada runner
+        // .table terukur 642px (= 640 min-width .tr + 2px border) sementara reproduksi
+        // lokal dengan CSS yang sama terukur 348px. Tanpa nilai computed, keduanya hanya
+        // tebakan. Parent pertama juga dilaporkan sebagai pembanding.
+        const parent = entry.el.parentElement;
+        const pcs = parent ? getComputedStyle(parent) : null;
+        return {
+          tag: entry.el.tagName,
+          className: String(entry.el.className || '').slice(0, 110),
+          position: cs.position,
+          display: cs.display,
+          excludedBecause: entry.excludedBecause,
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          width: Math.round(r.width),
+          cssWidth: cs.width,
+          cssMaxWidth: cs.maxWidth,
+          cssMinWidth: cs.minWidth,
+          cssOverflowX: cs.overflowX,
+          parentTag: parent ? parent.tagName : null,
+          parentClass: parent ? String(parent.className || '').slice(0, 90) : null,
+          parentWidth: parent ? Math.round(parent.getBoundingClientRect().width) : null,
+          parentDisplay: pcs ? pcs.display : null,
+          parentCssWidth: pcs ? pcs.width : null,
+          parentCssMinWidth: pcs ? pcs.minWidth : null,
+        };
       });
     return { innerWidth, scrollWidth, overflow, clippedScrollables, rawOverflow: rawOverflowList, drawerOpen: Boolean(document.querySelector('.adminV4Sidebar.mobileOpen')) };
   })()`);

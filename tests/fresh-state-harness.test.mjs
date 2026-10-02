@@ -13,10 +13,27 @@ test('fresh-state harness terdaftar sebagai npm script', () => {
 
 test('harness me-reset database sehingga data sisa probe tidak menyesatkan check', () => {
   // Akar masalah verifikasi lokal: DB tercemar oleh probe sehingga check yang bergantung
-  // pada data (dashboard donut) hijau palsu, sementara runner merah.
-  assert.match(harness, /if \(dbPath\.startsWith\('file:'\)\)/);
-  assert.match(harness, /if \(fs\.existsSync\(abs\)\) \{ fs\.rmSync\(abs\)/);
-  assert.match(harness, /npm', \['run', 'db:local:prepare'\]/);
+  // pada data (dashboard donut) hijau karena sisa probe, sementara runner merah.
+  assert.match(harness, /run\('npm', \['run', 'db:local:prepare'\]/);
+  assert.match(harness, /hapus DB lama|DB lama tidak ada/);
+});
+
+test('path file: diselesaikan relatif ke direktori schema, bukan repo root', () => {
+  // Bug nyata: Prisma menyelesaikan `file:./data/x.db` terhadap DIREKTORI SCHEMA
+  // (apps/api/prisma), bukan repo root. Kalau harness menghapusnya relatif ke root, berkas
+  // yang dihapus bukan DB yang benar - DB lama tetap utuh dan "fresh state" tetap tercemar.
+  // Gejalanya: fixture penjualan gagal "katalog produk kosong" padahal produknya ada.
+  assert.match(harness, /path\.join\(root, 'apps', 'api', 'prisma'\)/);
+  assert.match(harness, /path\.resolve\(schemaDir, file\)/);
+  assert.doesNotMatch(harness, /path\.join\(root, file\)/,
+    'path.join(root, file) salah: Prisma menyelesaikan file: relatif ke direktori schema');
+});
+
+test('harness gagal keras bila DB hasil seed tidak ditemukan di path yang dihapus', () => {
+  // Fail-closed: kalau resolusi path salah, seluruh langkah berikutnya menguji kondisi
+  // yang tidak kita kira. Itu harus berhenti, bukan lanjut diam-diam.
+  assert.match(harness, /if \(expectedDb && !fs\.existsSync\(expectedDb\)\) \{/);
+  assert.match(harness, /DB hasil seed tidak ditemukan di/);
 });
 
 test('harness mematikan server lama agar tidak mengukur bundle basi', () => {

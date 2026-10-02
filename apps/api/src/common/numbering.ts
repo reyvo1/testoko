@@ -84,9 +84,19 @@ export async function nextDocumentNumber(
     if (rowPeriod !== period) current = 1;
   }
 
-  // CAS increment: updateMany guarded mencegah double-assign saat race
+  // CAS increment: updateMany guarded mencegah double-assign saat race.
+  //
+  // Guard WAJIB memakai nilai yang benar-benar tersimpan (row.nextNumber), BUKAN `current`.
+  // `current` bisa berbeda dari row.nextNumber setiap kali periode berganti: saat reset
+  // current dipaksa 1 sementara row.nextNumber masih bernilai besar. Kalau guard memakai
+  // `current`, updateMany mencari nextNumber yang tidak ada, nol baris cocok, dan setiap
+  // transaksi pertama pada bulan/tahun baru akan gagal dengan "Konflik sequence" padahal
+  // tidak ada request paralel sama sekali.
+  //
+  // Yang di-CAS adalah "row masih di posisi yang saya baca" - pessimistic concurrency
+  // yang benar. Nomoran yang dialokasikan tetap `current`, jadi reset periode tetap bekerja.
   const bumped = await tx.numberSequence.updateMany({
-    where: { id: row.id, nextNumber: current },
+    where: { id: row.id, nextNumber: row.nextNumber },
     data: { nextNumber: current + 1, lastResetAt: now },
   });
   if (bumped.count !== 1) throw new Error(`Konflik sequence ${opts.documentType}; ulangi transaksi.`);

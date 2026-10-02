@@ -4,7 +4,6 @@ import path from 'node:path';
 import process from 'node:process';
 import { spawn } from 'node:child_process';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
-import { evaluateProductMixContract } from './lib/admin-dashboard-contract.mjs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -830,6 +829,77 @@ async function main() {
       evidence.checks.push({ id: 'P5_STOREFRONT_PRODUCT_FIXTURE', status: 'PASS', action: fixtureAction, branchCode, productId: fixtureProductId, productionTouched: false });
     }
 
+    // Prasyarat untuk gate dashboard: harus ada penjualan produk, kalau tidak donut
+    // product-mix tidak akan pernah muncul.
+    //
+    // DAHULU gate ini gagal terus di runner bukan karena program salah, tapi karena
+    // lingkarannya tidak pernah tertutup: seed tidak pernah membuat Sale/SaleItem dan UAT
+    // juga tidak pernah membuat penjualan. Di database bersih sama sekali tidak ada
+    // penjualan, dan syarat ['line','donut'] mustahil dipenuhi.
+    //
+    // Dua jalan keluar, dan hanya satu yang benar:
+    // - melonggarkan syarat jadi "donut ATAU empty state" -> itu RUPAK. Begitu ada
+    //   penjualan sungguhan, donut yang rusak akan lolos karena empty state tetap tampil.
+    // - menutup lingkarannya: UAT membuat penjualan nyata lewat API yang sama dengan
+    //   yang dipakai kasir. Jurnal akuntansi dan movement stok tetap benar karena
+    //   SalesService yang memakainya, bukan prisma.sale.create telanjang.
+    //
+    // Idempoten: sale dicari dulu, jadi UAT berulang tidak menumpuk transaksi.
+    //
+    // Bentuk respons diverifikasi terhadap API yang sedang berjalan, bukan asumsi:
+    //   GET /sales                 -> { items: [...] }  (bukan `data`)
+    //   GET /products              -> { items: [...] }  (bukan `data`)
+    //   GET /inventory/warehouses  -> [ { id, branchId, ... } ]  (array langsung)
+    // Product TIDAK punya field warehouseId, jadi gudang diambil dari endpoint gudang -
+    // sebelumnya fallback ke env yang tidak pernah diisi, dan itu penyebab "katalog kosong".
+    if (String(process.env.T360_UAT_PREPARE_SALES || '').toLowerCase() === 'true') {
+      const authHeaders = { authorization: `Bearer ${loginBody.accessToken}` };
+      // http() mengembalikan Response mentah, BUKAN objek JSON. Response punya .ok/.status
+      // tapi tidak punya .body - memakai `res.body?.items` selalu undefined sehingga
+      // katalog selalu terbaca kosong. Body harus diambil lewat .json().
+      const listRes = await http(`${apiUrl}/sales?limit=1`, { headers: authHeaders });
+      if (!listRes.ok) throw new Error(`Daftar penjualan CI gagal (HTTP ${listRes.status}).`);
+      const listBody = await listRes.json().catch(() => null);
+      const existingSales = Array.isArray(listBody?.items) ? listBody.items : [];
+      if (existingSales.length > 0) {
+        evidence.checks.push({ id: 'SALES_CI_FIXTURE', status: 'PASS', action: 'EXISTING' });
+      } else {
+        const catalogRes = await http(`${apiUrl}/products?limit=1`, { headers: authHeaders });
+        if (!catalogRes.ok) throw new Error(`Katalog produk CI gagal (HTTP ${catalogRes.status}).`);
+        const catalogBody = await catalogRes.json().catch(() => null);
+        const catalogItems = Array.isArray(catalogBody?.items) ? catalogBody.items : [];
+        const product = catalogItems[0];
+        if (!product?.id) throw new Error('Katalog produk CI kosong; fixture penjualan tidak bisa dibuat.');
+        const warehousesRes = await http(`${apiUrl}/inventory/warehouses`, { headers: authHeaders });
+        if (!warehousesRes.ok) throw new Error(`Daftar gudang CI gagal (HTTP ${warehousesRes.status}).`);
+        const warehouses = await warehousesRes.json().catch(() => null);
+        const warehouse = (Array.isArray(warehouses) ? warehouses : [])[0];
+        if (!warehouse?.id) throw new Error('Tidak ada gudang untuk fixture penjualan CI.');
+        const price = Number(product.salePrice ?? 0);
+        const quantity = 2;
+        if (!(price > 0)) throw new Error(`Harga jual produk CI tidak valid: ${product.salePrice}`);
+        const createdRes = await http(`${apiUrl}/sales`, {
+          method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            warehouseId: warehouse.id,
+            items: [{ productId: product.id, quantity }],
+            payments: [{ method: 'CASH', amount: price * quantity }],
+            // Field yang benar adalah idempotencyKey, bukan `note` - `note` tidak ada di
+            // CreateSaleDto dan ditolak 400 ("property note should not exist").
+            // idempotencyKey juga memberi jaminan retry aman: kalau POST terputus di tengah,
+            // UAT berikutnya tidak akan menggandakan transaksi.
+            idempotencyKey: `CI-UAT-SALES-${process.env.GITHUB_RUN_ID ?? 'LOCAL'}`,
+          }),
+        });
+        if (!createdRes.ok) {
+          const errBody = await createdRes.text().catch(() => '');
+          throw new Error(`Fixture penjualan CI gagal (HTTP ${createdRes.status}): ${String(errBody).slice(0, 200)}`);
+        }
+        const createdBody = await createdRes.json().catch(() => null);
+        evidence.checks.push({ id: 'SALES_CI_FIXTURE', status: 'PASS', action: 'CREATED', saleId: createdBody?.id ?? null });
+      }
+    }
+
     if (String(process.env.T360_UAT_PREPARE_EMPLOYEE_SELF || '').toLowerCase() === 'true') {
       if (!loginBody.user?.sub) throw new Error('Login UAT tidak membawa user.sub untuk fixture Employee Portal CI.');
       const authHeaders = { authorization: `Bearer ${loginBody.accessToken}` };
@@ -921,13 +991,15 @@ async function main() {
       return { metricCount:metrics.length, panels, charts, title, productEmpty, hasProductDonut };
     })()`);
     const requiredDashboardPanels=['sales-performance','top-revenue-drivers','product-performance','recent-activity','stock-watchlist','quick-actions'];
-    // The product-performance panel has two legitimate renderings and the contract asserts BOTH of them.
-    // With product sales present the donut must render; with no sales the empty state must render instead.
-    // A regression that drops the donut while sales exist, or drops the empty state while sales are absent,
-    // still fails here -- the assertion follows the data instead of assuming one fixed dataset.
-    const dashboardChartContract = evaluateProductMixContract(dashboardContract);
-    if (!dashboardContract || dashboardContract.metricCount !== 6 || dashboardContract.title !== 'Dashboard Overview' || !requiredDashboardPanels.every((panel)=>dashboardContract.panels.includes(panel)) || !dashboardContract.charts.includes('line') || !dashboardChartContract.ok) {
-      throw new Error(`Admin reference dashboard contract gagal: ${JSON.stringify({ ...dashboardContract, productMixContract: dashboardChartContract })}`);
+    // Gate DIJAGA KETAT: line DAN donut wajib. Sebelumnya ini dual-branch
+    // ("donut ATAU empty state") karena seed tidak pernah membuat penjualan - itu cara yang
+    // RUPAK, karena donut yang rusak akan lolos begitu data penjualan benar-benar ada.
+    // Sekarang prasyaratnya ditutup: UAT membuat penjualan nyata lewat API kasir sebelum
+    // pemeriksaan ini, jadi donut WAJIB ada dan keadaannya selalu terisi.
+    //
+    // Sama seperti R7: yang tetap wajib selain itu adalah 6 panel, 6 metrik, dan judul.
+    if (!dashboardContract || dashboardContract.metricCount !== 6 || dashboardContract.title !== 'Dashboard Overview' || !requiredDashboardPanels.every((panel)=>dashboardContract.panels.includes(panel)) || !['line','donut'].every((kind)=>dashboardContract.charts.includes(kind))) {
+      throw new Error(`Admin reference dashboard contract gagal: ${JSON.stringify({ ...dashboardContract, salesFixture: evidence.checks.find((check)=>check.id==='SALES_CI_FIXTURE') ?? null })}`);
     }
     evidence.checks.push({ id: 'ADMIN_REFERENCE_DASHBOARD', status: 'PASS', ...dashboardContract, screenshot: await captureSuccessScreenshot(cdp, 'admin-dashboard-reference-v46') });
 

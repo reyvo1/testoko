@@ -1,3 +1,52 @@
+# CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
+
+## Status saat sesi ditutup (2026-10-02)
+
+HEAD lokal + GitHub = `667c314`. Perfix di bawah sudah commit & push di commit berikutnya.
+Verifikasi lokal terakhir: quality 1622/0 BOOT PASS, audit EXIT=0, fresh-state HARNESS OK.
+
+### Sudah SELESAI dan terverifikasi lokal
+
+1. `.table` Employee Portal 642px — AKAR MASALAH: class `table` menabrak utilitas Tailwind
+   `display:table`, jadi `overflow-x:auto` tidak berlaku dan elemen shrink-to-fit ke
+   max-content `.tr` (640px). `width:100%` yang ditambahkan sejak 7f21039 tidak pernah
+   bisa bekerja karena tidak relevan. Diperbaiki: `.hrTable`/`.hrRow`/`.hrHead`.
+2. `apps/api/src/common/numbering.ts` — CAS guard pakai `current` (bisa =1 saat reset
+   periode) alih-alih `row.nextNumber` tersimpan. Akibatnya SETIAP transaksi pertama
+   pada bulan/tahun baru gagal 500 "Konflik sequence SALE" tanpa ada request paralel.
+   BUG PRODUKSI. Diperbaiki; terbukti POST /sales -> 201 dengan accountingEventId.
+3. Gate dashboard lama gagal karena lingkaran prasyarat tertutup: seed tidak pernah
+   membuat Sale/SaleItem dan UAT tidak pernah membuat penjualan. Diperbaiki dengan
+   TUTUP lingkaran (UAT buat penjualan nyata via API kasir), BUKAN dengan melonggarkan
+   syarat. Gate tetap `['line','donut']` ketat.
+4. `scripts/fresh-state-uat.mjs` (`npm run uat:browser:fresh`) — harness fresh-state.
+
+### JEBakan yang HARUS diketahui sesi berikutnya
+
+- **"Fresh state" harness sebelumnya tidak pernah fresh.** Prisma menyelesaikan URL
+  `file:./data/x.db` relatif ke DIREKTORI SCHEMA (`apps/api/prisma/`), bukan repo root.
+  Harness menghapus berkas yang salah, DB lama tetap tercemar. Sudah diperbaiki + fail-closed.
+- **Lokal hijau tidak boleh dipakai sebagai bukti.** Yang sah: quality + audit +
+  `npm run uat:browser:fresh` (dengan `T360_UAT_PREPARE_SALES=true`) + runner GitHub.
+- Staging `192.168.2.3`: 6 service `active`, API 4400 -> 200, 4 frontend -> 200.
+  Restart ke source baru butuh: `sudo bash /tmp/rollout-staging-v2.sh` (butuh password).
+  `/srv/apps/production` masih KOSONG. Produksi belum boleh disentuh.
+
+### BELUM SELESAI — jangan dikira sudah hijau
+
+- **Runner GitHub untuk commit terbaru belum ditunggu.** Full System Simulation masih
+  gagal di run sebelumnya; Full Automated UAT gagal di gate manusia Stage-20 (memang
+  dirancang fail-closed, butuh operator manusia).
+- Staging masih berjalan di source LAMA (`d9160b6`), belum `667c314`+ .
+
+### Cara cepat memahami repo
+
+- Gate: `npm run quality:full` | `npm run audit:full:repo`
+- UAT browser fresh: `npm run uat:browser:fresh` (butuh API+frontend hidup, harness menyalakan)
+- Tidak pernah melemahkan gate. Merah = perbaiki programnya.
+
+---
+
 # Latest continuation — 2026-10-01 (sesi 14: pola berulang — test yang bergantung pada artefak build)
 
 > Block ini yang terbaru. Blok sebelumnya: sesi 13 (dua gate), sesi 12 (checkout bersih), 11, 10, 9, 8, 7.

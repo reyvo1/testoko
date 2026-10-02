@@ -9,9 +9,28 @@ const databaseProfile = (process.env.DATABASE_PROFILE ?? '').trim().toLowerCase(
 const postgresProfile = databaseProfile === 'postgresql' || /^postgres(?:ql)?:/i.test(process.env.DATABASE_URL ?? '');
 const seedMode = (process.env.SEED_MODE ?? ((protectedEnvironment || postgresProfile) ? 'bootstrap' : 'demo')).trim().toLowerCase();
 const demoSeed = seedMode === 'demo';
+// Mode `uat` = bootstrap yang diberi fixture transaksi.
+//
+// Alasan mode ini ada: gate browser UAT mewajibkan donut product-mix pada dashboard,
+// padahal seed TIDAK PERNAH membuat Sale/SaleItem. Di runner CI (SEED_MODE=bootstrap)
+// tidak ada satu pun penjualan, jadi donut mustahil muncul dan gate mustahil dipenuhi.
+//
+// Yang salah adalah memperbaiki GEJALANYA dengan melonggarkan gate menjadi "kalau donut
+// tidak ada, cukup ada empty state" - itu membiarkan donut rusak lolos begitu ada data.
+// Yang benar adalah membuat lingkungan memenuhi gate: seed harus punya penjualan.
+//
+// Produksi dan staging TIDAK boleh memakai mode ini - keduanya memakai `bootstrap`, dan
+// `uat` tidak akan pernah menjadi default. Transaksi palsu tidak boleh masuk sistem nyata.
+const uatSeed = seedMode === 'uat';
+const fixtureSeed = demoSeed || uatSeed;
 
-if (!['demo', 'bootstrap'].includes(seedMode)) {
-  throw new Error(`SEED_MODE tidak valid: ${seedMode}. Gunakan demo atau bootstrap.`);
+if (!['demo', 'bootstrap', 'uat'].includes(seedMode)) {
+  throw new Error(`SEED_MODE tidak valid: ${seedMode}. Gunakan demo, bootstrap, atau uat.`);
+}
+// Pengaman: mode `uat` hanya untuk lingkungan uji. Produksi/staging memakai NODE_ENV
+// production|staging, dan transaksi contoh tidak boleh masuk sistem nyata.
+if (uatSeed && protectedEnvironment) {
+  throw new Error(`SEED_MODE=uat tidak boleh dipakai pada NODE_ENV=${environment}.`);
 }
 if (protectedEnvironment && demoSeed) {
   throw new Error('SEED_MODE=demo ditolak pada staging/production. Gunakan SEED_MODE=bootstrap dengan konfigurasi eksplisit.');
@@ -233,7 +252,7 @@ async function main() {
     else await prisma.payrollAccountingMapping.create({ data });
   }
 
-  if (demoSeed) {
+  if (fixtureSeed) {
     const category = await prisma.category.upsert({
       where: { companyId_slug: { companyId: company.id, slug: 'produk-umum' } }, update: { name: 'Produk Umum' }, create: { companyId: company.id, name: 'Produk Umum', slug: 'produk-umum' },
     });
@@ -246,6 +265,7 @@ async function main() {
       { sku: 'SKU-002', barcode: '899000000002', name: 'Teh Melati 100g', cost: 18000, sale: 28000, stock: 40 },
       { sku: 'SKU-003', barcode: '899000000003', name: 'Gula Aren 500g', cost: 22000, sale: 32000, stock: 25 },
     ];
+    const seededProducts: Array<{ id: string; sku: string; sale: number; cost: number }> = [];
     for (const item of products) {
       const product = await prisma.product.upsert({
         where: { sku: item.sku },
@@ -277,6 +297,7 @@ async function main() {
           data: { warehouseId: warehouse.id, productId: product.id, type: 'OPENING_STOCK', quantity: item.stock, balanceAfter: inventory.quantity, referenceType: 'Seed', referenceId: product.id },
         });
       }
+      seededProducts.push({ id: product.id, sku: item.sku, sale: item.sale, cost: item.cost });
     }
   }
 

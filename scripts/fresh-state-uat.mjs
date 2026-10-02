@@ -66,15 +66,33 @@ step('seed ulang database dari nol', () => {
   };
   const dbPath = parsed.DATABASE_URL || '';
   // SQLite berbasis file: hapus berkasnya supaya seed benar-benar dari nol.
+  //
+  // PENTING: URL `file:` relatif diselesaikan Prisma terhadap DIREKTORI SCHEMA, bukan repo
+  // root. Schema ada di apps/api/prisma/schema.prisma, jadi `file:./data/toko360.db`
+  // berarti apps/api/prisma/data/toko360.db. Kalau path ini diselesaikan terhadap root,
+  // berkas yang dihapus bukan DB yang benar - DB lama tetap utuh, seed menimpanya, dan
+  // "fresh state" sebenarnya tetap tercemar. Itu yang membuat fixture penjualan gagal
+  // dengan "Katalog produk kosong" padahal produknya ada.
   if (dbPath.startsWith('file:')) {
     const file = dbPath.replace(/^file:/, '').split('?')[0];
-    const abs = path.isAbsolute(file) ? file : path.join(root, file);
+    const schemaDir = path.join(root, 'apps', 'api', 'prisma');
+    const abs = path.isAbsolute(file) ? file : path.resolve(schemaDir, file);
     if (fs.existsSync(abs)) { fs.rmSync(abs); log(`  hapus DB lama: ${abs}`); }
+    else log(`  DB lama tidak ada (sudah bersih): ${abs}`);
+    var expectedDb = abs;
   }
   log(`  DATABASE_URL=${dbPath.replace(/\/\/[^@]*@/, '//***@')}`);
   const gen = run('npm', ['run', 'db:local:prepare'], { env });
   if (gen.status !== 0) throw new Error('db:local:prepare gagal');
   log('  db:local:prepare OK');
+  // Fail-closed: setelah seed, berkas DB WAJIB ada di path yang kita hapus tadi. Kalau
+  // tidak, berarti resolusi path di atas salah - dan seluruh langkah berikutnya akan
+  // menguji kondisi yang tidak kita kira (persis bug yang membuat fixture penjualan
+  // gagal "katalog kosong" padahal produknya ada).
+  if (expectedDb && !fs.existsSync(expectedDb)) {
+    throw new Error(`DB hasil seed tidak ditemukan di ${expectedDb}. Resolusi path 'file:' salah; UAT tidak lagi dijalankan pada kondisi yang diasumsikan.`);
+  }
+  if (expectedDb) log(`  DB siap: ${expectedDb}`);
 });
 
 // 3. Build semua app. quality:full menghapus .next, jadi build ulang WAJIB sebelum UAT -

@@ -19,6 +19,24 @@ test('kondisi yang ditemukan benar-benar ada di CSS (tabel memang sengaja bisa d
   // Kalau salah satu hilang, regresi ini tidak akan terpicu dan testnya jadi tidak berarti.
 });
 
+test('emulasi viewport memakai helper tunggal yang deterministik dan memverifikasi hasilnya', () => {
+  // Runner: 390x844 diukur sebagai innerWidth=679. mobile:true membuat Chrome menerapkan
+  // emulasi viewport-meta sehingga innerWidth mengikuti meta tag, bukan ukuran yang diminta.
+  assert.match(uat, /async function applyViewportEmulation\(cdp, width, height\)/);
+  // mobile:true TIDAK BOLEH dipakai lagi di mana pun - itu sumber ketidakpastiannya.
+  assert.doesNotMatch(uat, /mobile: width <= 480/, 'mobile:true reintroduces viewport-meta emulation');
+  // Metrik perangkat harus lengkap supaya tidak bergantung pada meta tag.
+  assert.match(uat, /mobile: false,\n\s+screenWidth: width,\n\s+screenHeight: height,/);
+  assert.match(uat, /Emulation\.setVisibleSize', \{ width, height \}/);
+  // Hasil emulasi WAJIB diverifikasi, bukan diasumsikan berhasil.
+  assert.match(uat, /if \(!actual \|\| actual\.innerWidth !== width\)/);
+  assert.match(uat, /Emulasi viewport tidak diterapkan: diminta/);
+  // Semua call site harus lewat helper yang sama.
+  assert.doesNotMatch(uat, /cdp\.call\('Emulation\.setDeviceMetricsOverride', \{ width, height/);
+  assert.match(uat, /await applyViewportEmulation\(cdp, width, height\);/);
+  assert.match(uat, /await applyViewportEmulation\(cdp, 1440, 900\);/);
+});
+
 test('check overflow memverifikasi innerWidth benar-benar sesuai viewport yang diminta', () => {
   // scrollWidth dibandingkan terhadap lebar DIMINTA. Kalau device metrics override tidak
   // diterapkan, scrollWidth == innerWidth yang lebih besar dan akan dilaporkan sebagai overflow

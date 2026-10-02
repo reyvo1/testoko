@@ -248,9 +248,33 @@ async function describeOverflowChains(cdp) {
   }
 }
 
-async function assertViewportIntegrity(cdp, label, width, height) {
-  await cdp.call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
+// Emulasi viewport harus deterministik di runner.
+// Memakai mobile:true membuat Chrome menerapkan emulasi viewport-meta sehingga innerWidth
+// mengikuti meta tag aplikasi, bukan ukuran yang kita minta. Terbukti di runner: viewport 390x844
+// diukur sebagai innerWidth=679, sehingga scrollWidth=679 yang dilaporkan sebagai overflow padahal
+// tidak ada elemen yang melewati viewport. Layout responsif ditentukan oleh CSS media query yang
+// bergantung pada LEBAR, bukan pada flag mobile, jadi mobile:false tetap menguji layout mobile
+// dengan benar - dan membuat hasilnya sama di lokal maupun runner.
+async function applyViewportEmulation(cdp, width, height) {
+  await cdp.call('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    deviceScaleFactor: 1,
+    mobile: false,
+    screenWidth: width,
+    screenHeight: height,
+  });
+  await cdp.call('Emulation.setVisibleSize', { width, height });
   await sleep(250);
+  const actual = await evaluateValue(cdp, '({ innerWidth: window.innerWidth, innerHeight: window.innerHeight })');
+  if (!actual || actual.innerWidth !== width) {
+    throw new Error(`Emulasi viewport tidak diterapkan: diminta ${width}x${height}, terukur ${actual?.innerWidth}x${actual?.innerHeight}`);
+  }
+  return actual;
+}
+
+async function assertViewportIntegrity(cdp, label, width, height) {
+  await applyViewportEmulation(cdp, width, height);
   // Drawer off-canvas yang TERTAKIK (`transform: translateX(-100%)`) berada di kiri layar secara
   // SENGAJA saat tertutup - itu pola navigasi mobile yang benar, bukan konten terpotong.
   // Check lama menandainya sebagai overflow, sehingga UAT gagal pada layout yang justru benar.
@@ -411,7 +435,7 @@ async function assertViewportIntegrity(cdp, label, width, height) {
 async function assertResponsiveMatrix(cdp, label) {
   const checks = [];
   for (const [width,height] of [[1440,900],[1024,768],[390,844]]) checks.push(await assertViewportIntegrity(cdp,label,width,height));
-  await cdp.call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await applyViewportEmulation(cdp, 1440, 900);
   return checks;
 }
 
@@ -538,8 +562,7 @@ async function assertAdminThemeContract(cdp) {
 }
 
 async function assertAdminShellGeometry(cdp, width, height) {
-  await cdp.call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 480 });
-  await sleep(250);
+  await applyViewportEmulation(cdp, width, height);
   const geometry = await evaluateValue(cdp, `(() => {
     const rect = (el) => {
       if (!(el instanceof HTMLElement)) return null;
@@ -622,7 +645,7 @@ async function assertAdminShellGeometry(cdp, width, height) {
 async function assertAdminShellMatrix(cdp) {
   const checks = [];
   for (const [width,height] of [[1440,900],[1024,768],[390,844]]) checks.push(await assertAdminShellGeometry(cdp,width,height));
-  await cdp.call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await applyViewportEmulation(cdp, 1440, 900);
   return checks;
 }
 
@@ -645,6 +668,17 @@ async function clickAllNavigation(cdp, selector, label) {
   const labels = await evaluateValue(cdp, `([...document.querySelectorAll(${JSON.stringify(selector)})]).filter(x => x.getClientRects().length).map(x => (x.textContent || '').trim()).filter(Boolean)`);
   const visited = [];
   for (const item of [...new Set(labels || [])]) {
+    // Tunggu nav siap SEBELUM klik. Setelah workspace diklik, aplikasi masuk state
+    // "Memuat ruang kerja" lalu merender ulang label subdomain untuk workspace itu. Tanpa
+    // sinkronisasi, klik berikutnya dicoba saat nav masih kosong dan check gagal menuduh
+    // navigasi rusak padahal aplikasinya hanya belum selesai memuat.
+    // Ini tidak melemahkan gate: item tetap WAJIB diklik, dan kalau tidak pernah muncul
+    // waitExpression kehabisan waktu lalu check tetap gagal.
+    await waitExpression(
+      cdp,
+      `!(document.body && (document.body.innerText || '').includes('Memuat ruang kerja')) && [...document.querySelectorAll(${JSON.stringify(selector)})].some((x) => x.getClientRects().length)`,
+      `${label}: nav siap sebelum klik ${item}`,
+    );
     const clicked = await evaluateValue(cdp, `(() => { const nodes=[...document.querySelectorAll(${JSON.stringify(selector)})]; const el=nodes.find(x => (x.textContent || '').trim() === ${JSON.stringify(item)}); if(!el)return false; el.click(); return true; })()`);
     if (!clicked) {
       // Bukti, bukan--. Dua probe yang keduanya klik 14 workspace + 61 subdomain dengan selector

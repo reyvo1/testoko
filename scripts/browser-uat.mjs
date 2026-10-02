@@ -295,9 +295,25 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       const cs = getComputedStyle(el);
       return /(auto|scroll)/.test(cs.overflowX) || /(auto|scroll)/.test(cs.overflowY);
     };
+    // Ancestor yang memotong (clip) kotak anak. Termasuk overflow hidden|clip yang SENGAJA
+    // dipakai untuk dekorasi: di Employee Portal, lingkaran blur dekoratif memakai kelas
+    // absolute -right-16 di dalam panel overflow-hidden, sehingga elemennya menjangkau
+    // R1471 pada viewport 1440 padahal benar-benar ter-clip dan scrollWidth dokumen tetap 1440.
+    // Kontainer scrollable (auto|scroll) juga salah satu bentuk clipping dan tetap dipakai,
+    // hanya bedanya kontennya masih bisa digeser user.
+    const clipsChildren = (el) => {
+      const cs = getComputedStyle(el);
+      return /(auto|scroll|hidden|clip)/.test(cs.overflowX) || /(auto|scroll|hidden|clip)/.test(cs.overflowY);
+    };
     const all = [...document.querySelectorAll('body *')];
     const scrollables = all.filter(isScrollable);
     const scrollableAncestors = (el) => el !== document.body && Boolean(el.closest('*')) && scrollables.some((c) => c !== el && c.contains(el));
+    const clippingAncestors = (el) => {
+      for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+        if (clipsChildren(parent)) return true;
+      }
+      return false;
+    };
     // Kontainer yang isinya meluber tapi TIDAK bisa digeser = konten hilang permanen.
     const clippedScrollables = scrollables
       .filter((el) => {
@@ -322,7 +338,7 @@ async function assertViewportIntegrity(cdp, label, width, height) {
       // halaman Accounting: scrollWidth=1425 (=clientWidth) sementara .tr menjangkau R1519.
       // Artinya .tr sudah ter-clip .table dan itu konten yang bisa di-scroll - bukan kebocoran.
       // Satu-satunya sumber kebenaran adalah clipping ancestor, jadi itu yang dipakai di sini.
-      if (scrollableAncestors(el)) return false;
+      if (scrollableAncestors(el) || clippingAncestors(el)) return false;
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && (r.right > innerWidth + 3 || r.left < -3);
     }).slice(0, 12).map((el) => ({ tag: el.tagName, className: String(el.className || '').slice(0,120), text: String(el.textContent || '').trim().slice(0,100), rect: el.getBoundingClientRect().toJSON() }));

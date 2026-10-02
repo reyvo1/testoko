@@ -26,6 +26,26 @@ test('check overflow mengecualikan anak container scrollable, bukan elemen arbit
   assert.match(uat, /scrollableAncestors\(el\)/);
 });
 
+test('check overflow juga mengecualikan anak yang ter-clip ancestor overflow hidden|clip', () => {
+  // Bukti runner: Employee Portal, lingkaran blur dekoratif `absolute -right-16` di dalam
+  // panel overflow-hidden menjangkau R1471 pada viewport 1440, sementara scrollWidth dokumen
+  // tetap 1440. Ancestor yang memotong harus diakui, bukan hanya ancestor yang bisa digeser.
+  assert.match(uat, /const clipsChildren = \(el\)/);
+  assert.match(uat, /\/\(auto\|scroll\|hidden\|clip\)\/\.test\(cs\.overflowX\)/);
+  assert.match(uat, /const clippingAncestors = \(el\)/);
+  // Ancestor walked sampai document.body, dan body sendiri TIDAK dianggap clipping.
+  assert.match(uat, /parent !== document\.body/);
+  // Ancestor ter-clip HARUS ikut dipakai di filter overflow, kalau tidak perbaikannya tidak berarti.
+  assert.match(uat, /scrollableAncestors\(el\) \|\| clippingAncestors\(el\)/);
+});
+
+test('clipping ancestor tetap mengukur elemen yang TIDAK ter-clip', () => {
+  // ancestor ter-clip hanya mengecualikan anak-nya; elemen yang benar-benar bocor dari
+  // document-level ancestor tetap harus terbaca sebagai overflow.
+  assert.match(uat, /const r = el\.getBoundingClientRect\(\);/);
+  assert.match(uat, /r\.right > innerWidth \+ 3 \|\| r\.left < -3/);
+});
+
 test('kontainer scrollable yang isinya terpotong permanen tetap digagalkan', () => {
   // Ini yang membuat pengecualian tidak jadi jalan keluar tanpa pengawas.
   assert.match(uat, /const clippedScrollables = scrollables/);

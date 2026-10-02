@@ -15,7 +15,7 @@
   "presentation": {
     "admin": {
       "fileCount": 44,
-      "lineCount": 9854,
+      "lineCount": 9860,
       "requiredSemanticClassCount": 34,
       "missingSemanticClasses": []
     },
@@ -27,7 +27,7 @@
     },
     "storefront": {
       "fileCount": 7,
-      "lineCount": 916,
+      "lineCount": 949,
       "requiredSemanticClassCount": 30,
       "missingSemanticClasses": []
     },

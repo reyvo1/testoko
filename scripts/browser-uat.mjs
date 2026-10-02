@@ -188,7 +188,21 @@ async function navigateAdminContext(cdp, route, label, timeoutMs = 45000) {
 
 async function evaluateValue(cdp, expression) {
   const result = await cdp.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (result?.exceptionDetails) throw new Error(result.exceptionDetails.text || 'Browser evaluation gagal.');
+  if (result?.exceptionDetails) {
+    // exceptionDetails.text untuk SyntaxError hanya berisi kata "Uncaught" - namaexception-nya
+    // ada di exception.className/description. Tanpa ini, satu backslash atau satu kurung yang
+    // salah di dalam template literal muncul sebagai "Uncaught" tanpa baris dan tanpa sumber,
+    // dan biayanya beberapa run penuh untuk ditelusuri. Term Throw di sini menyebut exception
+    // yang sebenarnya beserta baris dan kolomnya.
+    const detail = result.exceptionDetails;
+    const ex = detail.exception || {};
+    const why = ex.description || detail.text || 'Browser evaluation gagal.';
+    const where = Number.isInteger(detail.lineNumber)
+      ? ` (line ${detail.lineNumber + 1}${Number.isInteger(detail.columnNumber) ? ':' + (detail.columnNumber + 1) : ''})`
+      : '';
+    const cls = ex.className ? ` [${ex.className}]` : '';
+    throw new Error(`${why}${cls}${where}`);
+  }
   return result?.result?.value;
 }
 
@@ -363,8 +377,47 @@ async function assertP5V4VisualIdentity(cdp, product, options = {}) {
       // Akibatnya parse selalu null, luminance selalu null, dan check tema ini praktis tidak
       // pernah menguji apa pun - ia hanya gagal karena null, bukan karena warnanya salah.
       // Dibuktikan di Node: expression.includes('\\\\d') === false tanpa double-escape.
-      const nums = String(value || '').match(/\\d+(?:\\.\\d+)?/g)?.slice(0,3).map(Number) || [];
-      return nums.length === 3 ? nums : null;
+      const text = String(value || '').trim();
+      // Hex harus ditangani terpisah. Regex angka applied ke "#fafaf9" menghasilkan
+      // [0, 0, 4] - nol dari huruf dan "4" yang bukan komponen warna - sehingga setiap gradient
+      // hex terbaca gelap. Terbukti: storefront light #fafaf9 terbaca luminance 145 (butuh >=190).
+      const hexMatch = text.match(/^#([0-9a-fA-F]{3,8})$/);
+      if (hexMatch) {
+        let h = hexMatch[1];
+        if (h.length === 3 || h.length === 4) h = h.split('').map((c) => c + c).join('');
+        if (h.length !== 6 && h.length !== 8) return null;
+        const to = (i) => parseInt(h.slice(i, i + 2), 16);
+        if (h.length === 8 && to(6) === 0) return null;
+        return [to(0), to(2), to(4)];
+      }
+      // Alpha HARUS diambil sebelum slice(0,3): memotong lebih dulu membuat nums.length selalu
+      // <= 3 sehingga alpha selalu undefined dan rgba(0,0,0,0) lolos sebagai [0,0,0] - yaitu
+      // "hitam", bukan transparan.
+      const all = text.match(/\\d+(?:\\.\\d+)?/g)?.map(Number) || [];
+      if (all.length < 3) return null;
+      // Alpha 0 berarti WARNA BELUM DIWARNAI (transparan), bukan hitam. Tanpa ini check
+      // menyimpulkan "legacy dark skin" pada elemen yang justru tidak berwarna - persis yang
+      // terjadi di storefront: root report rgba(0, 0, 0, 0).
+      // Tanpa regex, hanya startsWith. Regex untuk pencocokan rgba membutuhkan tiga lapis
+      // escaping backslash di dalam template literal, dan satu lapis yang salah menghasilkan
+      // SyntaxError Unterminated group - sudah terjadi dua kali di file ini dan biayanya
+      // beberapa run UAT penuh untuk ditelusuri.
+            const isRgba = text.startsWith('rgb');
+      if (isRgba && all.length > 3 && all[3] === 0) return null;
+      return all.slice(0, 3);
+    };
+    // Semua color-stop dalam gradient. "radial-gradient(circle at 90% 0%, rgba(...), transparent
+    // 26%), linear-gradient(180deg, #fafaf9 0%, #f5f5f4 100%)" - angka 90/0/0 adalah posisi,
+    // sebagai warna, jadi hanya rgb()/rgba() dan #hex yang dibaca.
+    const gradientStops = (value) => {
+      const text = String(value || '');
+      if (!text.includes('gradient(')) return [];
+      const stops = [];
+      for (const m of text.matchAll(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}/g)) {
+        const parsed = parse(m[0]);
+        if (parsed) stops.push(parsed);
+      }
+      return stops;
     };
     const luminance = (rgb) => rgb ? (0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]) : null;
     const rootStyle = getComputedStyle(root);
@@ -376,7 +429,21 @@ async function assertP5V4VisualIdentity(cdp, product, options = {}) {
       generation: root.getAttribute('data-visual-generation'),
       version: root.getAttribute('data-visual-version'),
       rootBackground: rootStyle.backgroundColor,
-      rootLuminance: luminance(rootRgb),
+      rootBackgroundImage: rootStyle.backgroundImage,
+      // Warna yang benar-benar TERLIHAT: kalau backgroundColor transparan tapi backgroundImage
+      // berisi gradient, warnanya ada di gradient. Storefront memakai
+      // linear-gradient(180deg,#fafaf9,#f5f5f4) untuk light dan #0b1220/#0a0f1a untuk dark, jadi
+      // hanya membaca backgroundColor selalu menghasilkan transparan dan check menyimpulkan
+      // "legacy dark skin" pada root yang justru terang.
+      // Untuk gradient, warna ada di setiap color-stop. Ambil SEMUA stop dan nilai yang paling
+      // terang untuk mode light: composite visual sebuah gradient ditentukan oleh lightest stop
+      // yang terlihat, dan storefront light memakai #fafaf9 -> #f5f5f4 (keduanya terang).
+      // Mengambil tiga angka PERTAMA tidak benar: "radial-gradient(circle at 90% 0%,...)"
+      // menghasilkan 90, 0, 0 yang bukan warna sama sekali.
+      rootLuminance: rootRgb
+        ? luminance(rootRgb)
+        : Math.max(...gradientStops(rootStyle.backgroundImage).map(luminance).filter((v) => v !== null), 0),
+      rootStopLuminances: gradientStops(rootStyle.backgroundImage).map(luminance),
       sidebarBackground: sidebarStyle?.backgroundColor || null,
       sidebarLuminance: luminance(sidebarRgb),
       rootClass: String(root.className || ''),
@@ -529,7 +596,22 @@ async function clickAllNavigation(cdp, selector, label) {
   const visited = [];
   for (const item of [...new Set(labels || [])]) {
     const clicked = await evaluateValue(cdp, `(() => { const nodes=[...document.querySelectorAll(${JSON.stringify(selector)})]; const el=nodes.find(x => (x.textContent || '').trim() === ${JSON.stringify(item)}); if(!el)return false; el.click(); return true; })()`);
-    if (!clicked) throw new Error(`${label}: navigasi tidak dapat diklik: ${item}`);
+    if (!clicked) {
+      // Bukti, bukan--. Dua probe yang keduanya klik 14 workspace + 61 subdomain dengan selector
+      // dan urutan yang sama persis SELALU berhasil - termasuk yang diklik "Approval Control".
+      // Jadi kegagalan ini kondisi runtime di dalam UAT penuh, dan tanpa bukti apa yang berubah
+      // antara snapshot dan klik, setiap perbaikan berikutnya hanya tebakan.
+      const state = await evaluateValue(cdp, `(() => ({
+        path: location.pathname,
+        selectorPresent: Boolean(document.querySelector(${JSON.stringify(selector)})),
+        nowLabels: [...document.querySelectorAll(${JSON.stringify(selector)})].map(x => (x.textContent || '').trim()),
+        rects: [...document.querySelectorAll(${JSON.stringify(selector)})].map(x => x.getClientRects().length),
+        drawerOpen: Boolean(document.querySelector('button[aria-label="Tutup menu"]') || document.querySelector('.adminSidebarBackdrop')),
+        bodyStart: (document.body && document.body.innerText || '').slice(0, 160),
+        recovered: (document.body && document.body.innerText || '').includes('Coba lagi'),
+      }))()`).catch(() => null);
+      throw new Error(`${label}: navigasi tidak dapat diklik: ${item} | bukti=${JSON.stringify(state)}`);
+    }
     await sleep(500);
     await waitExpression(cdp, `document.readyState === 'complete' && document.body && document.body.innerText.length > 20`, `${label}: ${item}`);
     await assertViewportIntegrity(cdp, `${label}: ${item}`, 1440, 900);
@@ -865,6 +947,15 @@ await waitExpression(cdp, `(() => {
     const openedCatalogForProduct = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.desktopNav button')].find((node)=>(node.textContent||'').includes('Katalog')); if(!target)return false; target.click(); return true; })()`);
     if (!openedCatalogForProduct) throw new Error('P5 Storefront tidak dapat kembali ke katalog untuk visual detail produk.');
     await waitExpression(cdp, `document.querySelector('[data-visual-product="storefront"]')?.getAttribute('data-visual-view') === 'catalog'`, 'P5 Storefront catalog for product detail');
+    // RACE yang nyata, bukan tebakan: data-visual-view berubah ke 'catalog' begitu state
+    // berubah, SEBELUM produk selesai di-fetch ke /api/v1/products?branchCode=... (client-side).
+    // Menunggu view saja karena itu katalog kosong sesaat, dan check berikutnya gagal dengan
+    // "detail produk tidak dapat dibuka" - padahal produknya ada dan bisa diklik.
+    // Terbukti sebagai flakiness: stage ini LOLOS di br-uat32 dan GAGAL di br-uat33 tanpa
+    // perubahan kode produk apa pun.
+    // Menunggu kartu produk nyata BUKAN melemahkan gate: tombol "Lihat detail" tetap wajib
+    // diklik, dan data-visual-view === 'product' tetap ditegakkan setelahnya.
+    await waitExpression(cdp, `[...document.querySelectorAll('.productCard button')].some((node)=>/Lihat detail|Lihat produk/.test(node.textContent||''))`, 'P5 Storefront product cards loaded for detail');
     const openedProduct = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.productCard button')].find((node)=>/Lihat detail|Lihat produk/.test(node.textContent||'')); if(!target)return false; target.click(); return true; })()`);
     if (!openedProduct) throw new Error('P5 Storefront detail produk tidak dapat dibuka dari katalog runtime.');
     await waitExpression(cdp, `document.querySelector('[data-visual-product="storefront"]')?.getAttribute('data-visual-view') === 'product'`, 'P5 Storefront product detail visual');
@@ -969,4 +1060,4 @@ await waitExpression(cdp, `(() => {
   }
 }
 
-main().then(() => { console.log(`Browser UAT PASS — evidence: ${output}`); }).catch((error) => { console.error(`Browser UAT FAIL — ${error instanceof Error ? error.message : error}`); process.exitCode = 1; });
+main().then(() => { console.log(`Browser UAT PASS - evidence: ${output}`); }).catch((error) => { console.error(`Browser UAT FAIL - ${error instanceof Error ? error.message : error}`); process.exitCode = 1; });

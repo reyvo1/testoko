@@ -41,7 +41,33 @@ async function bootstrap() {
     // Jangan pakai '*': with credentials, browser menolak, dan protectedEnvironment di atas
     // sudah melarangnya. Daftar eksplisit di sini yang penting: client nyata mengirim
     // content-type, authorization, dan Accept.
-    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'X-Requested-With'],
+    //
+    // Header kustom WAJIB ikut tercantum. Setiap header yang tidak "simple" memaksa browser
+    // mengirim preflight OPTIONS, dan kalau header itu tidak ada di allow-list, browser
+    // membatalkan request dengan TypeError "Failed to fetch" - TANPA status HTTP, sehingga
+    // server tidak pernah tahu ada yang gagal.
+    //
+    // Bug yang sama sudah terjadi dua kali: content-type (UI Admin gagal memuat data padahal
+    // endpoint 200), lalu x-branch-code (storefront). Katalog storefront membungkus keempat
+    // fetch-nya dalam satu Promise.all, jadi satu preflight yang ditolak menolak SEMUA
+    // promise: setProducts tidak pernah dipanggil dan katalog menampilkan "Katalog belum
+    // tersedia" padahal /products membalas 200 dengan produk aktif.
+    //
+    // Daftar di bawah adalah-- header kustom yang benar-benar dikirim client di repo ini,
+    // diverifikasi dengan grep, bukan tebakan: storefront mengirim x-branch-code dan
+    // x-customer-session, POS/POSITIVE mengirim x-order-access-token, dan API key memakai
+    // x-api-key. Menambah header baru di client tanpa menambahkannya di sini akan
+    // reproducing bug yang sama.
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Accept',
+      'X-Requested-With',
+      'X-Branch-Code',
+      'X-Customer-Session',
+      'X-Order-Access-Token',
+      'X-Api-Key',
+    ],
     exposedHeaders: ['Content-Disposition'],
     maxAge: 600,
   });

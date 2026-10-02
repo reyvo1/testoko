@@ -6,6 +6,39 @@ export type { StorefrontView } from './storefront-shell';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+
+/**
+ * Baca JSON tanpa meledak pada 204/205 atau body kosong.
+ *
+ * API memakai 204 No Content dengan benar saat tidak ada data - fulfillment-options misalnya,
+ * saat toko belum punya metode fulfillment. `await response.json()` pada body kosong melempar
+ * SyntaxError, dan karena keempat fetch katalog berada dalam satu Promise.all, satu SyntaxError
+ * itu menolak SELURUH promise: setProducts tidak pernah dipanggil dan katalog menampilkan
+ * "Katalog belum tersedia" padahal /products sudah membalas 200 dengan produk aktif.
+ *
+ * Body kosong dikembalikan sebagai objek kosong; penolakan tetap ditentukan oleh response.ok,
+ * jadi jalur error tidak ikut dilonggarkan.
+ */
+/**
+ * Ambil pesan error dari body API yang sudah dibaca aman. Body error dari Nest bisa berupa
+ * string tunggal atau array string; bentuk lain (termasuk body kosong pada 204) jatuh ke fallback.
+ */
+function apiErrorMessage(data: Record<string, unknown>, fallback: string): string {
+  const message = data.message;
+  if (Array.isArray(message)) {
+    const parts = message.filter((item): item is string => typeof item === 'string');
+    return parts.length ? parts.join(', ') : fallback;
+  }
+  if (typeof message === 'string' && message.trim()) return message;
+  return fallback;
+}
+
+async function readJsonSafe(response: Response): Promise<Record<string, unknown>> {
+  if (response.status === 204 || response.status === 205) return {};
+  const text = await response.text();
+  if (!text.trim()) return {};
+  return JSON.parse(text) as Record<string, unknown>;
+}
 const DEFAULT_BRANCH_CODE = process.env.NEXT_PUBLIC_BRANCH_CODE ?? 'PUSAT';
 
 type Product = {
@@ -158,7 +191,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
         : { branchCode: branchCode, name: authForm.name, email: authForm.email, phone: authForm.phone || undefined, address: authForm.address || undefined, password: authForm.password };
       const response = await fetch(`${API}/storefront/account/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Autentikasi pelanggan gagal.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Autentikasi pelanggan gagal.'));
       localStorage.setItem('toko360.customer.session', data.sessionToken);
       setAccountToken(data.sessionToken); setAuthForm({ name: '', email: '', phone: '', address: '', password: '' });
       await loadAccount(data.sessionToken); notify(accountMode === 'login' ? 'Berhasil masuk ke akun pelanggan.' : 'Akun pelanggan berhasil dibuat.', 'success');
@@ -178,7 +211,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     try {
       const response = await fetch(`${API}/storefront/account/verification/request`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...customerHeaders(accountToken) }, body: JSON.stringify({ type }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Kode verifikasi gagal dikirim.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Kode verifikasi gagal dikirim.'));
       if (data.verified) { await loadAccount(accountToken); notify(`${type === 'EMAIL' ? 'Email' : 'Nomor telepon'} sudah terverifikasi.`, 'success'); return; }
       setVerificationForm({ type, code: typeof data.debugCode === 'string' ? data.debugCode : '' });
       notify(`Kode verifikasi dikirim ke ${data.recipient ?? 'kontak akun'}.${data.debugCode ? ` Kode lokal: ${data.debugCode}` : ''}`, 'success');
@@ -194,7 +227,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     try {
       const response = await fetch(`${API}/storefront/account/verification/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...customerHeaders(accountToken) }, body: JSON.stringify({ type: verificationForm.type, code }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Verifikasi kontak gagal.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Verifikasi kontak gagal.'));
       setVerificationForm({ type: '', code: '' });
       await loadAccount(accountToken);
       notify(`${data.type === 'EMAIL' ? 'Email' : 'Nomor telepon'} berhasil diverifikasi.`, 'success');
@@ -227,24 +260,24 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     setLoading(true);
     Promise.all([
       fetch(`${API}/products?branchCode=${encodeURIComponent(branchCode)}&limit=100`).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Katalog gagal dimuat.');
+        const data = await readJsonSafe(response);
+        if (!response.ok) throw new Error(apiErrorMessage(data, 'Katalog gagal dimuat.'));
         return data as CursorPage<Product>;
       }),
       fetch(`${API}/platform/manifest?branchCode=${encodeURIComponent(branchCode)}`).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Konfigurasi toko gagal dimuat.');
+        const data = await readJsonSafe(response);
+        if (!response.ok) throw new Error(apiErrorMessage(data, 'Konfigurasi toko gagal dimuat.'));
         return data as RuntimeManifest;
       }),
       fetch(`${API}/storefront/account/fulfillment-options`, { headers: { 'x-branch-code': branchCode } }).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Metode fulfillment gagal dimuat.');
+        const data = await readJsonSafe(response);
+        if (!response.ok) throw new Error(apiErrorMessage(data, 'Metode fulfillment gagal dimuat.'));
         return data as { methods: FulfillmentMethod[] };
       }),
       fetch(`${API}/platform/storefront-branches?branchCode=${encodeURIComponent(branchCode)}`).then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Daftar cabang storefront gagal dimuat.');
-        return data as StorefrontBranch[];
+        const data = await readJsonSafe(response);
+        if (!response.ok) throw new Error(apiErrorMessage(data, 'Daftar cabang storefront gagal dimuat.'));
+        return data as unknown as StorefrontBranch[];
       }),
     ])
       .then(([data, runtime, fulfillment, branchRows]) => { if (!cancelled) { setProducts(data.items ?? []); setManifest(runtime); setBranches(branchRows ?? []); setFulfillmentMethods(fulfillment.methods ?? []); const firstDelivery = fulfillment.methods?.find((item) => item.fulfillmentType === 'DELIVERY'); setShippingMethodCode(firstDelivery?.code ?? fulfillment.methods?.[0]?.code ?? ''); setMessage(''); } })
@@ -299,7 +332,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     const active = favoriteIds.includes(productId);
     const response = await fetch(`${API}/storefront/account/favorites/${productId}`, { method: active ? 'DELETE' : 'POST', headers: customerHeaders(accountToken) });
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Favorit gagal diperbarui.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Favorit gagal diperbarui.'), 'error'); return; }
     setFavoriteIds((current) => active ? current.filter((id) => id !== productId) : [...new Set([...current, productId])]);
     notify(active ? 'Produk dihapus dari favorit.' : 'Produk disimpan ke favorit.', 'success');
   }
@@ -310,7 +343,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     try {
       const response = await fetch(`${API}/storefront/account/reviews/product/${encodeURIComponent(productId)}`, { headers: { 'x-branch-code': branchCode } });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Review produk gagal dimuat.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Review produk gagal dimuat.'));
       setProductReviews(data as ProductReviews);
     } catch (error) { notify(error instanceof Error ? error.message : 'Review produk gagal dimuat.', 'error'); }
     finally { setReviewLoading(false); }
@@ -322,7 +355,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     try {
       const response = await fetch(`${API}/storefront/account/orders/${encodeURIComponent(number)}`, { headers: customerHeaders(accountToken) });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Detail pesanan gagal dimuat.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Detail pesanan gagal dimuat.'));
       setSelectedOrderDetail(data as AccountOrder);
     } catch (error) { notify(error instanceof Error ? error.message : 'Detail pesanan gagal dimuat.', 'error'); }
     finally { setAccountBusy(false); }
@@ -333,7 +366,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     if (!accountToken || !reviewForm.orderId || !reviewForm.productId) return;
     const response = await fetch(`${API}/storefront/account/reviews`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...customerHeaders(accountToken) }, body: JSON.stringify({ orderId: reviewForm.orderId, productId: reviewForm.productId, rating: Number(reviewForm.rating), title: reviewForm.title || undefined, body: reviewForm.body || undefined }) });
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Review gagal disimpan.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Review gagal disimpan.'), 'error'); return; }
     notify('Review verified-purchase berhasil disimpan.', 'success');
     setReviewForm({ orderId: '', productId: '', productName: '', rating: 5, title: '', body: '' });
   }
@@ -356,7 +389,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
       }),
     });
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Data kontak gagal disimpan.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Data kontak gagal disimpan.'), 'error'); return; }
     await loadAccount(accountToken);
     notify('Data kontak disimpan.', 'success');
   }
@@ -379,7 +412,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
       },
     );
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Alamat gagal disimpan.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Alamat gagal disimpan.'), 'error'); return; }
     setAddressForm({ label: 'Rumah', recipientName: '', phone: '', addressLine: '', district: '', city: '', province: '', postalCode: '' });
     setEditingAddressId(null);
     await loadAccount(accountToken); setSelectedAddressId(data.id); notify(editing ? 'Alamat pengiriman diperbarui.' : 'Alamat pengiriman disimpan.', 'success');
@@ -405,7 +438,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     }
     const response = await fetch(`${API}/storefront/account/addresses/${id}`, { method: 'DELETE', headers: customerHeaders(accountToken) });
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Alamat gagal dihapus.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Alamat gagal dihapus.'), 'error'); return; }
     await loadAccount(accountToken); notify('Alamat dinonaktifkan.', 'success');
   }
 
@@ -441,7 +474,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
         body: JSON.stringify({ branchCode: branchCode, ...customer, customerEmail: customer.customerEmail || undefined, customerPhone: customer.customerPhone || undefined, address: fulfillmentType === 'DELIVERY' ? customer.address : undefined, fulfillmentType, customerAddressId: fulfillmentType === 'DELIVERY' && selectedAddressId ? selectedAddressId : undefined, shippingMethodCode: shippingMethodCode || undefined, promoCode: promoCode.trim() || undefined, items: cart.map((item) => ({ productId: item.product.id, quantity: item.quantity, productUnitId: item.productUnitId, variantId: item.variantId })) }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Pesanan gagal dibuat.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Pesanan gagal dibuat.'));
       setOrder(data); setCart([]); setPromoCode(''); if (accountToken) await loadAccount(accountToken); notify('Pesanan berhasil dibuat dan stok sudah direservasi. Harga/promo telah divalidasi server.', 'success');
     } catch (error) { notify(error instanceof Error ? error.message : 'Pesanan gagal dibuat.', 'error'); }
     finally { setSubmitting(false); }
@@ -457,7 +490,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
       body: JSON.stringify({ orderId: returnForm.orderId, reason: returnForm.reason || undefined, refundMethod: 'ORIGINAL', items: [{ orderItemId: returnForm.orderItemId, quantity }] }),
     });
     const data = await response.json();
-    if (!response.ok) { notify(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Pengajuan retur gagal.', 'error'); return; }
+    if (!response.ok) { notify(apiErrorMessage(data, 'Pengajuan retur gagal.'), 'error'); return; }
     setReturnForm({ orderId: '', orderItemId: '', orderNumber: '', productName: '', unitCode: '', maxQuantity: 1, quantity: 1, reason: '' });
     await loadAccount(accountToken);
     notify(`Retur ${data.number} diajukan. Toko akan melakukan inspeksi barang sebelum refund.`, 'success');
@@ -473,7 +506,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
         body: JSON.stringify({ paymentMethod }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Metode pembayaran gagal diproses.');
+      if (!response.ok) throw new Error(apiErrorMessage(data, 'Metode pembayaran gagal diproses.'));
       setOrder(data);
       if (paymentMethod === 'COD') notify('COD dipilih. Piutang COD baru terbentuk ketika barang benar-benar dikirim.', 'success');
       else if (paymentMethod === 'INVOICE') notify('Pembayaran termin dicatat dan menunggu otorisasi backoffice.', 'success');

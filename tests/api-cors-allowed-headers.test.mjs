@@ -36,6 +36,44 @@ test('credentials:true dipertahankan dan tidak digabung dengan origin wildcard',
   assert.ok(!/origin:\s*['"]\*['"]/.test(cors[0]), 'origin wildcard tidak boleh dipakai bersama credentials');
 });
 
+test('setiap header kustom yang dikirim client ada di allowedHeaders', async () => {
+  // Ini generalisasi dari dua bug berturut-turut. Header non-"simple" memaksa browser mengirim
+  // preflight OPTIONS; kalau tidak ada di allow-list, browser membatalkan request dengan
+  // TypeError "Failed to fetch" tanpa status HTTP sama sekali, sehingga server tidak pernah
+  // tahu ada yang gagal.
+  //
+  // Storefront#/products membalas 200 dengan produk aktif, tapi katalog tetap kosong karena
+  // satu preflight yang ditolak menolak seluruh Promise.all. Daftar header di bawah dibaca dari
+  // source client, bukan ditulis manual, jadi header baru ikut tertangkap saat ditambahkan.
+  const clientSources = [
+    '../apps/storefront/app/page.tsx',
+    '../apps/pos/app/page.tsx',
+    '../apps/admin/app/page.tsx',
+  ];
+  const used = new Set();
+  for (const rel of clientSources) {
+    let source = '';
+    try {
+      source = await readFile(new URL(rel, import.meta.url), 'utf8');
+    } catch {
+      continue; // client tidak ada di checkout ini
+    }
+    // Hanya header yang dikirim lewat fetch/headers, bukan class CSS Tailwind seperti x-w-full.
+    for (const match of source.matchAll(/['"]([xX]-[A-Za-z]+-[A-Za-z-]+)['"]\s*:/g)) used.add(match[1].toLowerCase());
+  }
+  assert.ok(used.size > 0, 'tidak ada header kustom terdeteksi - test ini akan jadi hampa');
+
+  const cors = main.match(/app\.enableCors\(\{[\s\S]*?\}\);/);
+  assert.ok(cors, 'app.enableCors({...}) tidak ditemukan');
+  const allow = new Set([...(cors[0].match(/['"]([A-Za-z-]+)['"]/g) || [])].map((s) => s.replace(/['"]/g, '').toLowerCase()));
+  for (const header of used) {
+    assert.ok(
+      allow.has(header),
+      `header ${header} dikirim client tapi tidak ada di allowedHeaders; preflight akan ditolak`,
+    );
+  }
+});
+
 test('perlindungan environment staging/production tetap berlaku', () => {
   // CORS Origins wajib dikonfigurasi di environment terlindungi - jangan dilonggarkan demi
   // membuat preflight lolos.

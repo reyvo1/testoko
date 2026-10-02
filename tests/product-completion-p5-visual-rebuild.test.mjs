@@ -134,5 +134,21 @@ test('P5 finance account creation form stays responsive inside the rebuilt Admin
   assert.match(accountingWorkspace,/className="accountCreateGrid"/);
   assert.match(adminCss,/\.formGrid, \.accountCreateGrid\s*\{[^}]*grid-template-columns:\s*1fr/);
   assert.match(adminCss,/@media \(width >= 768px\)[\s\S]*?\.formGrid, \.accountCreateGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(adminCss,/@media \(width >= 1440px\)[\s\S]*?\.accountCreateGrid\s*\{[^}]*grid-template-columns:\s*120px minmax\(180px,1fr\) 150px auto/);
+  // Apakah form MELEBUR keluar panel adalah yang diuji, bukan jumlah kolomnya.
+  //
+  // Aturan lama memakai `120px minmax(180px,1fr) 150px auto` pada viewport >= 1440px. Karena
+  // .grid2 sudah 2 kolom sejak 768px, panel "CHART OF ACCOUNTS" hanya ~562px pada viewport 1440 -
+  // padahal aturan itu aktif tepat pada 1440. Empat track itu butuh minimum
+  // 120+180+150+tombol(~107) + 3 gap = ~597px, jadi form meluber 57px dan tombol "Tambah akun"
+  // terdorong keluar viewport (terukur: form cw:530, sw:587; BUTTON R1445 vs viewport 1425).
+  //
+  // Setiap track fixed dalam px bisa melebihi panelnya, jadi bentuk yang aman adalah track
+  // fluid berbasis minmax(0,1fr): track itu mengikuti lebar panel, bukan lebar viewport.
+  const wide = adminCss.match(/@media \(width >= 1440px\)[\s\S]*?\.accountCreateGrid\s*\{[^}]*\}/);
+  assert.ok(wide, 'aturan .accountCreateGrid pada >= 1440px tidak ditemukan');
+  assert.ok(
+    !/grid-template-columns:[^;]*\d+px/.test(wide[0]),
+    `track fixed px pada >= 1440px bisa melebihi panelnya: ${wide[0].slice(0, 160)}`,
+  );
+  assert.match(wide[0],/minmax\(0,\s*1fr\)/, 'track harus fluid (minmax(0,1fr)) supaya mengikuti lebar panel');
 });

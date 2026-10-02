@@ -703,7 +703,13 @@ button.primary {
 }
 
 @media (width >= 1440px) {
-  .accountCreateGrid { grid-template-columns: 120px minmax(180px,1fr) 150px auto; }
+  /* CATATAN: aturan ini berdasarkan lebar VIEWPORT, bukan lebar panel. Karena .grid2 sudah
+     2 kolom sejak 768px, panel ".CHART OF ACCOUNTS" hanya ~562px pada viewport 1440 - padahal
+     aturan ini aktif tepat pada 1440. Empat kolom butuh minimum 120+180+150+auto(~107) + 3 gap
+     = ~597px, jadi form meluber 57px dan tombol "Tambah akun" keluar viewport
+     (terukur: form cw:530, sw:587). Dibiarkan di 2 kolom supaya minmax(0,1fr) yang menahan
+     lebar; tidak ada kolom fixed yang bisa melewati panelnya. */
+  .accountCreateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboardMetricGrid { grid-template-columns: repeat(6,minmax(0,1fr)); }
   .dashboardGrid--primary { grid-template-columns: minmax(0,1.2fr) minmax(280px,.8fr) minmax(300px,.9fr); }
   .dashboardPanel--wide { grid-row: auto; }

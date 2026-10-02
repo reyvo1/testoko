@@ -19,6 +19,16 @@ test('kondisi yang ditemukan benar-benar ada di CSS (tabel memang sengaja bisa d
   // Kalau salah satu hilang, regresi ini tidak akan terpicu dan testnya jadi tidak berarti.
 });
 
+test('check overflow memverifikasi innerWidth benar-benar sesuai viewport yang diminta', () => {
+  // scrollWidth dibandingkan terhadap lebar DIMINTA. Kalau device metrics override tidak
+  // diterapkan, scrollWidth == innerWidth yang lebih besar dan akan dilaporkan sebagai overflow
+  // padahal tidak ada yang bocor (terbukti: 390x844 -> scrollWidth=679, elements kosong).
+  // Emulasi yang salah sama-sama adalah kegagalan dan harus merah.
+  assert.match(uat, /const viewportMismatch = closed && closed\.innerWidth !== width;/);
+  assert.match(uat, /if \(!closed \|\| viewportMismatch \|\| closed\.scrollWidth > width \+ 3/);
+  assert.match(uat, /innerWidth=\$\{closed\?\.innerWidth\} diminta=\$\{width\}/);
+});
+
 test('check overflow melaporkan pelaku mentah beserta alasan pengecualian', () => {
   // Kegagalan runner sebelumnya hanya melaporkan scrollWidth=679 dengan elements kosong,
   // sehingga akar masalahnya tidak bisa diketahui. Diagnosa mentah wajib ada.

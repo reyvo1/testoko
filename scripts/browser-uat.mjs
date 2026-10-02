@@ -375,13 +375,20 @@ async function assertViewportIntegrity(cdp, label, width, height) {
   // clippedScrollables WAJIB ikut digagalkan. Kalau hanya `overflow` yang diperiksa, maka
   // pengecualian anak container scrollable menjadi jalan keluar tanpa pengawas: tabel yang
   // isinya meluber tapi tidak bisa digeser akan lolos. Dua-duanya wajib kosong.
-  if (!closed || closed.scrollWidth > width + 3 || closed.overflow.length || closed.clippedScrollables.length) {
+  // innerWidth WAJIB ikut diverifikasi, bukan hanya scrollWidth. Kalau device metrics override
+  // tidak diterapkan dan halaman tetap pada lebar sebelumnya, maka scrollWidth == innerWidth
+  // yang lebih besar dari viewport yang diminta; membandingkannya terhadap lebar yang DIMINTA
+  // akan melaporkan overflow padahal tidak ada yang bocor. Kegagalan runner 390x844 ->
+  // scrollWidth=679 dengan elements kosong dan rawOverflow kosong persis bentuknya.
+  // Dua-duanya tetap wajib terpenuhi: emulasi harus benar-benar berlaku, dan tidak boleh bocor.
+  const viewportMismatch = closed && closed.innerWidth !== width;
+  if (!closed || viewportMismatch || closed.scrollWidth > width + 3 || closed.overflow.length || closed.clippedScrollables.length) {
     // Kumpulkan rantai ancestor di panggilan CDP TERPISAH, bukan di dalam evaluate yang sama.
     // Kalau diukur inline, satu error runtime di sana menutupi pesan overflow yang
     // justru informatif (terbukti: attempt inline menghasilkan "Uncaught" kosong).
     // Fungsi ini tidak boleh melempar - diagnostik tidak boleh mengganti bukti.
     const chains = await describeOverflowChains(cdp);
-    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}; rawOverflow=${JSON.stringify(closed?.rawOverflow || [])}; chains=${JSON.stringify(chains)}`);
+    throw new Error(`${label} overflow pada ${width}x${height} (drawer tertutup): innerWidth=${closed?.innerWidth} diminta=${width}; scrollWidth=${closed?.scrollWidth}; elements=${JSON.stringify(closed?.overflow || [])}; clippedScrollables=${JSON.stringify(closed?.clippedScrollables || [])}; rawOverflow=${JSON.stringify(closed?.rawOverflow || [])}; chains=${JSON.stringify(chains)}`);
   }
 
   // Kalau ada drawer off-canvas di halaman ini, buka lewat tombolnya dan pastikan isinya

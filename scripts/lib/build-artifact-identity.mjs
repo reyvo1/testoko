@@ -11,7 +11,13 @@ export const BUILD_ARTIFACT_COMPONENTS = [
   { id: 'employee-portal', path: 'apps/employee-portal/.next' },
 ];
 
-const SKIP_DIRS = new Set(['cache']);
+// 'cache' dan 'route-cache' adalah cache runtime yang ditulis Next.js saat app diserve
+// (`next start` mengisi `.next/server/route-cache/...` untuk setiap route yang dirender).
+// Keduanya turunan runtime, bukan output build, jadi tidak boleh ikut di-hash: kalau ikut,
+// identitas artifact berubah begitu app menerima request pertama, dan R8 akan gagal dengan
+// "Build artifact berubah" padahal tidak ada build yang berbeda. Output build sungguhan
+// (BUILD_ID, server chunks, manifests, static assets) tetap ter-cover penuh.
+const SKIP_DIRS = new Set(['cache', 'route-cache']);
 const SKIP_FILES = new Set(['trace']);
 
 function sha256(buffer) {

@@ -79,12 +79,36 @@ for (const row of adminGeometry.matrix) {
   if (![1440,1024,390].includes(row.width) || !row.main || !row.content || !row.sidebar) {
     throw new Error(`P5 Admin shell geometry row invalid: ${JSON.stringify(row)}`);
   }
+  // Bandingkan terhadap lebar yang benar-benar TERSEDIA untuk konten, bukan ukuran viewport
+  // yang diminta. Scrollbar vertical memakan 15px dari 1440, jadi main yang benar adalah
+  // 1425 - sidebar 246 = 1179px. Versi lama menghitung ekspektasi dari `width` (1440),
+  // sehingga main yang benar selalu terlihat menyusut dan check ini mustahil pernah lulus di
+  // halaman yang benar pun - bug yang sudah dibetulkan di browser-uat.mjs tapi belum di probe
+  // ini. Gate di sini jadi lebih ketat, bukan lebih longgar: main WAJIB juga menempel penuh
+  // ke tepi kanan layout dan content tidak boleh menyusut, dua hal yang tadinya sama sekali
+  // tidak diperiksa.
+  const availableWidth = row.availableWidth ?? row.width;
+  const tolerance = 4;
   if (row.width >= 1024) {
-    if (!row.sidebarVisible || Math.abs(row.main.left - row.sidebar.right) > 4 || row.main.width < row.width - row.sidebar.width - 8) {
+    if (!row.sidebarVisible || Math.abs(row.main.left - row.sidebar.right) > tolerance) {
       throw new Error(`P5 Admin desktop shell geometry invalid: ${JSON.stringify(row)}`);
     }
-  } else if (row.sidebarVisible || Math.abs(row.main.width - row.width) > 4) {
-    throw new Error(`P5 Admin mobile shell geometry invalid: ${JSON.stringify(row)}`);
+    if (row.main.width < availableWidth - row.sidebar.width - tolerance * 2) {
+      throw new Error(`P5 Admin desktop main workspace menyusut: ${JSON.stringify(row)}`);
+    }
+    if (Math.abs(row.main.right - row.layout.right) > tolerance) {
+      throw new Error(`P5 Admin desktop main tidak menempel ke tepi kanan layout: ${JSON.stringify(row)}`);
+    }
+    if (row.content.width < row.main.width - 96) {
+      throw new Error(`P5 Admin desktop content terlalu sempit terhadap main workspace: ${JSON.stringify(row)}`);
+    }
+  } else {
+    if (row.sidebarVisible || Math.abs(row.main.left - row.layout.left) > tolerance || Math.abs(row.main.width - availableWidth) > tolerance) {
+      throw new Error(`P5 Admin mobile shell geometry invalid: ${JSON.stringify(row)}`);
+    }
+    if (row.content.width < availableWidth - 40) {
+      throw new Error(`P5 Admin mobile content terlalu sempit: ${JSON.stringify(row)}`);
+    }
   }
 }
 

@@ -43,6 +43,30 @@ test('build artifact identity changes when runtime output changes but ignores Ne
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// `next start` mengisi `.next/server/route-cache/<route>/$/*` untuk setiap route yang
+// dirender. Kalau turunan itu ikut di-hash, identitas artifact bergeser begitu app
+// menerima request pertama - R7/R8 lalu gagal "Build artifact berubah" tanpa ada build
+// yang berbeda. Test ini mengunci dua arah: route-cache TIDAK mengubah identitas, tapi
+// output build sungguhan (BUILD_ID) tetap mengubahnya.
+test('route-cache turunan runtime tidak menggeser identitas, tapi BUILD_ID tetap menggesernya', () => {
+  const root = fixture();
+  try {
+    const before = buildArtifactIdentity(root);
+
+    const routeCache = path.join(root, 'apps/admin/.next/server/route-cache/APP_PAGE/abc/$');
+    fs.mkdirSync(routeCache, { recursive: true });
+    fs.writeFileSync(path.join(routeCache, 'index.rsc'), 'rsc payload\n');
+    fs.writeFileSync(path.join(routeCache, 'index.meta'), '{}');
+    fs.writeFileSync(path.join(routeCache, 'index.html'), '<html></html>');
+    const afterRouteCache = buildArtifactIdentity(root);
+    assert.equal(afterRouteCache.id, before.id, 'route-cache adalah cache runtime, bukan output build');
+
+    fs.writeFileSync(path.join(root, 'apps/admin/.next/BUILD_ID'), 'rebuilt\n');
+    const afterRebuild = buildArtifactIdentity(root);
+    assert.notEqual(afterRebuild.id, afterRouteCache.id, 'BUILD_ID adalah output build dan wajib di-hash');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('manifest verification rejects a different build artifact', () => {
   const root = fixture();
   try {

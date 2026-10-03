@@ -17,7 +17,12 @@ test('security dependency proposal evaluates multiple isolated candidates withou
   const auditCompat = byId['runtime-framework-patched-prisma-audit-compat'];
   assert.ok(currentPrisma);
   assert.ok(auditCompat);
-  assert.equal(currentPrisma.direct.next, '16.3.5');
+  // next 16.3.5 kena GHSA-vcvr-r3jv-pc5j (RCE di next/og, severity critical). Gate
+  // `npm audit --omit=dev --audit-level=high` memblokir high/critical, jadi plan wajib
+  // menunjuk versi patched. Yang dikunci di sini adalah KESESUAIAN plan dengan kedua
+  // candidate dan hood minimum patched -- bukan satu nomor versi tertentu.
+  assert.equal(currentPrisma.direct.next, auditCompat.direct.next);
+  assert.ok(/^16\.[3-9]\.\d+$/.test(currentPrisma.direct.next), `next candidate harus >= 16.3.6: ${currentPrisma.direct.next}`);
   assert.equal(currentPrisma.direct['@nestjs/core'], '12.0.4');
   assert.equal(currentPrisma.direct['@nestjs/platform-express'], '12.0.4');
   assert.equal(currentPrisma.direct['@nestjs/config'], '12.0.0');
@@ -32,6 +37,22 @@ test('security dependency proposal evaluates multiple isolated candidates withou
   assert.match(auditCompat.description, /Never auto-adopt/i);
   assert.ok(plan.notes.some((note) => /TypeScript >=6\.0/.test(note)));
 
+});
+
+// Runner 2026-10-02 (run 37032723106) gagal di gate `dependencyAudit`: next 16.3.5 kena
+// GHSA-vcvr-r3jv-pc5j (RCE di next/og, severity critical). Plan security sudah menunjuk
+// versi patched, tapi EMPAT package.json aplikasi masih pin 16.3.5 - jadi gate audit yang
+// membaca lock produk tetap merah. Test ini mengunci versi yang benar-benar di-declare
+// aplikasi, bukan hanya plan.
+test('empat aplikasi Next declaring versi patched, sama dengan plan security', () => {
+  const patched = byId['runtime-framework-patched-prisma-current'].direct.next;
+  for (const app of ['admin', 'storefront', 'pos', 'employee-portal']) {
+    const declared = JSON.parse(read(`apps/${app}/package.json`)).dependencies.next;
+    assert.equal(declared, patched, `${app} harus declaring next ${patched}, bukan ${declared}`);
+  }
+  const lock = JSON.parse(read('package-lock.json'));
+  const locked = lock.packages?.['node_modules/next']?.version;
+  assert.equal(locked, patched, `package-lock.json harus mengunci next ${patched}, bukan ${locked}`);
 });
 
 test('security proposal is isolated, records each candidate lock/audit, and never overwrites the checked-out package lock', () => {

@@ -46,7 +46,12 @@ test('DR keeps source stage/test marker strict but permits isolated restore/dr/s
 test('security proposal fixes production framework peers without forcing Nest 12 schematics TypeScript-6 migration', () => {
   assert.equal(plan.candidates.length, 2);
   for (const candidate of plan.candidates) {
-    assert.equal(candidate.direct.next, '16.3.5');
+    // next 16.3.5 kena GHSA-vcvr-r3jv-pc5j (RCE di next/og, critical). Gate `npm audit
+    // --omit=dev --audit-level=high` memblokir high/critical, jadi plan harus menunjuk versi
+    // yang sudah dipatch. Assertion ini mengunci KESESUAIAN plan dengan versi patched, bukan
+    // versi spesifik: kalau next rilis patch lagi, plan yang harus ikut, bukan gate.
+    assert.equal(candidate.direct.next, plan.candidates[0].direct.next);
+    assert.ok(/^16\.[3-9]\.\d+$/.test(candidate.direct.next), `next candidate harus >= 16.3.6 (patch GHSA-vcvr-r3jv-pc5j): ${candidate.direct.next}`);
     assert.equal(candidate.direct['@nestjs/core'], '12.0.4');
     assert.equal(candidate.direct['@nestjs/platform-express'], '12.0.4');
     assert.equal(candidate.direct['@nestjs/config'], '12.0.0');

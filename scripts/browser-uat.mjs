@@ -72,6 +72,117 @@ function browserExecutable() {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+const ONE_PIXEL_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zt9sAAAAASUVORK5CYII=';
+
+// Menerima stok lewat JALUR PRODUKSI yang sama dengan purchaser, bukan menulis baris
+// Inventory telanjang.
+//
+// Ini menutup lingkaran prasyarat yang BELUM lengkap. Fixture penjualan lama membuat
+// Sale lewat /sales, tapi tidak pernah menyediakan stok: di runner dengan
+// SEED_MODE=bootstrap, seed tidak membuat produk/supplier/stok sama sekali
+// (`fixtureSeed = demoSeed || uatSeed` -> false). Satu-satunya produk adalah fixture
+// storefront, yang dibuat tanpa stok. Jadi POST /sales dijawab 400 "Stok ... tidak
+// mencukupi" - bukan karena program salah, tapi karena lingkarannya tidak ditutup.
+//
+// Di laptop demo seed membuat produk BERSERTA stok, jadi fixture ini hijau di sini dan
+// merah di runner. Itu kelas defect yang hanya terlihat di checkout/DB bersih.
+//
+// POST /sales hanya menolak, jadi satu-satunya cara sah adalah penerimaan: supplier
+// -> PO -> GRN -> inspeksi (foto + scan barcode) -> approve -> confirm. ConfirmGoodsReceipt
+// yang menaruh Inventory, InventoryLocationBalance, InventoryMovement, dan jurnal
+// akuntansi. Kalau stok ditembakkan langsung ke DB, donut dashboard bisa muncul tapi
+// neraca tidak akan pernah balance - itu persis gate yang harus gagal.
+async function ensureStockThroughReceiving(apiUrl, authHeaders, { product, warehouse, quantity }) {
+  const stamp = `${Date.now()}-${process.pid}`;
+  const post = async (route, body, label) => {
+    const res = await http(`${apiUrl}${route}`, {
+      method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const parsed = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(`${label} gagal (HTTP ${res.status}): ${JSON.stringify(parsed).slice(0, 300)}`);
+    return parsed;
+  };
+
+  // Supplier: bootstrap seed tidak pernah membuatnya, jadi fixture yang harus membuat.
+  // Kode di-suffix stamp supaya UAT berulang tidak bentrok pada unique constraint.
+  const supplier = await post('/suppliers', {
+    code: `CI-UAT-SUP-${stamp}`, name: `CI UAT Supplier ${stamp}`, paymentTermDays: 0,
+  }, 'Fixture supplier CI gagal');
+
+  // PO disetujui otomatis oleh PurchaseOrdersService (status APPROVED), jadi penerimaan
+  // bisa langsung menyusul tanpa turnaround persetujuan - persis alur emergency receive di produksi.
+  const order = await post('/purchase-orders', {
+    supplierId: supplier.id, warehouseId: warehouse.id,
+    idempotencyKey: `CI-UAT-PO-${stamp}`,
+    items: [{ productId: product.id, orderedQty: quantity, unitCost: Number(product.costPrice ?? 1000) }],
+  }, 'Fixture PO CI gagal');
+  const orderItem = (order?.items || []).find((item) => item.productId === product.id);
+  if (!orderItem?.id) throw new Error(`Fixture PO CI tidak mengembalikan item untuk produk ${product.id}.`);
+
+  // GRN membuat OperationalInspection (sourceType GoodsReceipt) + result rows otomatis.
+  const receipt = await post('/goods-receipts', {
+    purchaseOrderId: order.id, idempotencyKey: `CI-UAT-GRN-${stamp}`,
+    items: [{ purchaseOrderItemId: orderItem.id, quantityReceived: quantity }],
+  }, 'Fixture GRN CI gagal');
+  const inspectionId = receipt?.inspectionId;
+  if (!inspectionId) throw new Error('Fixture GRN CI tidak membuat inspeksi; policy PURCHASE_RECEIPT mewajibkannya.');
+
+  // Policy PURCHASE-RECEIPT-DEFAULT: requirePhoto + requireBarcodeScan, keduanya
+  // `verifiedByServer`. Scan harus mencocokkan product.barcode atau product.sku pada
+  // receipt, dan scannedQty harus mencapai expectedQty per baris produk.
+  const scanValue = product.barcode || product.sku;
+  if (!scanValue) throw new Error(`Produk ${product.id} tidak punya barcode maupun SKU untuk scan evidence.`);
+  await post(`/operations-control/inspections/${inspectionId}/evidence`, {
+    evidenceType: 'PHOTO', mimeType: 'image/png', dataBase64: ONE_PIXEL_PNG_BASE64,
+    metadata: { uat: 'SALES_CI_FIXTURE' },
+  }, 'Evidence foto inspeksi CI gagal');
+  for (let scan = 0; scan < quantity; scan += 1) {
+    await post(`/operations-control/inspections/${inspectionId}/evidence`, {
+      evidenceType: 'BARCODE', value: scanValue, metadata: { uat: 'SALES_CI_FIXTURE', scan: scan + 1 },
+    }, 'Evidence barcode inspeksi CI gagal');
+  }
+
+  // Checklist template wajib (semua item RECEIVING-STANDARD required) harus diputuskan
+  // PASS/FAIL; baris produk harus cocok dengan kuantitas GRN. CompleteInspection
+  // menolak jika angkanya tidak sama persis dengan dokumen penerimaan.
+  const inspectionRes = await http(`${apiUrl}/operations-control/inspections?limit=100`, { headers: authHeaders });
+  const inspectionBody = await inspectionRes.json().catch(() => null);
+  if (!inspectionRes.ok) throw new Error(`Daftar inspeksi CI gagal (HTTP ${inspectionRes.status}).`);
+  const inspection = (Array.isArray(inspectionBody?.items) ? inspectionBody.items : []).find((item) => item.id === inspectionId);
+  if (!inspection) throw new Error(`Inspeksi ${inspectionId} tidak terlihat di daftar inspeksi CI.`);
+  const results = (inspection.results || []).map((row) => ({
+    ...(row.templateItemId ? { templateItemId: row.templateItemId } : {}),
+    code: row.code, label: row.label, result: 'PASS',
+    ...(row.productId ? { productId: row.productId } : {}),
+    ...(row.expectedQty !== null && row.expectedQty !== undefined
+      ? { expectedQty: row.expectedQty, acceptedQty: row.expectedQty, rejectedQty: 0, damagedQty: 0, missingQty: 0, extraQty: 0 }
+      : {}),
+    ...(row.scannedQty !== null && row.scannedQty !== undefined ? { scannedQty: row.scannedQty } : {}),
+  }));
+  const completed = await post(`/operations-control/inspections/${inspectionId}/complete`, {
+    results, notes: 'CI UAT receiving inspection',
+  }, 'Penyelesaian inspeksi CI gagal');
+  if (!['PASSED', 'APPROVED', 'PARTIAL'].includes(completed?.status)) {
+    throw new Error(`Inspeksi CI berstatus ${completed?.status} sehingga penerimaan tidak bisa dikonfirmasi.`);
+  }
+  await post(`/operations-control/inspections/${inspectionId}/approve`, { notes: 'CI UAT receiving approval' }, 'Persetujuan inspeksi CI gagal');
+  await post(`/goods-receipts/${receipt.id}/confirm`, { inspectionId, notes: 'CI UAT receiving confirm' }, 'Konfirmasi GRN CI gagal');
+
+  // Fail-closed: sympatikan stok benar-benar tersedia sebelum penjualan. Kalau confirm
+  // succeeds tapi stok tetap tidak terlihat, akuntansi dan stok tidak sinkron dan itu
+  // harus menggagalkan UAT, bukan diteruskan ke POST /sales untuk menghasilkan 400.
+  const inventoryRes = await http(`${apiUrl}/inventory?warehouseId=${warehouse.id}&limit=100`, { headers: authHeaders });
+  const inventoryBody = await inventoryRes.json().catch(() => null);
+  if (!inventoryRes.ok) throw new Error(`Stok gudang CI gagal dibaca (HTTP ${inventoryRes.status}).`);
+  const stock = (Array.isArray(inventoryBody?.items) ? inventoryBody.items : []).find((row) => row.productId === product.id);
+  const available = Number(stock?.available ?? 0);
+  if (available < quantity) {
+    throw new Error(`Penerimaan CI dianggap sukses tetapi stok ${product.name} hanya ${available}/${quantity} di gudang.`);
+  }
+  return { action: 'RECEIVED', supplierId: supplier.id, purchaseOrderId: order.id, goodsReceiptId: receipt.id, inspectionId, available };
+}
+
 async function http(url, init) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
@@ -665,7 +776,13 @@ async function assertAdminShellGeometry(cdp, width, height) {
       throw new Error(`Admin mobile content terlalu sempit ${width}x${height}: ${JSON.stringify(geometry)}`);
     }
   }
-  return { width, height, sidebarVisible: geometry.sidebarVisible, sidebar, main, content };
+  // `availableWidth` dan `layout` ikut direkam karena inilah yang dipakai check di atas.
+  // Tanpa keduanya, pemeriksa downstream hanya punya `width` (viewport yang DIMINTA) dan
+  // akan menghitung ekspektasi lebar main dari angka yang sudah dipotong scrollbar -
+  // persis bug lama yang membuat check mustahil pernah lulus - serta tidak punya dasar
+  // untuk memastikan main benar-benar mengisi sisa lebar. Width yang diminta tetap
+  // direkam sebagai `width` supaya matriks 1440/1024/390 tidak berubah.
+  return { width, height, availableWidth, sidebarVisible: geometry.sidebarVisible, layout, sidebar, main, content };
 }
 
 async function assertAdminShellMatrix(cdp) {
@@ -878,6 +995,12 @@ async function main() {
         const price = Number(product.salePrice ?? 0);
         const quantity = 2;
         if (!(price > 0)) throw new Error(`Harga jual produk CI tidak valid: ${product.salePrice}`);
+        // Prasyarat kedua dari lingkaran itu: stok. Fixture penjualan lama langsung
+        // ke POST /sales dan gagal 400 "Stok ... tidak mencukupi" di runner, karena
+        // SEED_MODE=bootstrap tidak pernah membuat produk/supplier/stok. Stok datang lewat
+        // penerimaan barang produksi, bukan ditulis ke DB.
+        const receiving = await ensureStockThroughReceiving(apiUrl, authHeaders, { product, warehouse, quantity });
+        evidence.checks.push({ id: 'SALES_CI_STOCK_RECEIVING', status: 'PASS', ...receiving, productionTouched: false });
         const createdRes = await http(`${apiUrl}/sales`, {
           method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
           body: JSON.stringify({

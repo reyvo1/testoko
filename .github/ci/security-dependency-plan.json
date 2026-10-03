@@ -4,7 +4,7 @@
       "id": "runtime-framework-patched-prisma-current",
       "description": "Patch production Next/Nest runtime packages and Nest testing peer compatibility while deliberately keeping Nest CLI/schematics on v11 so TypeScript 6 is not introduced merely to create an audit proposal. Prisma remains committed 6.19.3.",
       "direct": {
-        "next": "16.3.5",
+        "next": "16.3.8",
         "@nestjs/common": "12.0.4",
         "@nestjs/config": "12.0.0",
         "@nestjs/core": "12.0.4",
@@ -26,7 +26,7 @@
       "id": "runtime-framework-patched-prisma-audit-compat",
       "description": "Exploratory audit-only candidate: patched Next/Nest runtime packages plus npm-audit suggested Prisma 6.12.0 pair. Never auto-adopt; must pass deterministic install, schema generation, regression, six-app build, PostgreSQL integration and browser UAT before commit.",
       "direct": {
-        "next": "16.3.5",
+        "next": "16.3.8",
         "@nestjs/common": "12.0.4",
         "@nestjs/config": "12.0.0",
         "@nestjs/core": "12.0.4",

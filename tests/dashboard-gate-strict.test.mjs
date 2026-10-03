@@ -82,6 +82,52 @@ test('kedua workflow runner menyalakan fixture penjualan', () => {
   }
 });
 
+// Bug nyata di runner 2026-10-02 (run 37032723106 / 37032723158): fixture penjualan
+// sudah menutup SETENUH lingkaran penjualan, tapi lingkaran itu sendiri belum punya
+// prasyarat stok. Di runner dengan SEED_MODE=bootstrap, seed tidak pernah membuat
+// produk/supplier/stok (`fixtureSeed = demoSeed || uatSeed` -> false), jadi satu-satunya
+// produk adalah fixture storefront yang dibuat TANPA stok. POST /sales lalu dijawab 400
+// "Stok ... tidak mencukupi" dan seluruh gate hilir (p5VisualRebuild, r7Ui, r8Release,
+// artifactTransport) ikut merah ONLY karena cascade.
+//
+// Laptop tetap hijau karena demo seed membuat produk beserta stok - persis kelas defect
+// "hijau di folder kerja, merah di checkout bersih". Test di bawah mengunci bahwa stok
+// fixture datang dari JALUR PRODUKSI penerimaan barang, bukan dari Menembak Inventory.
+test('stok fixture penjualan lewat penerimaan barang produksi, bukan Menembak stok', () => {
+  assert.match(uat, /async function ensureStockThroughReceiving\(/,
+    'UAT harus punya jalur penerimaan barang untuk menyediakan stok fixture');
+  assert.match(uat, /const receiving = await ensureStockThroughReceiving\(apiUrl, authHeaders, \{ product, warehouse, quantity \}\)/);
+  assert.match(uat, /id: 'SALES_CI_STOCK_RECEIVING'/);
+  // Rantai produksi lengkap: supplier -> PO -> GRN -> inspeksi -> confirm.
+  assert.match(uat, /await post\('\/suppliers', \{/, 'supplier wajib dibuat lewat API');
+  assert.match(uat, /await post\('\/purchase-orders', \{/, 'PO wajib dibuat lewat API');
+  assert.match(uat, /await post\('\/goods-receipts', \{/, 'GRN wajib dibuat lewat API');
+  assert.match(uat, /await post\(`\/operations-control\/inspections\/\$\{inspectionId\}\/evidence`/,
+    'policy PURCHASE_RECEIPT mewajibkan evidence foto + barcode sebelum inspeksi selesai');
+  assert.match(uat, /await post\(`\/operations-control\/inspections\/\$\{inspectionId\}\/complete`/);
+  assert.match(uat, /await post\(`\/operations-control\/inspections\/\$\{inspectionId\}\/approve`/);
+  assert.match(uat, /await post\(`\/goods-receipts\/\$\{receipt\.id\}\/confirm`/,
+    'hanya ConfirmGoodsReceipt yang menaruh Inventory, movement, dan jurnal akuntansi');
+});
+
+test('fixture penjualan tidak boleh melemahkan validasi stok', () => {
+  // Jalan pintas yang akan membuat gate hijau: set allowNegativeStock, tulis Inventory
+  // langsung, atau mengabaikan 400 dari /sales. Semua itu RUPAK - donut muncul padahal
+  // stok dan neraca tidak sinkron.
+  assert.doesNotMatch(uat, /allowNegativeStock/,
+    'UAT tidak boleh menyalakan stok negatif untuk membuat penjualan lolos');
+  assert.doesNotMatch(uat, /prisma\.inventory\.(upsert|create|update)/,
+    'stok fixture tidak boleh ditulis langsung ke Prisma; jalur produksi wajib dipakai');
+  assert.doesNotMatch(uat, /quantity: 0\b.*ignore/, 'tidak boleh ada jalur bypass stok');
+});
+
+test('penerimaan fixture gagal keras saat stok tetap tidak tersedia setelah confirm', () => {
+  // Kalau confirm 201 tapi stok tetap tidak terlihat, akuntansi dan stok tidak sinkron.
+  // Itu harus menggagalkan UAT dengan pesan jelas, bukan diteruskan ke POST /sales.
+  assert.match(uat, /if \(available < quantity\) \{/);
+  assert.match(uat, /tapi stok \$\{product\.name\} hanya \$\{available\}\/\$\{quantity\} di gudang/);
+});
+
 test('pesan kegagalan dashboard menyebut status fixture penjualan', () => {
   // Kalau gate gagal, harus jelas apakah penyebabnya data penjualan yang tidak terbentuk.
   assert.match(uat, /salesFixture: evidence\.checks\.find\(\(check\)=>check\.id==='SALES_CI_FIXTURE'\)/);

@@ -590,7 +590,15 @@ button.primary {
 .dashboardDonutValue { fill: var(--admin-text); font-size: 25px; font-weight: 800; }
 .dashboardDonutText { fill: var(--admin-muted); font-size: 11px; text-transform: uppercase; }
 .dashboardDonutLegend { display: grid; gap: 6px; }
-.dashboardLegendRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
+/* `.dashboardLegendRow` adalah GRID ITEM, jadi `min-width` default-nya `auto`: item tidak
+   boleh menyusut di bawah lebar min-content-nya dan meluber keluar kolom grid. Terukur di
+   runner pada viewport 1440: baris 215px di dalam kolom 171px, `scrollWidth` 1448 > 1440,
+   dan dokumen ikut ter-scroll horizontal karena `overflow-x` di sini `visible`.
+   `min-width: 0` mengembalikan perilaku shrink-standar grid/flex; judul lalu dipotong
+   ellipsis oleh `.dashboardLegendTitle` yang memang sudah punya `min-width: 0`.
+   Tanpa ini, panjang teks legenda (mis. nama produk + "Rp 30 rb") yang sedikit lebih lebar
+   di satu runner sudah cukup untuk menggagalkan gate overflow. */
+.dashboardLegendRow { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .dashboardLegendTitle { display: flex; min-width: 0; align-items: center; gap: 5px; color: var(--admin-text); font-size: 11px; font-weight: 650; }
 .dashboardLegendTitle span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboardLegendDot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 999px; }

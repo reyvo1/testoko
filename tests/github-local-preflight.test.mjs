@@ -12,10 +12,7 @@ test('local pre-push gate is dependency-free and leaves heavy runtime work to Gi
   assert.doesNotMatch(pkg.scripts['ci:preflight:local'], /npm ci|build:gate|uat:browser|postgres/);
 });
 
-test('Windows one-click GitHub preflight launcher fails closed', () => {
-  const cmd = fs.readFileSync('RUN-GITHUB-PREFLIGHT.cmd','utf8');
-  assert.match(cmd, /npm run ci:preflight:local/);
-  assert.match(cmd, /if errorlevel 1/);
-  assert.match(cmd, /Do not push/);
-  assert.match(cmd, /PREFLIGHT PASS/);
+test('Ubuntu-first preflight is exposed directly through npm with no root launcher', () => {
+  assert.equal(fs.existsSync('RUN-GITHUB-PREFLIGHT.cmd'), false);
+  assert.ok(pkg.scripts['ci:preflight:local']);
 });

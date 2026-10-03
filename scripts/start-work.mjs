@@ -294,9 +294,6 @@ function createPacket(item, file, options = {}) {
       fail(`Paket kerja gagal dibuat atau kosong: ${relative(root, path)}`);
     }
   }
-  if (isWindows) {
-    writeFileSync(join(directory, 'BUKA-PEKERJAAN.cmd'), `@echo off\r\ncd /d "%~dp0\\..\\..\\.."\r\nnode scripts\\start-work.mjs resume "${item.id}"\r\n`);
-  }
   return {
     directory,
     taskFile,

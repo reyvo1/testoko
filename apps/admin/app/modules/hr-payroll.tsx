@@ -17,7 +17,8 @@ type AttendanceDevice = { id: string; code: string; name: string; deviceType: st
 type AttendanceGeofence = { id: string; code: string; name: string; latitude: string | number; longitude: string | number; radiusMeters: number; allowedAccuracyMeters?: number | null; isActive: boolean };
 type BiometricCredential = { id: string; employeeId: string; attendanceDeviceId?: string | null; biometricType: string; deviceUserCode: string; status: string; revokedAt?: string | null };
 type AttendanceRecord = { id: string; employeeId: string; workDate: string; status?: string; checkInAt?: string | null; checkOutAt?: string | null; workedMinutes?: number | null; lateMinutes?: number | null; overtimeMinutes?: number | null };
-type CursorRows<T> = { items: T[]; pageInfo?: { hasMore?: boolean; nextCursor?: string | null } };
+type CursorPageInfo = { hasMore?: boolean; nextCursor?: string | null };
+type CursorRows<T> = { items: T[]; pageInfo?: CursorPageInfo };
 
 type Department = { id: string; code: string; name: string };
 type Position = { id: string; code: string; name: string; departmentId?: string | null };
@@ -53,7 +54,10 @@ function requestKey(prefix: string, id: string, account: string) {
   return `${prefix}:${id}:${account}`;
 }
 
-
+function appendUniqueById<T extends { id: string }>(current: T[], incoming: T[]) {
+  const seen = new Set(current.map((row) => row.id));
+  return [...current, ...incoming.filter((row) => !seen.has(row.id))];
+}
 
 function minuteLabel(value: number) {
   const h = Math.floor(value / 60) % 24;
@@ -278,12 +282,15 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
   // rendered only when the token can actually perform it.
   const { canAll, identity } = usePermissions(token);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeePageInfo, setEmployeePageInfo] = useState<CursorPageInfo>({});
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
   const [taxRules, setTaxRules] = useState<RuleSet[]>([]);
   const [socialRules, setSocialRules] = useState<RuleSet[]>([]);
   const [ruleKind, setRuleKind] = useState('tax');
   const [components, setComponents] = useState<PayrollComponent[]>([]);
+  const [componentPageInfo, setComponentPageInfo] = useState<CursorPageInfo>({});
   const [employeeComponents, setEmployeeComponents] = useState<EmployeeComponent[]>([]);
+  const [employeeComponentPageInfo, setEmployeeComponentPageInfo] = useState<CursorPageInfo>({});
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [results, setResults] = useState<PayrollResult[]>([]);
   const [payments, setPayments] = useState<PayrollPayment[]>([]);
@@ -332,13 +339,13 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
   async function refreshCore() {
     const now = monthParts();
     const [emp, periodData, runData, taxData, socialData, componentData, employeeComponentData, liabilityData, leaveTypeData, leaveData, overtimeData, accountData] = await Promise.all([
-      read<Employee[] | { items?: Employee[] }>('/hr/employees?limit=100', []),
+      read<CursorRows<Employee>>('/hr/employees?limit=50', { items: [], pageInfo: {} }),
       read<PayrollPeriod[]>(`/payroll/periods?year=${now.year}`, []),
       read<PayrollRun[]>('/payroll/runs', []),
       read<RuleSet[]>('/payroll/tax-rule-sets', []),
       read<RuleSet[]>('/payroll/social-security-rule-sets', []),
-      read<PayrollComponent[]>('/payroll/components', []),
-      read<EmployeeComponent[]>('/payroll/employee-components', []),
+      read<CursorRows<PayrollComponent>>('/payroll/components?limit=50', { items: [], pageInfo: {} }),
+      read<CursorRows<EmployeeComponent>>('/payroll/employee-components?limit=50', { items: [], pageInfo: {} }),
       read<PayrollLiability[]>('/payroll/liabilities', []),
       read<LeaveType[]>('/hr/leave-types', []),
       read<LeaveRequest[]>('/hr/leave-requests', []),
@@ -347,14 +354,16 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
       // account permission failure degrades this select to empty rather than breaking payroll.
       read<Account[]>('/accounting-core/accounts', []),
     ]);
-    const employeeRows = Array.isArray(emp) ? emp : emp.items ?? [];
-    setEmployees(employeeRows);
+    setEmployees(emp.items);
+    setEmployeePageInfo(emp.pageInfo ?? {});
     setPeriods(periodData);
     setRuns(runData);
     setTaxRules(taxData);
     setSocialRules(socialData);
-    setComponents(componentData);
-    setEmployeeComponents(employeeComponentData);
+    setComponents(componentData.items);
+    setComponentPageInfo(componentData.pageInfo ?? {});
+    setEmployeeComponents(employeeComponentData.items);
+    setEmployeeComponentPageInfo(employeeComponentData.pageInfo ?? {});
     setLiabilities(liabilityData);
     setLeaveTypes(leaveTypeData);
     setLeaveRequests(leaveData);
@@ -368,6 +377,36 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
     const approvedSocial = socialData.find((r) => r.status === 'APPROVED');
     setSelectedTaxRuleId((current) => current || approvedTax?.id || '');
     setSelectedSocialRuleId((current) => current || approvedSocial?.id || '');
+  }
+
+  async function loadMoreEmployees() {
+    const cursor = employeePageInfo.nextCursor;
+    if (!cursor || busy) return;
+    await action(async () => {
+      const page = await read<CursorRows<Employee>>(`/hr/employees?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      setEmployees((current) => appendUniqueById(current, page.items));
+      setEmployeePageInfo(page.pageInfo ?? {});
+    });
+  }
+
+  async function loadMoreComponents() {
+    const cursor = componentPageInfo.nextCursor;
+    if (!cursor || busy) return;
+    await action(async () => {
+      const page = await read<CursorRows<PayrollComponent>>(`/payroll/components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      setComponents((current) => appendUniqueById(current, page.items));
+      setComponentPageInfo(page.pageInfo ?? {});
+    });
+  }
+
+  async function loadMoreEmployeeComponents() {
+    const cursor = employeeComponentPageInfo.nextCursor;
+    if (!cursor || busy) return;
+    await action(async () => {
+      const page = await read<CursorRows<EmployeeComponent>>(`/payroll/employee-components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      setEmployeeComponents((current) => appendUniqueById(current, page.items));
+      setEmployeeComponentPageInfo(page.pageInfo ?? {});
+    });
   }
 
   async function refreshRun(runId: string) {
@@ -560,6 +599,7 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
       <section className="grid2">
         <Panel eyebrow="HRIS" title="Daftar Karyawan" badge={`${employees.length} orang`}>
           <Table head={['NIP', 'Nama', 'Status']} rows={employees.map((e) => [<strong>{e.employeeNumber}</strong>, e.fullName, <StatusChip status={e.isActive === false ? 'NONAKTIF' : 'AKTIF'} />])} empty="Belum ada karyawan." />
+          {employeePageInfo.hasMore && <button type="button" className="secondary" disabled={busy} onClick={() => void loadMoreEmployees()}>Muat karyawan berikutnya</button>}
         </Panel>
     <Panel eyebrow="P0 · KONFIGURASI DASAR" title="Komponen gaji, pajak & BPJS" badge={`${components.length} komponen`}>
       <div className="notice">Tanpa komponen gaji dan rule pajak/social yang berstatus APPROVED, payroll tidak dapat dihitung. Formulir ini yang sebelumnya tidak tersedia di UI sama sekali.</div>
@@ -613,12 +653,14 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
         c.defaultAmount!=null?rupiah(Number(c.defaultAmount)):'-', c.proratable?'Ya':'Tidak',
         <StatusChip status={c.isActive===false?'INACTIVE':'ACTIVE'} />,
       ])} empty="Belum ada komponen gaji. Buat minimal satu untuk menghitung payroll." />
+      {componentPageInfo.hasMore && <button type="button" className="secondary" disabled={busy} onClick={() => void loadMoreComponents()}>Muat komponen berikutnya</button>}
       <Table head={['Komponen','Nominal','Persentase','Berlaku','Sampai','Status']} rows={employeeComponents.map(row=>[
         components.find(c=>c.id===row.componentId)?.code ?? row.componentId,
         row.amount!=null?rupiah(Number(row.amount)):'-', row.percentage!=null?`${row.percentage}%`:'-',
         tanggal(row.effectiveFrom), row.effectiveTo?tanggal(row.effectiveTo):'-',
         <StatusChip status={row.isActive?'ACTIVE':'INACTIVE'} />,
       ])} empty="Belum ada penugasan komponen ke karyawan." />
+      {employeeComponentPageInfo.hasMore && <button type="button" className="secondary" disabled={busy} onClick={() => void loadMoreEmployeeComponents()}>Muat assignment berikutnya</button>}
 
       <form className="formGrid" onSubmit={(event)=>{event.preventDefault();const form = event.currentTarget; const fd = new FormData(form);void action(async()=>{
         const kind=String(fd.get('kind')||'tax');

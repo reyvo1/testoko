@@ -62,19 +62,18 @@ Platform modular untuk toko online, POS, supplier, gudang, pembayaran, akuntansi
 
 ## Instalasi Lokal Tanpa Docker
 
-### Windows paling mudah
+### Ubuntu / Linux (jalur utama)
 
-1. Instal Node.js 20.9 atau lebih baru.
-2. Ekstrak repository.
-3. Klik dua kali `setup-local.cmd`.
-4. Setelah selesai, klik dua kali `start-local.cmd`.
-
-### Terminal Windows, Linux, atau macOS
+1. Instal Node.js 22 LTS atau minimal 20.9.
+2. Ekstrak repository dan buka terminal di root proyek.
+3. Jalankan:
 
 ```bash
 npm run setup
 npm run dev
 ```
+
+Launcher `.cmd`/PowerShell lama sudah dihapus; seluruh workflow lokal memakai npm/Node/Bash.
 
 Perintah setup otomatis:
 
@@ -105,15 +104,8 @@ Ganti password dan `JWT_SECRET` sebelum penggunaan publik.
 
 ## Mulai Pekerjaan Otomatis
 
-Setelah setup selesai, klik:
+Setelah setup selesai, gunakan perintah terminal berikut. `npm run work:auto` memilih pekerjaan roadmap berikutnya yang dependency-nya telah siap, membuat work item, branch Git, `TASK.md`, checklist, prompt pelaksana, dan handoff sesi.
 
-```text
-mulai-pekerjaan-otomatis.cmd
-```
-
-Script akan memilih pekerjaan roadmap berikutnya yang dependency-nya telah siap, membuat work item, branch Git, `TASK.md`, checklist, prompt pelaksana, dan handoff sesi. `buat-work-item.cmd` membuka menu yang sama.
-
-Perintah terminal:
 
 ```bash
 npm run work:auto
@@ -214,7 +206,7 @@ Daftarkan module baru di `AppModule`, schema, permission, feature flag, module c
 
 ## Push ke GitHub
 
-Windows dapat memakai terminal Git Bash, PowerShell, atau GitHub Desktop. Dengan terminal:
+Gunakan terminal Git pada Ubuntu/Linux:
 
 ```bash
 git init
@@ -289,13 +281,13 @@ Baca sebelum mengubah source code:
 
 GitHub akan memeriksa manifest pekerjaan, format branch/PR, schema parity, test SQLite/PostgreSQL, build, dan release candidate artifact.
 
-Untuk pengguna Windows tersedia:
+Jalur canonical Ubuntu/Linux:
 
-```text
-buat-work-item.cmd
-cek-workflow.cmd
-quality-fast.cmd
-quality-full.cmd
+```bash
+npm run work:custom
+npm run workflow:validate
+npm run quality:recorded:fast
+npm run quality:recorded:full
 ```
 
 Untuk perpindahan sesi atau developer, gunakan `docs/SESSION-HANDOFF.md` dan selalu sebutkan checkpoint pada `docs/PROJECT-STATE.md`.
@@ -304,6 +296,6 @@ Pengaturan branch protection, status checks, environment, label, dan strategi me
 
 ## Pindah akun atau chat tanpa kehilangan konteks
 
-Klik `pindah-akun-atau-chat.cmd`. Sistem membuat konteks terbaru, menyalin instruksi sistem maksimal 8.000 karakter, lalu menyalin chat pertama dinamis. Untuk chat baru pada akun yang sama gunakan `pindah-chat-saja.cmd`.
+Untuk chat baru pada akun yang sama jalankan `npm run chat:handoff`. Untuk akun baru, jalankan `npm run chat:system` untuk menyalin instruksi sistem lalu `npm run chat:handoff` untuk membuat checkpoint ZIP dan chat pertama dinamis.
 
 Dokumentasi: `docs/CHAT-HANDOFF-AUTOMATION.md`.

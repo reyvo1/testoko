@@ -168,7 +168,7 @@ if (/disabled\s*=\s*\{\s*true\s*\}/.test(sourceBundle)) errors.push('UI contains
 
 report.capabilityStatus = f1.capabilities.map(({ id, title, status, uiApps, gap }) => ({ id, title, status, uiApps, gap }));
 const partialCapabilities = report.capabilityStatus.filter((item) => item.status === 'PARTIAL').map((item) => item.id);
-const unexpectedPartial = partialCapabilities.filter((id) => !['F9','F10'].includes(id));
+const unexpectedPartial = partialCapabilities.filter((id) => id !== 'F9');
 if (unexpectedPartial.length) errors.push(`unexpected capability still partial after current source scan: ${unexpectedPartial.join(', ')}`);
 
 report.contracts = {
@@ -251,7 +251,7 @@ const rootAudit = {
   contracts: report.contracts,
   remainingTruth: [
     { id: 'F9', status: 'PARTIAL_BY_BACKEND_READINESS', detail: 'WhatsApp/Telegram operator UI exists, but external provider production readiness/setup/verification/retry diagnostics remain incomplete.' },
-    { id: 'F10', status: 'PARTIAL_BY_PRODUCTIZATION_DEPTH', detail: 'Forecast/reorder and operator-assistant query/history backends plus Admin UI exist. Remaining gap is deeper explainability, anomaly insight, permission-scoped context and source-linked recommendation quality.' },
+    { id: 'F10', status: 'SOURCE_IMPLEMENTED_RUNTIME_PENDING', detail: 'Explainable forecast/reorder, permission-scoped deterministic operator assistant, anomaly insights, confidence, source links, history, and human-confirmation guardrails are implemented; runtime/browser/human evidence remains pending.' },
     { id: 'edge-sync', status: 'API_ONLY_BY_DESIGN', detail: 'Device/system synchronization is intentionally not an operator UI domain.' },
   ],
   limitations: ['Static source audits do not replace real browser click/runtime validation.', 'Real production build and Human Visual Acceptance remain mandatory before P5 closure.'],
@@ -282,7 +282,7 @@ const markdown = [
   '- No direct no-op click handlers, inert buttons, inert anchors, or permanent `disabled={true}` controls are present in the audited source.', '',
   '## Remaining non-cosmetic gaps', '',
   '- **F9 remains PARTIAL**: WhatsApp/Telegram UI exists, but external provider production readiness and diagnostics remain incomplete.',
-  '- **F10 remains PARTIAL by depth**: forecast/reorder and operator-assistant query/history UI/backend exist; remaining work is explainability, anomaly insight, permission-scoped context, and source-linked recommendations.', '',
+  '- **F10 source implementation is complete / runtime pending**: explainable forecast/reorder, permission-scoped deterministic assistant, anomaly insights, source links, confidence, history, and human-confirmation guardrails are present. Runtime/browser/human evidence remains mandatory.', '',
   '## Verification boundary', '',
   'Static source evidence does **not** substitute for real Next production builds or Human Visual Acceptance. P5 stays OPEN and P6 stays BLOCKED until those gates pass.', '',
 ].join('\n');

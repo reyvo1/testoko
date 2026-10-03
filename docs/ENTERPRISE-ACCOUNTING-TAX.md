@@ -68,6 +68,8 @@ Nilai resmi, kewajiban dokumen, format ekspor, dan aturan pembulatan harus dikon
 
 ## API utama
 
+`POST /api/v1/finance-operations` wajib menerima operation key stabil dari klien melalui `Idempotency-Key` atau `idempotencyKey`; server tidak boleh membuat random fallback untuk mutasi yang dapat di-retry.
+
 ```text
 GET/POST /api/v1/accounting-core/tax-codes
 GET/POST /api/v1/accounting-core/posting-rules

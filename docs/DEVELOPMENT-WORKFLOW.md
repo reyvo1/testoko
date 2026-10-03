@@ -224,6 +224,6 @@ Hotfix hanya untuk gangguan production kritis.
 
 ## 10. Memulai pekerjaan secara otomatis
 
-Klik `mulai-pekerjaan-otomatis.cmd` atau jalankan `npm run work:auto`. Sistem memilih pekerjaan READY dari `config/implementation-backlog.json`, membuat work item fase ANALYSIS, branch, paket task/checklist/prompt/handoff, lalu membuka editor. Bila ada pekerjaan aktif, sistem membukanya terlebih dahulu agar work in progress tidak menumpuk.
+Jalankan `npm run work:auto`. Sistem memilih pekerjaan READY dari `config/implementation-backlog.json`, membuat work item fase ANALYSIS, branch, paket task/checklist/prompt/handoff, lalu membuka editor. Bila ada pekerjaan aktif, sistem membukanya terlebih dahulu agar work in progress tidak menumpuk.
 
 Otomatisasi hanya menyiapkan dan mengarahkan pelaksanaan. Fase tidak boleh dimajukan tanpa hasil analisis, perubahan source, test, quality gate, dan release evidence yang sesuai.

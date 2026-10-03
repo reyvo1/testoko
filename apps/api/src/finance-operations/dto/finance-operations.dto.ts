@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsEnum, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsNumber, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 enum FinanceTransactionTypeDto {
   OPERATING_EXPENSE='OPERATING_EXPENSE', OTHER_INCOME='OTHER_INCOME', CUSTOMER_RECEIPT='CUSTOMER_RECEIPT',
@@ -29,7 +29,7 @@ export class CreateFinanceTransactionDto {
   @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() requireApproval?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsObject() evidence?: Record<string, unknown>;
   @ApiPropertyOptional() @IsOptional() @IsObject() metadata?: Record<string, unknown>;
-  @ApiPropertyOptional() @IsOptional() @IsString() idempotencyKey?: string;
+  @ApiPropertyOptional({ description: 'Operation key stabil untuk retry aman; alternatifnya kirim header Idempotency-Key.' }) @IsOptional() @IsString() @MaxLength(200) idempotencyKey?: string;
 }
 
 export class ApproveFinanceTransactionDto {

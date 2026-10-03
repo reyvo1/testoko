@@ -20,7 +20,7 @@ Jangan memasukkan credential, data pelanggan, data karyawan, foto absensi, atau 
 
 ## Pembuatan otomatis
 
-Klik `mulai-pekerjaan-otomatis.cmd` atau jalankan `npm run work:auto`. Sistem memilih backlog READY, membuat manifest lengkap, branch Git, task packet, checklist, AI prompt, dan session handoff.
+Jalankan `npm run work:auto`. Sistem memilih backlog READY, membuat manifest lengkap, branch Git, task packet, checklist, AI prompt, dan session handoff.
 
 Backlog resmi: `config/implementation-backlog.json`. Detail: `docs/AUTOMATED-WORK-STARTER.md`.
 

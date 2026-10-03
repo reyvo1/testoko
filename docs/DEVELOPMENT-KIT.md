@@ -232,7 +232,7 @@ scripts            setup lokal tanpa Docker, profile database, validation, push 
 - Schema SQLite dan PostgreSQL harus memiliki model dan enum yang sama.
 - GitHub Actions menguji kedua profil; container hanya berjalan pada runner GitHub.
 - File `docker-compose.yml` tidak ditempatkan di root agar tidak menjadi ketergantungan lokal.
-- Windows menyediakan `setup-local.cmd`, `start-local.cmd`, dan `reset-local-database.cmd`.
+- Ubuntu/Linux memakai `npm run setup`, `npm run dev`, dan `npm run db:local:reset` sebagai jalur canonical; launcher OS khusus tidak diperlukan.
 
 ## 25. Keamanan
 
@@ -540,7 +540,7 @@ Perubahan berisiko tinggi wajib mempunyai feature flag, migration plan, rollback
 
 ## 44. Otomatisasi Pekerjaan Satu Klik
 
-Repository menyediakan `mulai-pekerjaan-otomatis.cmd` dan `buat-work-item.cmd` untuk menyiapkan pekerjaan secara otomatis berdasarkan Development Kit dan roadmap machine-readable.
+Repository menyediakan `npm run work:auto` dan `npm run work:custom` untuk menyiapkan pekerjaan secara otomatis berdasarkan Development Kit dan roadmap machine-readable.
 
 Otomatisasi melakukan:
 
@@ -560,11 +560,11 @@ Otomatisasi tidak boleh melewati quality gate atau menutup pekerjaan tanpa evide
 
 Instruksi sistem resmi berada pada `instructions/SYSTEM-INSTRUCTIONS.md` dan dibatasi maksimal 8.000 karakter oleh validasi mesin. File tersebut menjadi sumber tunggal; `AGENTS.md`, Copilot instructions, ChatGPT adapter, dan output clipboard harus identik dengan sumber canonical.
 
-Sebelum berpindah akun/chat, jalankan `pindah-akun-atau-chat.cmd`. Generator membaca checkpoint, version, fingerprint, Git branch/commit/status, database profile yang telah disensor, work item aktif, backlog READY, dan hasil quality gate. Output berada pada `handoff/generated/` dan terdiri atas instruksi sistem, chat pertama siap-tempel, konteks JSON, serta daftar file yang aman untuk dibawa.
+Sebelum berpindah chat, jalankan `npm run chat:handoff`; untuk akun baru jalankan `npm run chat:system` terlebih dahulu. Generator membaca checkpoint, version, fingerprint, Git branch/commit/status, database profile yang telah disensor, work item aktif, backlog READY, dan hasil quality gate. Output berada pada `handoff/generated/` dan terdiri atas instruksi sistem, chat pertama siap-tempel, konteks JSON, serta daftar file yang aman untuk dibawa.
 
 Generator dilarang memasukkan credential, URL database, token, password, secret, biometric mentah, atau data pribadi. Output dinamis tidak boleh menjadi sumber kebenaran baru; ia hanya snapshot dari Project State, work item, Git, dan konfigurasi resmi.
 
-Paket konteks diperbarui setelah setup, pembuatan/resume/status pekerjaan, dan quality gate melalui launcher Windows. Platform chat eksternal tidak dapat dideteksi otomatis, sehingga perpindahan dipicu oleh satu tombol `.cmd`; setelah itu pembentukan file dan clipboard berjalan otomatis.
+Paket konteks diregenerasi dengan `npm run chat:generate` atau `npm run chat:handoff`. Platform chat eksternal tidak dapat dideteksi otomatis, sehingga perpindahan dipicu eksplisit dari terminal; pembentukan checkpoint dan konteks tetap source-bound.
 
 Rincian: `docs/CHAT-HANDOFF-AUTOMATION.md`.
 

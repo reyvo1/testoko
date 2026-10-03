@@ -1,5 +1,27 @@
 # CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
 
+## Pre-GitHub full source-hardening round — 2026-10-03
+
+- Source authority sesi ini: ZIP Ubuntu-clean `testoko-main-ubuntu-clean-20261003.zip`; copy ini tidak memiliki `.git`, sehingga commit/fingerprint tidak diklaim terverifikasi.
+- **Closed at source:** order + finance create mutation sekarang fail-closed tanpa stable operation key; body/header mismatch ditolak; Storefront dan POS mempertahankan operation key untuk same-payload retry; staging HTTP/DB runner menguji replay order tidak membuat order kedua.
+- **Closed at source:** payroll component catalogue + employee-component assignment sekarang cursor-paginated; assignment memakai bounded candidate scan lalu branch-filter kandidat; Admin mempunyai tombol continuation untuk employee/component/assignment.
+- **Canonical reconciliation:** F10 bukan lagi PARTIAL di source. Explainable forecast/reorder, deterministic permission-scoped operator assistant, anomaly insight, confidence/source links, history, dan human-confirmation guardrail sudah ada; status canonical `IMPLEMENTED_RUNTIME_PENDING`. Tidak ada klaim external LLM. F9 tetap `PARTIAL` sampai live provider credential/config/runtime tersedia.
+- Postman/API/accounting docs dan active work item sudah diselaraskan dengan kontrak idempotency/pagination/status F10.
+- Final source gates setelah perubahan: focused regression **67/67 PASS**; tambahan static batch 1+2 **553/553 PASS**; `workflow:validate` PASS (39 items/8 waves); `validate:repo` PASS (1075 files/195 Prisma models); `audit:full:repo` PASS (509 API handlers/462 UI controls); product completeness PASS; Admin contextual **65/65 PASS**; canonical ownership PASS; P5 visual/domain-depth PASS dengan `partialCapabilities=F9`, `hiddenApiOnly=edge-sync`.
+- Full dependency-free/build/runtime **belum boleh diklaim** pada copy ini: archive tidak membawa dependency dan `npm ci` tidak berhasil memulihkan package; test runtime/process-heavy yang memerlukan `reflect-metadata`, `next`, `esbuild`, `@prisma/client` harus dijalankan pada GitHub exact-source.
+- **NEXT:** UAT GitHub exact-source = install/build + PostgreSQL authenticated multi-role + order/finance replay/concurrency + real four-Next browser matrix + Human Stage-20. `productReady=false`, `humanStage20=PENDING`; jangan promote P6/P7/PRODUCT_READY sebelum bukti itu lulus.
+- POST-1/mobile/PWA tetap sesudah P7 + Human Stage-20 + PRODUCT_READY. Jangan menggeser fokus sebelum UAT release chain selesai.
+
+---
+
+## Repo hygiene Ubuntu-first — 2026-10-03
+
+- Operator explicitly requested removal of obsolete Windows launcher files and obvious local clutter.
+- Removed all tracked/snapshot `.cmd`/`.ps1` launchers (including generated `BUKA-PEKERJAAN.cmd` files); `scripts/start-work.mjs` no longer creates that launcher.
+- Canonical setup/workflow/UAT/handoff/release instructions now use npm/Node/Bash commands.
+- Removed local generated `logs/ui-audit-20260929/` and stale root carry-over notes `LANJUTKAN-DI-CHAT-BARU.txt` + `chat-session.md`.
+- Business/API/permission/schema/domain behavior was not changed. P5/Human Visual Acceptance state is unchanged; this cleanup does **not** close P6 or P7.
+
 ## Status saat sesi ditutup (2026-10-02)
 
 HEAD lokal + GitHub = `667c314`. Perfix di bawah sudah commit & push di commit berikutnya.

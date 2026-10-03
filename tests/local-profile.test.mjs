@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
 function models(schema) { return [...schema.matchAll(/^model\s+(\w+)/gm)].map((match) => match[1]); }
 
@@ -20,8 +21,19 @@ test('SQLite and PostgreSQL schemas stay structurally aligned', () => {
   assert.doesNotMatch(sqlite, /@db\.Decimal/);
 });
 
-test('Windows one-click scripts are available', () => {
-  assert.equal(existsSync('setup-local.cmd'), true);
-  assert.equal(existsSync('start-local.cmd'), true);
-  assert.equal(existsSync('reset-local-database.cmd'), true);
+test('Ubuntu-first local tooling is canonical and source tree has no Windows launchers', () => {
+  for (const path of ['scripts/setup-local.mjs', 'scripts/reset-local-db.mjs']) assert.equal(existsSync(path), true, `missing ${path}`);
+  const found = [];
+  const skip = new Set(['node_modules', '.git', '.next', 'dist']);
+  const walk = (dir) => {
+    for (const name of readdirSync(dir)) {
+      if (skip.has(name)) continue;
+      const path = join(dir, name);
+      const stat = statSync(path);
+      if (stat.isDirectory()) walk(path);
+      else if (/\.(?:cmd|ps1)$/i.test(name)) found.push(path);
+    }
+  };
+  walk('.');
+  assert.deepEqual(found, []);
 });

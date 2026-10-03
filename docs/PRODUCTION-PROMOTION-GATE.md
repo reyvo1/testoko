@@ -31,28 +31,28 @@ The following evidence must all belong to the current source fingerprint **and t
 
 Run DR rehearsal only on non-production source/restore targets:
 
-```text
-set T360_DR_TARGET=STAGING
-set T360_DR_CONFIRM=RUN_T360_POSTGRES_DR_NON_PRODUCTION
-set T360_DR_SOURCE_DATABASE_URL=...
-set T360_DR_SOURCE_EXPECTED_HOST=...
-set T360_DR_SOURCE_EXPECTED_DATABASE=...
-set T360_DR_RESTORE_DATABASE_URL=...
-set T360_DR_RESTORE_EXPECTED_HOST=...
-set T360_DR_RESTORE_EXPECTED_DATABASE=...
-run-postgres-dr-drill.cmd
+```bash
+export T360_DR_TARGET=STAGING
+export T360_DR_CONFIRM=RUN_T360_POSTGRES_DR_NON_PRODUCTION
+export T360_DR_SOURCE_DATABASE_URL=...
+export T360_DR_SOURCE_EXPECTED_HOST=...
+export T360_DR_SOURCE_EXPECTED_DATABASE=...
+export T360_DR_RESTORE_DATABASE_URL=...
+export T360_DR_RESTORE_EXPECTED_HOST=...
+export T360_DR_RESTORE_EXPECTED_DATABASE=...
+npm run db:dr:rehearse:postgres
 ```
 
 Run staging certification with an exact runtime identity lock:
 
-```text
-set STAGING_BASE_URL=https://staging.example.com
-set STAGING_EXPECTED_HOST=staging.example.com
-set STAGING_EXPECTED_SOURCE_FINGERPRINT=<current source fingerprint>
-set STAGING_EXPECTED_DB_HOST=<exact PostgreSQL staging hostname>
-set STAGING_EXPECTED_DB_NAME=<exact PostgreSQL staging database name>
-set STAGING_TEST_EMAIL=...
-set STAGING_TEST_PASSWORD=...
+```bash
+export STAGING_BASE_URL=https://staging.example.com
+export STAGING_EXPECTED_HOST=staging.example.com
+export STAGING_EXPECTED_SOURCE_FINGERPRINT='<current source fingerprint>'
+export STAGING_EXPECTED_DB_HOST='<exact PostgreSQL staging hostname>'
+export STAGING_EXPECTED_DB_NAME='<exact PostgreSQL staging database name>'
+export STAGING_TEST_EMAIL=...
+export STAGING_TEST_PASSWORD=...
 npm run certify:staging
 ```
 
@@ -65,8 +65,8 @@ npm run db:index:profile
 
 Copy `config/production-promotion-approval.json.example` to `production-promotion-approval.json`, fill only reviewed non-secret evidence, then run:
 
-```text
-run-production-promotion-gate.cmd
+```bash
+npm run production:promotion:verify
 ```
 
 A PASS here means **promotionReady=true, productionReady=false**.
@@ -77,41 +77,41 @@ Production deployment itself remains infrastructure/operator controlled. Do not 
 
 Production deployment must reuse the **same tested build outputs**, not rebuild them. The deployed API must receive `T360_SOURCE_FINGERPRINT` and `T360_BUILD_ARTIFACT_ID` equal to the promoted evidence. Then run the production smoke from that same artifact-bearing checkout:
 
-```text
-set T360_PRODUCTION_SMOKE_CONFIRM=RUN_T360_PRODUCTION_SMOKE
-set T360_PRODUCTION_BASE_URL=https://app.example.com
-set T360_PRODUCTION_EXPECTED_HOST=app.example.com
-set T360_PRODUCTION_EXPECTED_SOURCE_FINGERPRINT=<current source fingerprint>
-set T360_PRODUCTION_EXPECTED_BUILD_ARTIFACT_ID=<promoted build artifact id>
-set T360_PRODUCTION_EXPECTED_DB_HOST=<exact PostgreSQL production hostname>
-set T360_PRODUCTION_EXPECTED_DB_NAME=<exact PostgreSQL production database name>
-set T360_PRODUCTION_TEST_EMAIL=...
-set T360_PRODUCTION_TEST_PASSWORD=...
-run-production-smoke.cmd
+```bash
+export T360_PRODUCTION_SMOKE_CONFIRM=RUN_T360_PRODUCTION_SMOKE
+export T360_PRODUCTION_BASE_URL=https://app.example.com
+export T360_PRODUCTION_EXPECTED_HOST=app.example.com
+export T360_PRODUCTION_EXPECTED_SOURCE_FINGERPRINT='<current source fingerprint>'
+export T360_PRODUCTION_EXPECTED_BUILD_ARTIFACT_ID='<promoted build artifact id>'
+export T360_PRODUCTION_EXPECTED_DB_HOST='<exact PostgreSQL production hostname>'
+export T360_PRODUCTION_EXPECTED_DB_NAME='<exact PostgreSQL production database name>'
+export T360_PRODUCTION_TEST_EMAIL=...
+export T360_PRODUCTION_TEST_PASSWORD=...
+npm run production:smoke
 ```
 
 The smoke is deliberately narrow: HTTPS health/release identity + expected PostgreSQL target identity + security headers, login/session registration, read-only operations health, read-only financial integrity, and logout/revocation. It does not create business transactions.
 
 Before cutover, create the real PostgreSQL production backup with the canonical backup tool, then verify the artifact locally/read-only against the exact production DB identity. The verifier never connects to production and never restores production:
 
-```bat
-set T360_PRODUCTION_BACKUP_CONFIRM=VERIFY_T360_PRODUCTION_BACKUP
-set T360_PRODUCTION_BACKUP_METADATA=<path-to-backup.dump.json>
-set T360_PRODUCTION_EXPECTED_DB_HOST=<exact PostgreSQL production hostname>
-set T360_PRODUCTION_EXPECTED_DB_NAME=<exact PostgreSQL production database name>
-verify-production-backup.cmd
+```bash
+export T360_PRODUCTION_BACKUP_CONFIRM=VERIFY_T360_PRODUCTION_BACKUP
+export T360_PRODUCTION_BACKUP_METADATA='<path-to-backup.dump.json>'
+export T360_PRODUCTION_EXPECTED_DB_HOST='<exact PostgreSQL production hostname>'
+export T360_PRODUCTION_EXPECTED_DB_NAME='<exact PostgreSQL production database name>'
+npm run production:backup:verify
 ```
 
 The backup must be checksum/size valid, fresh (default <=120 minutes; configurable up to 24 hours), created after promotion PASS, and verified before production smoke. Final production-ready verification rejects a backup from any other database target.
 
 After the production deployment/migrations are applied but **before production smoke credentials are sent**, run the read-only PostgreSQL schema-contract verifier from the exact promoted checkout:
 
-```bat
-set T360_PRODUCTION_SCHEMA_CONFIRM=VERIFY_T360_PRODUCTION_SCHEMA_READ_ONLY
-set T360_PRODUCTION_SCHEMA_DATABASE_URL=<protected production PostgreSQL URL>
-set T360_PRODUCTION_EXPECTED_DB_HOST=<exact PostgreSQL production hostname>
-set T360_PRODUCTION_EXPECTED_DB_NAME=<exact PostgreSQL production database name>
-verify-production-schema.cmd
+```bash
+export T360_PRODUCTION_SCHEMA_CONFIRM=VERIFY_T360_PRODUCTION_SCHEMA_READ_ONLY
+export T360_PRODUCTION_SCHEMA_DATABASE_URL='<protected production PostgreSQL URL>'
+export T360_PRODUCTION_EXPECTED_DB_HOST='<exact PostgreSQL production hostname>'
+export T360_PRODUCTION_EXPECTED_DB_NAME='<exact PostgreSQL production database name>'
+npm run production:schema:verify
 ```
 
 This verifier requires current-source promotion + production-backup PASS first, opens a `SET TRANSACTION READ ONLY` transaction, and compares the generated Prisma datamodel against production tables/columns, PostgreSQL enum values, and release-critical indexes. It writes only hashed target identity/counts/missing contract items; credentials/URL are not written to evidence. Production smoke refuses to start unless this schema evidence is PASS for the same source and database.
@@ -120,8 +120,8 @@ After reviewing the actual cutover, copy `config/production-deployment-attestati
 
 Finally run:
 
-```text
-verify-production-ready.cmd
+```bash
+npm run production:ready:verify
 ```
 
 Only this final PASS sets `productionReady=true`. Post-release monitoring remains mandatory even after PASS.

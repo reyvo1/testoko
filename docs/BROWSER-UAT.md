@@ -16,10 +16,10 @@
 
 Set credentials in the shell; the runner intentionally contains no embedded demo password:
 
-```bat
-set T360_UAT_ADMIN_EMAIL=uat-admin@example.test
-set T360_UAT_ADMIN_PASSWORD=<staging-password>
-run-browser-uat.cmd
+```bash
+export T360_UAT_ADMIN_EMAIL=uat-admin@example.test
+export T360_UAT_ADMIN_PASSWORD='<staging-password>'
+npm run uat:browser
 ```
 
 Optional URL overrides: `T360_API_URL`, `T360_ADMIN_URL`, `T360_STOREFRONT_URL`, `T360_POS_URL`, `T360_EMPLOYEE_URL`.

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import { FinanceTransactionType } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -61,8 +61,13 @@ import { FinanceOperationsService } from './finance-operations.service';
   }
 
   @Roles('SUPER_ADMIN','OWNER','FINANCE','ADMIN') @Permissions('finance.create') @Post()
-  create(@Body() dto: CreateFinanceTransactionDto, @CurrentUser() user: AuthUser) {
-    return this.service.create(dto, user);
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Wajib bila idempotencyKey tidak dikirim di body; gunakan key yang sama saat retry.' })
+  create(
+    @Body() dto: CreateFinanceTransactionDto,
+    @CurrentUser() user: AuthUser,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.service.create(dto, user, idempotencyKey);
   }
 
   @Roles('SUPER_ADMIN','OWNER','FINANCE') @Permissions('finance.approve') @Post(':id/approve')

@@ -51,7 +51,7 @@ After the current P0-P7 product-completion program reaches Human Stage-20 accept
 
 - Jangan memakai ZIP/checkpoint yang lebih lama sebagai baseline.
 - Jalankan `npm run workflow:validate` dan `npm run validate:repo` sebelum perubahan.
-- Gunakan `pindah-akun-atau-chat.cmd` sebelum berpindah akun/chat.
+- Gunakan `npm run chat:handoff` sebelum berpindah chat; untuk akun baru jalankan `npm run chat:system` terlebih dahulu.
 - Jangan mengubah database production dengan `db push`, reset, atau seed demo.
 - Perbarui file ini hanya ketika checkpoint resmi baru diterbitkan.
 
@@ -284,3 +284,11 @@ is corrected in place.
 Negative control: reintroducing the key into one config turns 2 tests red.
 
 No business, API, permission or tenant-scope semantics changed. Commit and push remain the owner's.
+## 2026-10-03 — Pre-GitHub source-hardening reconciliation
+
+The stale source gaps recorded after the 2026-09-29 audit are closed before GitHub UAT. Order creation and operational-finance creation now require a stable client operation key and fail closed on missing/mismatched keys; Storefront/POS preserve retry identity and the staging integration runner verifies order replay. Payroll component and employee-component reads are cursor-paginated, with bounded candidate scanning and branch validation instead of loading the whole active employee set.
+
+F10 is no longer a legitimate PARTIAL capability at source level: explainable forecast/reorder, a deterministic permission-scoped operator assistant, anomaly insight, confidence/source links, interaction history and human-confirmation guardrails are implemented. Canonical F10 status is `IMPLEMENTED_RUNTIME_PENDING`; this does not claim an external LLM provider. F9 remains `PARTIAL` because live external notification-provider production readiness requires provider configuration/credentials and runtime evidence. `edge-sync` remains intentionally API-only.
+
+P5 remains `IMPLEMENTED_RUNTIME_PENDING`, `humanStage20=PENDING`, and `productReady=false`. The next authority is exact-source GitHub UAT: dependency install/build, PostgreSQL authenticated multi-role mutation/replay/concurrency, four-Next production/browser matrix, then explicit Human Stage-20. No source-only result may promote product readiness.
+

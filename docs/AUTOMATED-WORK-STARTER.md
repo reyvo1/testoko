@@ -1,10 +1,10 @@
-# Toko360 One-Click Work Automation
+# Toko360 Work Automation
 
-Dokumen ini menjelaskan tombol `.cmd` yang menyiapkan pekerjaan berdasarkan Development Kit dan roadmap.
+Dokumen ini menjelaskan perintah npm/Node yang menyiapkan pekerjaan berdasarkan Development Kit dan roadmap pada lingkungan Ubuntu-first.
 
 ## Tujuan
 
-Saat `mulai-pekerjaan-otomatis.cmd` atau `buat-work-item.cmd` diklik, sistem dapat:
+Saat `npm run work:auto` atau `npm run work:custom` dijalankan, sistem dapat:
 
 1. membaca backlog pada `config/implementation-backlog.json`;
 2. memastikan dependency pekerjaan telah selesai;
@@ -15,39 +15,6 @@ Saat `mulai-pekerjaan-otomatis.cmd` atau `buat-work-item.cmd` diklik, sistem dap
 7. menjalankan workflow validation;
 8. membuka `TASK.md` di VS Code atau Notepad;
 9. menjalankan external agent hanya bila dikonfigurasi secara eksplisit.
-
-## Tombol Windows
-
-### Mulai otomatis
-
-```text
-mulai-pekerjaan-otomatis.cmd
-```
-
-Menu:
-
-- Ambil tugas roadmap berikutnya.
-- Buat pekerjaan khusus.
-- Lanjutkan pekerjaan aktif.
-- Lihat status workflow.
-
-`buat-work-item.cmd` membuka menu yang sama agar kompatibel dengan workflow versi sebelumnya.
-
-### Lanjutkan pekerjaan
-
-```text
-lanjutkan-pekerjaan.cmd
-```
-
-Membuka paket work item aktif. Bila lebih dari satu work item aktif, pengguna memilih salah satunya.
-
-### Status
-
-```text
-status-pekerjaan.cmd
-```
-
-Menampilkan jumlah backlog, pekerjaan aktif, dependency yang sudah selesai, serta tugas berikutnya yang READY.
 
 ## Perintah terminal
 
@@ -67,8 +34,7 @@ work-items/generated/<WORK_ITEM_ID>/
 ├── TASK.md
 ├── IMPLEMENTATION-CHECKLIST.md
 ├── AI-PROMPT.md
-├── SESSION-HANDOFF.md
-└── BUKA-PEKERJAAN.cmd
+└── SESSION-HANDOFF.md
 ```
 
 `TASK.md` menjadi titik mulai developer. `AI-PROMPT.md` adalah instruksi lengkap yang dapat diberikan kepada coding agent. `SESSION-HANDOFF.md` digunakan saat berpindah sesi atau developer.
@@ -131,7 +97,7 @@ Agent tidak aktif secara bawaan. Untuk menjalankan coding agent eksternal, isi c
 
 ## Batas otomatisasi
 
-Tombol `.cmd` dapat menyiapkan pekerjaan, branch, paket instruksi, checklist, dan optional agent hook. Ia tidak boleh menandai fitur sebagai selesai tanpa:
+Otomatisasi terminal dapat menyiapkan pekerjaan, branch, paket instruksi, checklist, dan optional agent hook. Ia tidak boleh menandai fitur sebagai selesai tanpa:
 
 - perubahan source code;
 - test sesuai work item;

@@ -2,32 +2,32 @@
   "version": 4,
   "phase": "P5-V4.9-FOUR-PRODUCT-ROOT-DESIGN-SYSTEM",
   "sourceScan": {
-    "apiControllers": 42,
-    "apiRoutes": 507,
+    "apiControllers": 43,
+    "apiRoutes": 509,
     "prismaModels": 195,
     "adminPrimaryWorkspaces": 14,
     "adminContextualViews": 65,
     "posViews": 4,
     "storefrontViews": 5,
     "employeeViews": 7,
-    "interactiveControls": 459
+    "interactiveControls": 462
   },
   "presentation": {
     "admin": {
       "fileCount": 44,
-      "lineCount": 9868,
+      "lineCount": 9910,
       "requiredSemanticClassCount": 34,
       "missingSemanticClasses": []
     },
     "pos": {
       "fileCount": 8,
-      "lineCount": 1628,
+      "lineCount": 1636,
       "requiredSemanticClassCount": 5,
       "missingSemanticClasses": []
     },
     "storefront": {
       "fileCount": 7,
-      "lineCount": 949,
+      "lineCount": 961,
       "requiredSemanticClassCount": 30,
       "missingSemanticClasses": []
     },
@@ -40,7 +40,7 @@
   },
   "controls": {
     "admin": {
-      "buttons": 357,
+      "buttons": 360,
       "links": 1,
       "inertButtons": 0,
       "implicitSubmitButtons": 32,
@@ -279,7 +279,8 @@
       "title": "Inventory / batch / expiry / condition",
       "status": "EXPOSED",
       "uiApps": [
-        "admin"
+        "admin",
+        "pos"
       ],
       "gap": "Batch, serial, location, transfer, opname sudah kuat. Condition bucket general seperti AVAILABLE/DAMAGED/QUARANTINE/LOST belum terlihat sebagai inventory condition ledger first-class."
     },
@@ -341,11 +342,11 @@
     {
       "id": "F10",
       "title": "AI / forecasting / operator assistant",
-      "status": "PARTIAL",
+      "status": "EXPOSED",
       "uiApps": [
         "admin"
       ],
-      "gap": "Forecast/reorder foundation ada. Operator assistant/AI explainability, permission-scoped context, anomaly insight, dan source-linked recommendation belum menjadi capability first-class."
+      "gap": "Source implementation lengkap: explainable forecast/reorder, permission-scoped deterministic operator assistant, anomaly insights, confidence, source links, dan human-confirmation guardrail tersedia. Runtime/browser/human UAT tetap wajib sebelum closure."
     },
     {
       "id": "F11",
@@ -397,8 +398,8 @@
     },
     {
       "id": "F10",
-      "status": "PARTIAL_BY_PRODUCTIZATION_DEPTH",
-      "detail": "Forecast/reorder and operator-assistant query/history backends plus Admin UI exist. Remaining gap is deeper explainability, anomaly insight, permission-scoped context and source-linked recommendation quality."
+      "status": "SOURCE_IMPLEMENTED_RUNTIME_PENDING",
+      "detail": "Explainable forecast/reorder, permission-scoped deterministic operator assistant, anomaly insights, confidence, source links, history, and human-confirmation guardrails are implemented; runtime/browser/human evidence remains pending."
     },
     {
       "id": "edge-sync",

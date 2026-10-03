@@ -41,11 +41,8 @@ test('dynamic first-chat generator produces safe current context', () => {
   assert.ok(!first.includes('TELEGRAM_BOT_TOKEN='));
 });
 
-test('Windows chat handoff launchers are present', () => {
-  for (const path of [
-    'pindah-akun-atau-chat.cmd',
-    'pindah-chat-saja.cmd',
-    'salin-system-instructions.cmd',
-    'buat-chat-pertama.cmd',
-  ]) assert.ok(existsSync(path), `missing ${path}`);
+test('chat handoff is terminal-first and Windows launchers are absent', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  for (const script of ['chat:generate', 'chat:system', 'chat:first', 'chat:checkpoint', 'chat:handoff']) assert.ok(pkg.scripts[script], `missing npm script ${script}`);
+  for (const path of ['pindah-akun-atau-chat.cmd', 'pindah-chat-saja.cmd', 'salin-system-instructions.cmd', 'buat-chat-pertama.cmd']) assert.equal(existsSync(path), false, `obsolete launcher still present: ${path}`);
 });

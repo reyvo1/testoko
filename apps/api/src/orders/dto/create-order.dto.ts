@@ -12,7 +12,7 @@ class OrderItemDto {
 }
 
 export class CreateOrderDto {
-  @ApiPropertyOptional({ description: 'Kunci idempotensi untuk retry aman.' }) @IsOptional() @IsString() idempotencyKey?: string;
+  @ApiPropertyOptional({ description: 'Operation key stabil untuk retry aman; alternatifnya kirim header Idempotency-Key.' }) @IsOptional() @IsString() @MaxLength(200) idempotencyKey?: string;
   @ApiProperty({ example: 'PUSAT' })
   @IsString()
   @IsNotEmpty()

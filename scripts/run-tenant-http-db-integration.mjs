@@ -323,8 +323,13 @@ async function main() {
       const result = await request(baseUrl, '/finance-operations?limit=100', { token: tokenA }); assertStatus(result, 200, 'Finance list');
       const items = itemsOf(result.body); assertContains(items, financeA.id, true, 'Finance A'); assertContains(items, financeB.id, false, 'Finance B');
       const denied = await request(baseUrl, `/finance-operations?companyId=${companyB.id}&branchId=${branchB.id}`, { token: tokenA }); assertStatus(denied, 403, 'Cross-tenant finance override');
-      const order = await request(baseUrl, '/orders', { method: 'POST', body: { branchCode: branchA.code, customerName: 'Stage19 Customer', address: 'Stage19 Address', items: [{ productId: productA.id, quantity: 1 }] } });
+      const orderPayload = { branchCode: branchA.code, customerName: 'Stage19 Customer', address: 'Stage19 Address', items: [{ productId: productA.id, quantity: 1 }] };
+      const orderKey = `stage19-order-${runId}`;
+      const order = await request(baseUrl, '/orders', { method: 'POST', headers: { 'idempotency-key': orderKey }, body: orderPayload });
       assertStatus(order, 201, 'Create public order');
+      const replay = await request(baseUrl, '/orders', { method: 'POST', headers: { 'idempotency-key': orderKey }, body: orderPayload });
+      assertStatus(replay, 201, 'Replay public order');
+      if (replay.body.id !== order.body.id || replay.body.number !== order.body.number) throw new Error('Replay order dengan operation key sama menghasilkan pesanan kedua.');
       state.orderIds.push(order.body.id); state.paymentIds.push(...(order.body.payments || []).map((item) => item.id));
       const wrongBranch = await request(baseUrl, `/orders/${order.body.number}`, { headers: { 'x-branch-code': branchB.code, 'x-order-access-token': order.body.accessToken } });
       assertStatus(wrongBranch, 404, 'Cross-tenant public order detail');

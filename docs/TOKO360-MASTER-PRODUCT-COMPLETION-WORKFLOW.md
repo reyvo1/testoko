@@ -41,7 +41,7 @@ The following **never** close a capability by themselves:
 5. **Contextual-route isolation.** Every visible contextual menu item must render its own semantically correct workflow. Reusing one giant component for unrelated contextual routes is forbidden.
 6. **Maturity truth.** `foundation`, `baseline`, `adapter-ready`, `disabled`, and `production-ready` are different states and must not look identical in navigation/product claims.
 7. **Human acceptance cannot be automated away.** Browser automation is necessary but not sufficient for visual/product acceptance.
-8. **Ubuntu-first operations.** Daily operator/developer commands use Bash/Linux. Windows launchers are compatibility-only.
+8. **Ubuntu-first operations.** Daily operator/developer commands use Bash/Linux/npm. Obsolete Windows launchers are not part of the canonical source flow.
 9. **No hidden credentials/evidence clutter in active source.** Runtime evidence belongs in CI artifacts or dedicated untracked/generated paths.
 10. **No fake closure.** Any known partial implementation keeps its capability open even if all unrelated automated tests are green.
 
@@ -298,7 +298,7 @@ No workspace is accepted from global CSS alone. Each primary workspace and each 
 ## Required work
 
 - Canonical Bash commands for setup, dev, seed, test, runtime UAT, backup/checkpoint, logs, and release verification.
-- Windows `.cmd`/`.ps1` launchers moved to clearly labeled compatibility area or documented as secondary.
+- Remove obsolete Windows `.cmd`/`.ps1` launchers and keep npm/Node/Bash commands as the canonical operator path.
 - README and handoff default to Ubuntu commands for the current operator environment.
 - Remove committed generated logs/backups from normal source flow.
 - Make checkpoint/handoff generation one-command and source-bound.

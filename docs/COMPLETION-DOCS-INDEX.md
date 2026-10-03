@@ -5,14 +5,15 @@
 > and human acceptance are three different states, and this document can only ever
 > speak to the first. Where this text says "SOURCE IMPLEMENTATION COMPLETE", the
 > canonical status for that feature is in `config/product-completeness.json` and is
-> frequently lower — for F9, F10, F11, F12 it is `PARTIAL`.
+> frequently lower than narrative source maturity; always read the canonical matrix.
 >
-> Current truth (2026-09-29): `productReady=false`, `humanStage20=PENDING`,
-> `currentPhase=P5 / IMPLEMENTED_RUNTIME_PENDING`. 4 work items are active.
-> Verified in this working copy: 1089/1089 dependency-free tests, 36 controllers,
-> 454 API handlers, 180 Prisma models, 63 contextual destinations, 420 UI controls.
-> This copy has no `.git`, so every commit SHA and source fingerprint below is an
-> unverifiable note from the originating machine.
+> Current truth (2026-10-03): `productReady=false`, `humanStage20=PENDING`,
+> `currentPhase=P5 / IMPLEMENTED_RUNTIME_PENDING`. F10 source maturity is implemented
+> and its canonical status is `IMPLEMENTED_RUNTIME_PENDING`; F9 remains `PARTIAL`
+> pending live provider readiness. Current source audit reports 509 API handlers,
+> 195 Prisma models and 65 contextual destinations. This copy has no `.git`, so every
+> commit SHA and source fingerprint below remains an unverifiable note from the
+> originating machine.
 
 # Completion Docs — F1–F12 and the per-wave addenda
 

@@ -74,7 +74,7 @@ function classify(output) {
     return [
       'Koneksi ke npm registry gagal atau tidak stabil.',
       'Coba jaringan lain/hotspot, matikan VPN sementara, dan periksa proxy atau antivirus HTTPS inspection.',
-      'Jalankan diagnose-install.cmd untuk melihat registry dan konfigurasi proxy.',
+      'Jalankan `npm run diagnose:install` untuk melihat registry dan konfigurasi proxy.',
     ];
   }
   if (/unable to verify the first certificate|self[- ]signed certificate|certificate/.test(text)) {
@@ -91,8 +91,8 @@ function classify(output) {
   }
   if (/eperm|eacces|permission denied|operation not permitted/.test(text)) {
     return [
-      'Windows menolak akses ke folder atau file.',
-      'Ekstrak proyek ke folder milik pengguna, misalnya C:\\Projects\\toko360, bukan Program Files atau folder ZIP.',
+      'Sistem operasi menolak akses ke folder atau file.',
+      'Pastikan proyek berada di folder milik pengguna dan bukan dijalankan langsung dari ZIP atau direktori sistem.',
       'Tutup editor/terminal lain yang sedang memakai node_modules lalu jalankan kembali.',
     ];
   }

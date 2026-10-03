@@ -208,16 +208,20 @@ const capabilities = [
     id: 'F10',
     title: 'AI / forecasting / operator assistant',
     targetPhase: 'F10',
-    requiredModels: ['ForecastRun','ReorderSuggestion'],
-    routePrefixes: ['/forecasts'],
-    uiMarkers: ['/forecasts','Forecast','reorder','Reorder'],
+    requiredModels: ['ForecastRun','ReorderSuggestion','OperatorInsight','AssistantInteraction'],
+    routePrefixes: ['/forecasts','/operator-insights','/operator-assistant'],
+    uiMarkers: ['/forecasts','/operator-insights','/operator-assistant/query','confidence','sourceLinks','HUMAN_CONFIRMATION_REQUIRED'],
     assessment() {
-      const forecast = this.requiredModels.every((m) => models.includes(m)) && routesMatching(['/forecasts']).length > 0;
-      const forecastUi = includesAny(uiTextByApp.admin, this.uiMarkers);
-      const assistant = models.some((m) => /Ai|Assistant/i.test(m)) || includesAny(apiText + uiText, [/AI Assistant/i, /operator assistant/i]);
-      return forecast && forecastUi && !assistant ? 'PARTIAL' : forecast && assistant ? 'PARTIAL' : forecast ? 'HIDDEN' : 'MISSING';
+      const modelsReady = this.requiredModels.every((m) => models.includes(m));
+      const forecastRoutes = routesMatching(['/forecasts']).length >= 3;
+      const assistantRoutes = routesMatching(['/operator-insights','/operator-assistant']).length >= 4;
+      const uiReady = includesAny(uiTextByApp.admin, this.uiMarkers)
+        && includesAny(uiTextByApp.admin, ['DETERMINISTIC_RULE_BASED','Analisis sumber','Operator insights']);
+      const sourceLinked = includesAny(apiText + uiText, ['sourceLinks','HUMAN_CONFIRMATION_REQUIRED','confidence']);
+      return modelsReady && forecastRoutes && assistantRoutes && uiReady && sourceLinked ? 'EXPOSED'
+        : (models.includes('ForecastRun') && forecastRoutes) ? 'PARTIAL' : 'MISSING';
     },
-    gap: 'Forecast/reorder foundation ada. Operator assistant/AI explainability, permission-scoped context, anomaly insight, dan source-linked recommendation belum menjadi capability first-class.'
+    gap: 'Source implementation lengkap: explainable forecast/reorder, permission-scoped deterministic operator assistant, anomaly insights, confidence, source links, dan human-confirmation guardrail tersedia. Runtime/browser/human UAT tetap wajib sebelum closure.'
   },
   {
     id: 'F11',

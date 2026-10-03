@@ -7,16 +7,12 @@ const backlog = JSON.parse(readFileSync('config/implementation-backlog.json', 'u
 const automation = JSON.parse(readFileSync('config/work-automation.json', 'utf8'));
 const delivery = JSON.parse(readFileSync('config/module-delivery-map.json', 'utf8'));
 const policy = JSON.parse(readFileSync('config/workflow-policy.json', 'utf8'));
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
-test('one-click launchers and documentation exist', () => {
-  for (const path of [
-    'mulai-pekerjaan-otomatis.cmd',
-    'buat-work-item.cmd',
-    'lanjutkan-pekerjaan.cmd',
-    'status-pekerjaan.cmd',
-    'scripts/start-work.mjs',
-    'docs/AUTOMATED-WORK-STARTER.md',
-  ]) assert.ok(existsSync(path), `missing ${path}`);
+test('terminal work automation and documentation exist', () => {
+  for (const path of ['scripts/start-work.mjs', 'docs/AUTOMATED-WORK-STARTER.md']) assert.ok(existsSync(path), `missing ${path}`);
+  for (const script of ['work:auto', 'work:custom', 'work:resume', 'work:status']) assert.ok(pkg.scripts[script], `missing npm script ${script}`);
+  for (const path of ['mulai-pekerjaan-otomatis.cmd', 'buat-work-item.cmd', 'lanjutkan-pekerjaan.cmd', 'status-pekerjaan.cmd']) assert.equal(existsSync(path), false, `obsolete launcher still present: ${path}`);
 });
 
 test('implementation backlog is dependency-safe and mapped to delivery waves', () => {

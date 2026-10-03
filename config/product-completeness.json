@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "TOKO360 Canonical Product Completeness Matrix",
-  "updatedAt": "2026-09-26T16:00:00+08:00",
+  "updatedAt": "2026-10-03T20:00:00+08:00",
   "authoritative": true,
   "productReady": false,
   "humanStage20": "PENDING",
@@ -165,11 +165,14 @@
       "key": "forecasting",
       "title": "Moving average",
       "default": "on",
-      "sourceMaturity": "baseline",
-      "status": "FOUNDATION",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
       "operatorSurfaceRequired": true,
-      "evidence": [],
-      "notes": "Canonical post-audit status; source maturity alone cannot close this capability."
+      "evidence": [
+        "docs/F10-AI-FORECAST-ASSISTANT-COMPLETION.md",
+        "tests/f10-ai-forecast-assistant.test.mjs"
+      ],
+      "notes": "F10 source implements explainable forecast/reorder with confidence and source lineage plus a permission-scoped deterministic operator assistant and anomaly insights. Exact-source runtime/browser evidence is required before RUNTIME_VERIFIED."
     },
     {
       "id": "feature:reorder_suggestions",
@@ -177,11 +180,14 @@
       "key": "reorder_suggestions",
       "title": "Saran pembelian",
       "default": "on",
-      "sourceMaturity": "baseline",
-      "status": "FOUNDATION",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
       "operatorSurfaceRequired": true,
-      "evidence": [],
-      "notes": "Canonical post-audit status; source maturity alone cannot close this capability."
+      "evidence": [
+        "docs/F10-AI-FORECAST-ASSISTANT-COMPLETION.md",
+        "tests/f10-ai-forecast-assistant.test.mjs"
+      ],
+      "notes": "F10 source implements explainable forecast/reorder with confidence and source lineage plus a permission-scoped deterministic operator assistant and anomaly insights. Exact-source runtime/browser evidence is required before RUNTIME_VERIFIED."
     },
     {
       "id": "feature:third_party_api",
@@ -597,9 +603,13 @@
       "kind": "LEGACY_PHASE",
       "key": "F10",
       "title": "AI / forecasting / operator assistant",
-      "status": "PARTIAL",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
       "historicalSourceStatus": "SOURCE_IMPLEMENTATION_COMPLETE_UAT_DEFERRED",
-      "notes": "Historical F1-F12 source phase; canonical post-audit status comes from this matrix."
+      "notes": "F10 source implementation is complete. Runtime/browser/human UAT remains pending; this status does not claim an external LLM provider.",
+      "evidence": [
+        "docs/F10-AI-FORECAST-ASSISTANT-COMPLETION.md",
+        "tests/f10-ai-forecast-assistant.test.mjs"
+      ]
     },
     {
       "id": "phase:F11",

@@ -161,7 +161,7 @@
     "docs/P5-V4-TOTAL-PRESENTATION-REBUILD.md"
   ],
   "createdAt": "2026-09-25T18:00:00+08:00",
-  "updatedAt": "2026-09-28T02:38:00+08:00",
+  "updatedAt": "2026-10-03T20:00:00+08:00",
   "verificationGates": [
     "P2 Payroll exact-source PostgreSQL runtime: execute GROSS, GROSS_UP and NET in one effective-dated payroll period, prove actual split component/rule allocation, balanced posting, salary settlement, post-payment differential adjustment, employee-receivable recovery and recovery settlement.",
     "P2 full aggregate gate requires both handoff/quality/github-p2a-multi-uom-runtime-probe-latest.json and handoff/quality/github-p2-payroll-runtime-probe-latest.json PASS on matching source fingerprints with productionTouched=false.",
@@ -186,7 +186,7 @@
     "P5 V4.6 Admin reference-dashboard source gate requires exactly six KPI cards, six named dashboard panels (sales-performance, top-revenue-drivers, product-performance, recent-activity, stock-watchlist, quick-actions), line+donut chart identity, and complete shared semantic Admin CSS primitives.",
     "P5 V4.6 Browser gate requires the Admin default sidebar/root to be light, persisted dark-mode toggle to switch root+sidebar dark and restore light, ADMIN_REFERENCE_DASHBOARD PASS, ADMIN_THEME_LIGHT_DARK PASS, and all prior responsive/geometry/screenshot evidence.",
     "P5 V4.7 full-root source gate requires audit:ui:domain-depth PASS across Admin/POS/Storefront/Employee: required semantic CSS authority present, POS light-first, tenant/branch context visible across all four products, all seven Employee views reachable on mobile, canonical POS digital receipt exposed, no direct no-op/permanent-disabled controls, and no unexpected API-only controller.",
-    "P5 V4.7 backend/UI exposure gate permits only the explicitly documented partial capabilities F9 (external provider production readiness) and F10 (first-class operator AI/assistant not implemented); edge-sync remains the sole intentional API-only controller.",
+    "P5 backend/UI exposure gate permits only F9 as the explicitly partial capability because live external notification-provider readiness is not source-completable; F10 source is implemented and remains IMPLEMENTED_RUNTIME_PENDING until exact-source runtime/browser evidence. edge-sync remains the sole intentional API-only controller.",
     "P5 V4.7 operator boundary is one cumulative fail-closed artifact followed by real four-Next production builds and explicit Human Visual Acceptance; per-surface patch delivery is forbidden.",
     "P5 V4.8.2 React runtime integrity gate: no React hook may be registered after a loading render guard in audited frontend components; ExtensionsView must use one canonical extension snapshot loader including the loyalty customer directory, and focused regression must reproduce the hook-order boundary statically.",
     "P5 V4.8.2 dev freshness gate: all four Next workspace dev commands must route through scripts/run-next-dev-workspace.mjs, validate exact Next version, delete isolated .next/dev before startup, and force T360_NEXT_VERIFY=0 so stale presentation assets cannot masquerade as current source.",
@@ -205,7 +205,8 @@
   ],
   "decisions": [
     "P5 V4.5 generated-type authority follows official Next configuration boundaries: development uses tsconfig.json, and non-development Next phases use tsconfig.build.json selected from next.config.mjs by phase. Corrected 2026-09-29: isolatedDevBuild is no longer carried — Next.js removed the key, so it only emitted an unrecognized-config warning while isolating nothing; the isolation is carried by tsconfig.build.json excluding the dev tree.",
-    "P5 V4.5 keeps one compiler-options authority: tsconfig.build.json MUST extend ./tsconfig.json and MUST NOT override compilerOptions; it only narrows generated type inputs to production .next/types and excludes .next/dev. ignoreBuildErrors remains forbidden."
+    "P5 V4.5 keeps one compiler-options authority: tsconfig.build.json MUST extend ./tsconfig.json and MUST NOT override compilerOptions; it only narrows generated type inputs to production .next/types and excludes .next/dev. ignoreBuildErrors remains forbidden.",
+    "Pre-GitHub 2026-10-03 source hardening requires retriable order/finance create mutations to fail closed without a stable operation key; Storefront/POS must preserve the same key for same-payload retry, and payroll component/assignment reads must be cursor-paginated with bounded branch-safe lookup."
   ],
   "notes": [
     "P5 V4.5.1: T360_NEXT_VERIFY forces production tsconfig for deterministic Next typegen/build while dev keeps canonical tsconfig; real server production build still mandatory before artifact release.",
@@ -213,6 +214,7 @@
     "P5 V4.7 deep audit: 36 API controllers / 451 handlers; F2/F3/F4/F5/F6/F7/F8/F11 EXPOSED, F9/F10 PARTIAL by documented backend readiness, edge-sync intentionally API-only. Semantic presentation authority is now fail-closed across all four UIs.",
     "P5 V4.8.2 operator regression: Admin ExtensionsView changed hook count across loading renders and POS displayed stale/dark dev output despite light authored source. Root repair canonicalizes extension loading/hook order and makes fresh isolated Next dev output part of the runtime contract.",
     "P5 V4.9 staging verification on 2026-09-28: focused root-design/runtime 55/55 PASS; dependency-free 1030/1030 PASS; workflow/repository/product/Admin/canonical/P5/UI/full-repository audits PASS. Frontend API-call signatures are unchanged from V4.8.2 in all 25 API-calling frontend files; apps/api, apps/worker, packages, and database have zero source changes. Ubuntu operator is the final visual runtime authority because container Chromium simulation was abandoned after two environment-level timeouts.",
-    "P5 V4.10 runtime evidence: Employee raw-script console error and POS/Storefront cross-theme leakage were root architectural defects in V4.9. Root repair uses product-scoped keys plus Next Script bootstrap. Server evidence: focused 66/66 PASS, dependency-free 1035/1035 PASS, all source/audit gates PASS; Ubuntu real build + Human Visual Acceptance pending."
+    "P5 V4.10 runtime evidence: Employee raw-script console error and POS/Storefront cross-theme leakage were root architectural defects in V4.9. Root repair uses product-scoped keys plus Next Script bootstrap. Server evidence: focused 66/66 PASS, dependency-free 1035/1035 PASS, all source/audit gates PASS; Ubuntu real build + Human Visual Acceptance pending.",
+    "Pre-GitHub 2026-10-03 reconciliation: idempotency and payroll-pagination source gaps are closed; F10 is source-implemented / IMPLEMENTED_RUNTIME_PENDING with deterministic permission-scoped assistant and explainable forecast/reorder, while F9 remains PARTIAL pending live external provider readiness. Exact-source PostgreSQL/multi-role/browser/Human Stage-20 evidence remains mandatory before product readiness."
   ]
 }

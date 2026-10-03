@@ -3,7 +3,7 @@
 import { Search, Minus, Plus, PackageSearch, ShoppingBag, ArrowRight, Heart, CircleCheck } from 'lucide-react';
 import { StorefrontShell, type StorefrontView } from './storefront-shell';
 export type { StorefrontView } from './storefront-shell';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -40,6 +40,11 @@ async function readJsonSafe(response: Response): Promise<Record<string, unknown>
   return JSON.parse(text) as Record<string, unknown>;
 }
 const DEFAULT_BRANCH_CODE = process.env.NEXT_PUBLIC_BRANCH_CODE ?? 'PUSAT';
+
+function newCheckoutOperationKey() {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return uuid ? `storefront-order:${uuid}` : `storefront-order:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
 
 type Product = {
   id: string;
@@ -119,6 +124,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
   const [selectedSellingUnitId, setSelectedSellingUnitId] = useState('BASE');
   const [sortMode, setSortMode] = useState<'relevance' | 'name' | 'price-asc' | 'price-desc' | 'stock'>('relevance');
   const [submitting, setSubmitting] = useState(false);
+  const checkoutOperationRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [accountToken, setAccountToken] = useState('');
   const [account, setAccount] = useState<CustomerAccount | null>(null);
@@ -469,13 +475,19 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
     if (!cart.length || submitting) return;
     setSubmitting(true); notify('Membuat pesanan…');
     try {
+      const payload = { branchCode: branchCode, ...customer, customerEmail: customer.customerEmail || undefined, customerPhone: customer.customerPhone || undefined, address: fulfillmentType === 'DELIVERY' ? customer.address : undefined, fulfillmentType, customerAddressId: fulfillmentType === 'DELIVERY' && selectedAddressId ? selectedAddressId : undefined, shippingMethodCode: shippingMethodCode || undefined, promoCode: promoCode.trim() || undefined, items: cart.map((item) => ({ productId: item.product.id, quantity: item.quantity, productUnitId: item.productUnitId, variantId: item.variantId })) };
+      const fingerprint = JSON.stringify(payload);
+      const pending = checkoutOperationRef.current;
+      const idempotencyKey = pending?.fingerprint === fingerprint ? pending.key : newCheckoutOperationKey();
+      checkoutOperationRef.current = { fingerprint, key: idempotencyKey };
       const response = await fetch(`${API}/orders`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...(accountToken ? { 'x-customer-session': accountToken } : {}) },
-        body: JSON.stringify({ branchCode: branchCode, ...customer, customerEmail: customer.customerEmail || undefined, customerPhone: customer.customerPhone || undefined, address: fulfillmentType === 'DELIVERY' ? customer.address : undefined, fulfillmentType, customerAddressId: fulfillmentType === 'DELIVERY' && selectedAddressId ? selectedAddressId : undefined, shippingMethodCode: shippingMethodCode || undefined, promoCode: promoCode.trim() || undefined, items: cart.map((item) => ({ productId: item.product.id, quantity: item.quantity, productUnitId: item.productUnitId, variantId: item.variantId })) }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, ...(accountToken ? { 'x-customer-session': accountToken } : {}) },
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(apiErrorMessage(data, 'Pesanan gagal dibuat.'));
-      setOrder(data); setCart([]); setPromoCode(''); if (accountToken) await loadAccount(accountToken); notify('Pesanan berhasil dibuat dan stok sudah direservasi. Harga/promo telah divalidasi server.', 'success');
+      checkoutOperationRef.current = null; setOrder(data); setCart([]); setPromoCode(''); if (accountToken) await loadAccount(accountToken); notify('Pesanan berhasil dibuat dan stok sudah direservasi. Harga/promo telah divalidasi server.', 'success');
     } catch (error) { notify(error instanceof Error ? error.message : 'Pesanan gagal dibuat.', 'error'); }
     finally { setSubmitting(false); }
   }

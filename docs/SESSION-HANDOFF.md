@@ -1,14 +1,12 @@
-# Latest continuation — 2026-09-29 (sesi repo `test`)
+# Latest continuation — 2026-10-03 (pre-GitHub source-hardening round)
 
-Work item **T360-20260928-053000** remains **VERIFICATION**. Read [the audit](UI-BUSINESS-AUDIT-20260929.md) before older notes below.
+Work item **T360-20260925-180000** tetap **VERIFICATION** / P5 `IMPLEMENTED_RUNTIME_PENDING`. Repo kerja berasal dari ZIP Ubuntu-clean tanpa `.git`; commit SHA/source fingerprint tidak dapat diverifikasi di copy ini.
 
-Repo ini adalah salinan tanpa `.git`, jadi commit SHA dan source fingerprint di dokumen tidak bisa diverifikasi ulang di sini.
+Ditutup pada source round ini: (1) order + finance mutation idempotency sekarang fail-closed dengan stable operation key end-to-end; Storefront/POS retry mempertahankan key dan staging runner menguji replay order; (2) payroll component/assignment read menjadi cursor-paginated dengan bounded branch-safe assignment scan dan continuation UI; (3) F10 direkonsiliasi dari status stale PARTIAL menjadi `IMPLEMENTED_RUNTIME_PENDING` sesuai source F10 yang sudah memiliki explainable forecast/reorder, deterministic permission-scoped assistant, anomaly/confidence/source links/history dan human-confirmation guardrail. Tidak ada klaim external LLM.
 
-Sesi ini memulihkan file yang hilang dari `tokojo` — `.gitignore`, `.env*.example`, `.github/workflows/` (6 workflow), `.github/ci/`, `ISSUE_TEMPLATE/`, `pull_request_template.md` — yang sebelumnya membuat `validate:repo` crash `ENOENT .env.local.example` dan 20 dari 21 file test gagal. `.env` yang berisi kredensial tidak disalin. Assertion C3 di `tests/t360-full-ui-audit-remediation.test.mjs` dirombak dari mengunci bentuk pemanggilan `api<>()` ke mengunci route, dengan dua guard permission tambahan.
+Focused regression setelah perubahan: **57/57 PASS**; focused P5/F9/F10/idempotency-payroll set: **24/24 PASS**. Source/audit gates yang sudah dijalankan PASS: `workflow:validate`, `validate:repo`, F1 backend/UI audit, UI-domain-depth, product-completeness. Full dependency-free/build/runtime tidak dapat dibuktikan di copy ini karena archive tidak membawa dependency dan `npm ci` tidak dapat memulihkan paket pada environment ini; kegagalan yang terlihat berasal dari package yang tidak tersedia (`reflect-metadata`, `next`, `esbuild`, `@prisma/client`), bukan assertion source yang sudah dijalankan.
 
-Bukti dijalankan ulang di sesi ini: `test:dependency-free` 1089/1089 PASS, `validate:repo` PASS, `audit:full:repo` PASS (P5 visual, Admin contextual 63/63, product completeness, canonical ownership).
-
-Still open: backend missing-key idempotency compatibility, payroll list pagination, F9/F10 partial capability, exact-source PostgreSQL/authenticated multi-role UAT and Human Stage-20. `productReady=false`, `humanStage20=PENDING`, fase P5 IMPLEMENTED_RUNTIME_PENDING. No database prepare/reset/seed, commit or push.
+Masih terbuka dan **harus menjadi putaran UAT GitHub berikutnya**: exact-source dependency install/build, PostgreSQL/authenticated multi-role runtime, order/finance replay+concurrency, real four-Next browser matrix, F9 live provider readiness bila credential/provider tersedia, serta Human Stage-20. `productReady=false`, `humanStage20=PENDING`. Jangan melakukan fake closure untuk provider/credential eksternal dan jangan memulai POST-1/mobile sebelum P7 + Human Stage-20 + PRODUCT_READY.
 
 ---
 

@@ -72,13 +72,13 @@ export class PayrollController {
   }
 
   @Permissions('payroll.view') @Get('components')
-  listComponents(@CurrentUser() user: AuthUser) {
-    return this.payroll.listComponents(user);
+  listComponents(@CurrentUser() user: AuthUser, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+    return this.payroll.listComponents(user, limit, cursor);
   }
 
   @Permissions('payroll.view') @Get('employee-components')
-  listEmployeeComponents(@CurrentUser() user: AuthUser) {
-    return this.payroll.listEmployeeComponents(user);
+  listEmployeeComponents(@CurrentUser() user: AuthUser, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+    return this.payroll.listEmployeeComponents(user, limit, cursor);
   }
 
   @Permissions('payroll.manage') @Post('components')

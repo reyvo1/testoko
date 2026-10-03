@@ -130,7 +130,9 @@ Fingerprint ingest membutuhkan service account/API key dengan scope `attendance.
 
 ```http
 POST /api/v1/payroll/periods
+GET  /api/v1/payroll/components?limit=&cursor=
 POST /api/v1/payroll/components
+GET  /api/v1/payroll/employee-components?limit=&cursor=
 POST /api/v1/payroll/employee-components
 POST /api/v1/payroll/tax-rule-sets
 POST /api/v1/payroll/social-security-rule-sets
@@ -160,6 +162,9 @@ POST /api/v1/employee/me/notification-preferences
 ```
 
 ## Enterprise accounting, tax, assets, fleet, inspection, and returns
+
+
+`POST /api/v1/orders` dan `POST /api/v1/finance-operations` adalah retriable mutation fail-closed: klien wajib mengirim operation key stabil melalui `Idempotency-Key` atau `idempotencyKey`. Body/header bila keduanya ada harus sama; retry payload yang sama wajib memakai key yang sama.
 
 ```text
 GET/POST /api/v1/accounting-core/tax-codes

@@ -57,5 +57,6 @@ test('deep audit rejects semantic-style gaps, no-op controls and unexpected hidd
   for(const marker of ['requiredSemantic','explicit no-op click handler','permanent disabled={true}','edge-sync.controller.ts','digital receipt backend capability']) assert.match(audit,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
   const hidden=f1.controllerExposure.filter((item)=>item.exposure!=='EXPOSED_OR_PARTIAL').map((item)=>item.controller);
   assert.deepEqual(hidden,['apps/api/src/extensions/edge-sync.controller.ts']);
-  assert.deepEqual(f1.capabilities.filter((item)=>item.status==='PARTIAL').map((item)=>item.id),['F9','F10']);
+  assert.deepEqual(f1.capabilities.filter((item)=>item.status==='PARTIAL').map((item)=>item.id),['F9']);
+  assert.equal(f1.capabilities.find((item)=>item.id==='F10')?.status,'EXPOSED');
 });

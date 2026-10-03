@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { FinanceTransactionType, Prisma, TaxTransactionDirection } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
 import { AuthUser } from '../auth/auth.types';
+import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { serializableTx } from '../common/serializable-tx';
@@ -715,13 +715,26 @@ export class FinanceOperationsService {
     return toCursorPage(rows, limit, (item) => ({ transactionDate: item.transactionDate.toISOString(), id: item.id }));
   }
 
-  async create(dto: CreateFinanceTransactionDto, user: AuthUser) {
+  async create(dto: CreateFinanceTransactionDto, user: AuthUser, headerIdempotencyKey?: string) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId);
-    const idempotencyKey = dto.idempotencyKey ?? `finance:${scope.companyId}:${scope.branchId}:${randomUUID()}`;
+    const bodyIdempotencyKey = dto.idempotencyKey?.trim();
+    const headerKey = headerIdempotencyKey?.trim();
+    if (bodyIdempotencyKey && headerKey && bodyIdempotencyKey !== headerKey) {
+      throw new BadRequestException('Idempotency key pada body dan header harus sama.');
+    }
+    const idempotencyKey = bodyIdempotencyKey || headerKey;
+    if (!idempotencyKey) {
+      throw new BadRequestException('Idempotency key wajib untuk membuat transaksi keuangan. Kirim idempotencyKey atau header Idempotency-Key dan gunakan key yang sama saat retry.');
+    }
+    if (idempotencyKey.length > 200) throw new BadRequestException('Idempotency key maksimal 200 karakter.');
+    const { idempotencyKey: _bodyKey, ...idempotencyPayload } = dto;
 
     return serializableTx(this.prisma, async (tx) => {
-      const transactionDate = dto.transactionDate ? new Date(dto.transactionDate) : new Date();
+      const legacyExisting = await tx.operationalFinanceTransaction.findUnique({
+        where: { companyId_idempotencyKey: { companyId: scope.companyId, idempotencyKey } },
+      });
+      const transactionDate = dto.transactionDate ? new Date(dto.transactionDate) : legacyExisting?.transactionDate ?? new Date();
       if (Number.isNaN(transactionDate.getTime())) throw new BadRequestException('Tanggal transaksi keuangan tidak valid.');
       const expectedTaxScopes = dto.type === 'OPERATING_EXPENSE'
         ? ['EXPENSE', 'PURCHASE', 'OTHER']
@@ -737,9 +750,7 @@ export class FinanceOperationsService {
         throw new BadRequestException('Akun pajak wajib diisi ketika transaksi memiliki pajak.');
       }
 
-      const existing = await tx.operationalFinanceTransaction.findUnique({
-        where: { companyId_idempotencyKey: { companyId: scope.companyId, idempotencyKey } },
-      });
+      const existing = legacyExisting;
       if (existing) {
         if (existing.branchId !== scope.branchId) {
           await this.denyTenantAccess(tx, user, scope, 'OperationalFinanceTransaction', existing.id, {
@@ -766,6 +777,14 @@ export class FinanceOperationsService {
         }
         return existing;
       }
+
+      const gate = await beginIdempotent(tx, {
+        companyId: scope.companyId,
+        scope: `finance:${scope.companyId}:${scope.branchId}`,
+        key: idempotencyKey,
+        payload: idempotencyPayload,
+      });
+      if (gate.replay && gate.status === 'COMPLETED') return gate.response as never;
 
       if (dto.type === 'CUSTOMER_RECEIPT') {
         if (dto.referenceType !== 'Order' || !dto.referenceId) {
@@ -926,6 +945,14 @@ export class FinanceOperationsService {
           entityId: created.id,
           payload: { branchId: scope.branchId, type: created.type, number: created.number },
         },
+      });
+      await completeIdempotent(tx, {
+        companyId: scope.companyId,
+        scope: `finance:${scope.companyId}:${scope.branchId}`,
+        key: idempotencyKey,
+        resourceType: 'OperationalFinanceTransaction',
+        resourceId: created.id,
+        response: created,
       });
       return created;
     });

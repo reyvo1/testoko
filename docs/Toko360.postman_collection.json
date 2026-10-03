@@ -76,6 +76,14 @@
     {
       "key": "inspectionId",
       "value": ""
+    },
+    {
+      "key": "orderOperationKey",
+      "value": "postman-order-001"
+    },
+    {
+      "key": "financeOperationKey",
+      "value": "postman-finance-001"
     }
   ],
   "item": [
@@ -256,6 +264,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{orderOperationKey}}"
           }
         ],
         "body": {
@@ -355,6 +367,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{financeOperationKey}}",
                 "type": "text"
               }
             ],

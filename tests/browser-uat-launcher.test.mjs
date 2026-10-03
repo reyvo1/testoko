@@ -4,7 +4,6 @@ import fs from 'node:fs';
 
 const script = fs.readFileSync('scripts/browser-uat.mjs','utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-const cmd = fs.readFileSync('run-browser-uat.cmd','utf8');
 
 test('browser UAT launcher is fail-closed and uses real Chromium CDP', () => {
   assert.match(script, /remote-debugging-port/);
@@ -39,9 +38,9 @@ test('browser UAT verifies employee master through canonical people domain route
   assert.match(script, /Daftar Karyawan/);
 });
 
-test('browser UAT is exposed through npm and Windows launcher', () => {
+test('browser UAT is exposed directly through npm', () => {
   assert.equal(pkg.scripts['uat:browser'], 'node scripts/browser-uat.mjs');
-  assert.match(cmd, /browser-uat\.mjs/i);
+  assert.equal(fs.existsSync('run-browser-uat.cmd'), false);
 });
 
 

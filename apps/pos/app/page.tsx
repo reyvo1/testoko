@@ -117,11 +117,12 @@ export default function PosPage() {
   const [pickupQuote, setPickupQuote] = useState<PickupQuote | null>(null);
   const [pickupBusy, setPickupBusy] = useState(false);
   const [pickupError, setPickupError] = useState('');
+  const pickupOperationRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   async function openCollectFor(productId: string, name: string, quantity: number) {
     if (!token) return;
     setCollectFor({ productId, name, quantity });
-    setPickupQuote(null); setPickupError(''); setPickupBranch(''); setBranchStock([]); setPickupCustomer(''); setPickupPhone('');
+    setPickupQuote(null); setPickupError(''); setPickupBranch(''); setBranchStock([]); setPickupCustomer(''); setPickupPhone(''); pickupOperationRef.current = null;
     try {
       const data = await api<{ branches: CrossBranchStock[] }>(`/inventory/cross-branch-stock/${encodeURIComponent(productId)}`, undefined, token);
       setBranchStock(data.branches ?? []);
@@ -142,13 +143,20 @@ export default function PosPage() {
     if (!pickupCustomer.trim()) { setPickupError('Nama pelanggan wajib diisi untuk voucher ambil.'); return; }
     setPickupBusy(true); setPickupError('');
     try {
+      const payload = {
+        branchCode: pickupBranch, customerName: pickupCustomer.trim(), customerPhone: pickupPhone.trim() || undefined,
+        fulfillmentType: 'PICKUP' as const, items: [{ productId: collectFor.productId, quantity: collectFor.quantity }],
+      };
+      const fingerprint = JSON.stringify(payload);
+      const pending = pickupOperationRef.current;
+      const idempotencyKey = pending?.fingerprint === fingerprint ? pending.key : `pos-pickup:${crypto.randomUUID()}`;
+      pickupOperationRef.current = { fingerprint, key: idempotencyKey };
       const quote = await api<PickupQuote>('/orders', {
         method: 'POST',
-        body: JSON.stringify({
-          branchCode: pickupBranch, customerName: pickupCustomer.trim(), customerPhone: pickupPhone.trim() || undefined,
-          fulfillmentType: 'PICKUP', items: [{ productId: collectFor.productId, quantity: collectFor.quantity }],
-        }),
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(payload),
       }, token);
+      pickupOperationRef.current = null;
       setPickupQuote(quote);
     } catch (error) {
       setPickupError(error instanceof Error ? error.message : 'Gagal membuat voucher ambil di cabang lain.');

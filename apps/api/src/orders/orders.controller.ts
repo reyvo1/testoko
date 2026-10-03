@@ -38,6 +38,7 @@ import { OrdersService } from './orders.service';
 
   @Public()
   @Post()
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Wajib bila idempotencyKey tidak dikirim di body; gunakan key yang sama saat retry.' })
   create(
     @Body() dto: CreateOrderDto,
     @Headers('idempotency-key') idempotencyKey?: string,

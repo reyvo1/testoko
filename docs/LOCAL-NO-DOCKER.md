@@ -2,7 +2,7 @@
 
 ## Tujuan
 
-Semua aplikasi Toko360 dapat dikembangkan langsung di komputer biasa tanpa Docker, WSL, Hyper-V, VirtualBox, atau mesin virtual. Komputer lokal hanya menjalankan proses Node.js dan satu file database SQLite.
+Semua aplikasi Toko360 dapat dikembangkan langsung di Ubuntu/Linux tanpa Docker atau mesin virtual. Komputer lokal hanya menjalankan proses Node.js dan satu file database SQLite.
 
 ## Prasyarat
 
@@ -13,16 +13,6 @@ Semua aplikasi Toko360 dapat dikembangkan langsung di komputer biasa tanpa Docke
 
 ## Setup Satu Kali
 
-### Windows
-
-Klik dua kali:
-
-```text
-setup-local.cmd
-```
-
-### Terminal
-
 ```bash
 npm run setup
 ```
@@ -30,14 +20,6 @@ npm run setup
 Setup akan memasang dependency, memilih profil SQLite, membuat database, menjalankan seed, memvalidasi repository, dan menjalankan smoke test.
 
 ## Menjalankan Aplikasi
-
-Windows:
-
-```text
-start-local.cmd
-```
-
-Terminal:
 
 ```bash
 npm run dev
@@ -59,14 +41,6 @@ npm run db:local:studio
 
 ## Reset Database
 
-Windows:
-
-```text
-reset-local-database.cmd
-```
-
-Terminal:
-
 ```bash
 npm run db:local:reset
 ```
@@ -87,15 +61,11 @@ npm run dev -w @toko360/pos
 
 Worker memakai polling database sehingga tidak membutuhkan Redis. Redis atau message broker dapat dipasang kemudian pada staging/production sebagai adapter queue tanpa mengubah domain transaksi.
 
-## Troubleshooting Windows
+## Troubleshooting lokal
 
 ### Port dipakai aplikasi lain
 
 Ubah port pada `.env` atau hentikan program yang menggunakan port 3000, 3001, 3002, 3003, atau 4000.
-
-### PowerShell memblokir script npm
-
-Jalankan `setup-local.cmd` melalui Command Prompt, atau sesuaikan execution policy PowerShell sesuai kebijakan komputer.
 
 ### Database terkunci
 

@@ -215,8 +215,8 @@ test('C3 payroll has a reachable operator path for components and rule sets', ()
   // `read()` wrapper; both satisfy the operator path this test is about. Asserting one
   // literal call shape broke when the HR loader was migrated to `read()` even though the
   // surface was unchanged, so the contract is pinned to the route, not the helper.
-  assert.match(ui, /(api|read)<PayrollComponent\[\]>\('\/payroll\/components'/, 'the admin UI must load the component catalogue');
-  if (/read<PayrollComponent\[\]>\('\/payroll\/components'/.test(ui)) {
+  assert.match(ui, /(api|read)<(?:CursorRows<)?PayrollComponent(?:\[\]|>)>\('\/payroll\/components(?:\?limit=50)?'/, 'the admin UI must load the component catalogue');
+  if (/read<(?:CursorRows<)?PayrollComponent/.test(ui)) {
     assert.match(ui, /async function read<T>\(path: string, fallback: T\)/, 'the permission-aware read helper must exist when the catalogue is loaded through it');
     assert.match(ui, /if \(!canReadHrPath\(identity, path\)\) return fallback;/, 'the read helper must refuse a path the operator may not read instead of firing a 403');
   }
@@ -228,11 +228,12 @@ test('C3 payroll has a reachable operator path for components and rule sets', ()
 
 test('C3 employee component read stays branch scoped', () => {
   const svc = read('apps/api/src/payroll/payroll.service.ts');
-  const fn = svc.slice(svc.indexOf('async listEmployeeComponents'));
-  const body = fn.slice(0, fn.indexOf('\n  }'));
-  // EmployeePayrollComponent has no branchId, so branch scope must come from the employee set.
-  assert.match(body, /branchId: scope\.branchId/, 'the employee set used to scope assignments must be branch scoped');
-  assert.ok(!/where: \{ companyId: scope\.companyId, branchId: scope\.branchId \}/.test(body), 'EmployeePayrollComponent has no branchId column');
+  const fn = svc.slice(svc.indexOf('async listEmployeeComponents'), svc.indexOf('async createComponent'));
+  // EmployeePayrollComponent has no branchId, so branch scope must come from bounded employee lookups
+  // for only the assignment candidates on the current cursor page.
+  assert.match(fn, /employeePayrollComponent\.findMany[\s\S]*take: scanTake/, 'assignment candidates must be read in bounded chunks');
+  assert.match(fn, /id: \{ in: employeeIds \}[\s\S]*branchId: scope\.branchId/, 'candidate employee IDs must be filtered to the authenticated branch');
+  assert.ok(!/employee\.findMany\(\{\s*where: \{ companyId: scope\.companyId, branchId: scope\.branchId, isActive: true \},\s*select: \{ id: true \}/.test(fn), 'the endpoint must not load every active branch employee before pagination');
 });
 
 test('S2 reporting: a single failing endpoint no longer blanks the whole workspace', () => {

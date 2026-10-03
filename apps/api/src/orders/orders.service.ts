@@ -137,7 +137,16 @@ export class OrdersService {
 
   async create(dto: CreateOrderDto, headerIdempotencyKey?: string, customerSessionToken?: string) {
     if (!dto.items.length) throw new BadRequestException('Pesanan harus memiliki barang.');
-    const idemKey = dto.idempotencyKey ?? headerIdempotencyKey;
+    const bodyIdempotencyKey = dto.idempotencyKey?.trim();
+    const headerKey = headerIdempotencyKey?.trim();
+    if (bodyIdempotencyKey && headerKey && bodyIdempotencyKey !== headerKey) {
+      throw new BadRequestException('Idempotency key pada body dan header harus sama.');
+    }
+    const idemKey = bodyIdempotencyKey || headerKey;
+    if (!idemKey) {
+      throw new BadRequestException('Idempotency key wajib untuk checkout. Kirim idempotencyKey atau header Idempotency-Key dan gunakan key yang sama saat retry.');
+    }
+    if (idemKey.length > 200) throw new BadRequestException('Idempotency key maksimal 200 karakter.');
     const branchCode = this.normalizeBranchCode(dto.branchCode);
     const customerIdentity = customerSessionToken
       ? await this.storefrontCustomers.authenticate(branchCode, customerSessionToken)
@@ -152,12 +161,10 @@ export class OrdersService {
       if (customerIdentity && (customerIdentity.companyId !== branch.companyId || customerIdentity.branchId !== branch.id)) {
         throw new ForbiddenException('Sesi pelanggan tidak berlaku pada cabang storefront ini.');
       }
-      const scopeKey: string | null = idemKey ? `order:create:${branch.id}:${customerIdentity?.customerId ?? 'guest'}` : null;
-      if (scopeKey) {
-
-        const gate = await beginIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey!, payload: dto });
-        if (gate.replay && gate.status === 'COMPLETED') return gate.response as never;
-      }
+      const scopeKey = `order:create:${branch.id}:${customerIdentity?.customerId ?? 'guest'}`;
+      const { idempotencyKey: _bodyKey, ...idempotencyPayload } = dto;
+      const gate = await beginIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey, payload: idempotencyPayload });
+      if (gate.replay && gate.status === 'COMPLETED') return gate.response as never;
 
       const warehouse = dto.warehouseId
         ? await tx.warehouse.findFirst({
@@ -429,7 +436,7 @@ export class OrdersService {
         include: { items: { include: { product: true } }, payments: true },
       });
       const publicResult = this.withAccessToken(result);
-      if (scopeKey) await completeIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey!, resourceType: 'Order', resourceId: order.id, response: publicResult });
+      await completeIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey, resourceType: 'Order', resourceId: order.id, response: publicResult });
       return publicResult;
     });
   }

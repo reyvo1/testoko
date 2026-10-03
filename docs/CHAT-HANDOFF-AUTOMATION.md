@@ -23,13 +23,20 @@ Jangan mengedit salinan. Edit hanya file canonical, lalu jalankan `npm run chat:
 
 ## Pindah akun atau chat
 
-Klik:
+Untuk chat baru pada akun yang sama:
 
-```text
-pindah-akun-atau-chat.cmd
+```bash
+npm run chat:handoff
 ```
 
-Alur satu tombol:
+Untuk akun baru, salin instruksi sistem lebih dulu lalu buat handoff:
+
+```bash
+npm run chat:system
+npm run chat:handoff
+```
+
+Alur canonical:
 
 1. memastikan tidak ada perubahan tracked atau staged yang belum di-commit;
 2. membuat ZIP otomatis dari `git archive HEAD` pada `handoff/generated/`;
@@ -37,23 +44,16 @@ Alur satu tombol:
 4. membaca checkpoint, version, Git, database profile, work item, backlog, dan quality gate;
 5. menyalin instruksi sistem ke clipboard untuk akun baru;
 6. menyalin chat pertama ke clipboard;
-7. menyorot ZIP yang benar di File Explorer dan membuka ChatGPT;
+7. membuka lokasi ZIP/checkpoint dan ChatGPT sesuai kemampuan desktop;
 8. pengguna mengunggah ZIP yang disorot, menekan `Ctrl+V`, lalu mengirim keduanya.
 
-Untuk akun yang instruksi sistemnya sudah terpasang, gunakan:
+Perintah terkait:
 
-```text
-pindah-chat-saja.cmd
-```
-
-Alternatif:
-
-```text
-salin-system-instructions.cmd
-buat-chat-pertama.cmd
+```bash
 npm run chat:generate
 npm run chat:system
 npm run chat:first
+npm run chat:checkpoint
 ```
 
 ## Isi dinamis
@@ -74,16 +74,10 @@ Generator menyertakan progres aktual dari handoff dan checklist, tetapi menyenso
 
 ## Integrasi workflow
 
-Paket chat diperbarui otomatis setelah:
-
-- setup lokal berhasil;
-- membuat pekerjaan otomatis;
-- melanjutkan pekerjaan;
-- melihat status pekerjaan;
-- menjalankan quality gate melalui file `.cmd`.
+Paket chat diperbarui secara eksplisit dengan `npm run chat:generate` atau saat `npm run chat:handoff` dijalankan. Workflow pekerjaan dan quality gate tidak bergantung pada launcher OS.
 
 Output dinamis dan ZIP checkpoint diabaikan Git agar tidak membuat working tree kotor. ZIP hanya berisi source yang sudah tercatat pada commit `HEAD`; perubahan tracked atau staged yang belum di-commit tidak ikut dibawa dan akan memblokir launcher. File untracked seperti ZIP transfer lama, source sementara, atau installer tidak masuk `git archive HEAD`, sehingga tidak menghalangi pembuatan checkpoint.
 
 ## Batas otomatisasi
 
-Aplikasi tidak dapat mengetahui bahwa pengguna membuka akun/chat baru pada platform eksternal. Karena itu perpindahan dipicu dengan file `.cmd`. Setelah dipicu, pembentukan konteks dan penyalinan clipboard berjalan otomatis.
+Aplikasi tidak dapat mengetahui bahwa pengguna membuka akun/chat baru pada platform eksternal. Karena itu perpindahan tetap dipicu secara eksplisit melalui perintah npm; pembentukan checkpoint dan konteks tetap source-bound dan fail-closed.

@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, type AttendanceRecord, type Employee, type EmployeeSocialSecurityProfile, type EmployeeTaxProfile, type SocialSecurityRuleSet, type TaxRuleSet } from '@prisma/client';
+import { Prisma, type AttendanceRecord, type Employee, type EmployeePayrollComponent, type EmployeeSocialSecurityProfile, type EmployeeTaxProfile, type SocialSecurityRuleSet, type TaxRuleSet } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
 import { AuthUser } from '../auth/auth.types';
 import { nextDocumentNumber } from '../common/numbering';
+import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { serializableTx } from '../common/serializable-tx';
 import { PrismaService } from '../prisma/prisma.service';
 import { evaluatePayrollFormula } from './payroll-formula';
@@ -218,26 +219,69 @@ export class PayrollService {
   // Operator surfaces: a component can only be assigned from the UI if the operator can
   // first read the catalogue and the employee's existing assignments. These were the only
   // missing read paths that made POST /payroll/components unreachable end to end.
-  async listComponents(user: AuthUser) {
+  async listComponents(user: AuthUser, limitValue?: string, cursorValue?: string) {
     const scope = this.requireTenantScope(user);
-    return this.prisma.payrollComponentDefinition.findMany({
-      where: { companyId: scope.companyId },
-      orderBy: [{ code: 'asc' }],
+    const limit = parsePageLimit(limitValue);
+    const cursor = decodeCursor<{ code: string; id: string }>(cursorValue);
+    const rows = await this.prisma.payrollComponentDefinition.findMany({
+      where: {
+        companyId: scope.companyId,
+        ...(cursor ? { OR: [{ code: { gt: cursor.code } }, { code: cursor.code, id: { gt: cursor.id } }] } : {}),
+      },
+      orderBy: [{ code: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
     });
+    return toCursorPage(rows, limit, (item) => ({ code: item.code, id: item.id }));
   }
 
-  async listEmployeeComponents(user: AuthUser) {
+  async listEmployeeComponents(user: AuthUser, limitValue?: string, cursorValue?: string) {
     const scope = this.requireTenantScope(user);
+    const limit = parsePageLimit(limitValue);
+    const cursor = decodeCursor<{ effectiveFrom: string; id: string }>(cursorValue);
+    const parsedCursorDate = cursor ? new Date(cursor.effectiveFrom) : undefined;
+    if (parsedCursorDate && Number.isNaN(parsedCursorDate.getTime())) throw new BadRequestException('cursor tidak valid.');
+
     // EmployeePayrollComponent carries companyId but not branchId and has no employee
-    // relation in Prisma, so branch scope is resolved first from the active employee set.
-    const employees = await this.prisma.employee.findMany({
-      where: { companyId: scope.companyId, branchId: scope.branchId, isActive: true },
-      select: { id: true },
-    });
-    return this.prisma.employeePayrollComponent.findMany({
-      where: { companyId: scope.companyId, employeeId: { in: employees.map((row) => row.id) } },
-      orderBy: [{ effectiveFrom: 'desc' }],
-    });
+    // relation in Prisma. Scan assignments in bounded chunks, then branch-filter only the
+    // employee IDs present in each chunk. This preserves tenant scope without loading every
+    // active employee or every assignment into memory.
+    const collected: EmployeePayrollComponent[] = [];
+    const scanTake = Math.min(Math.max((limit + 1) * 2, 50), 200);
+    let scanCursor = parsedCursorDate && cursor ? { effectiveFrom: parsedCursorDate, id: cursor.id } : undefined;
+
+    while (collected.length <= limit) {
+      const candidates = await this.prisma.employeePayrollComponent.findMany({
+        where: {
+          companyId: scope.companyId,
+          ...(scanCursor ? {
+            OR: [
+              { effectiveFrom: { lt: scanCursor.effectiveFrom } },
+              { effectiveFrom: scanCursor.effectiveFrom, id: { lt: scanCursor.id } },
+            ],
+          } : {}),
+        },
+        orderBy: [{ effectiveFrom: 'desc' }, { id: 'desc' }],
+        take: scanTake,
+      });
+      if (!candidates.length) break;
+
+      const employeeIds = [...new Set(candidates.map((row) => row.employeeId))];
+      const branchEmployees = await this.prisma.employee.findMany({
+        where: { id: { in: employeeIds }, companyId: scope.companyId, branchId: scope.branchId, isActive: true },
+        select: { id: true },
+      });
+      const allowedEmployeeIds = new Set(branchEmployees.map((row) => row.id));
+      for (const candidate of candidates) {
+        if (allowedEmployeeIds.has(candidate.employeeId)) collected.push(candidate);
+        if (collected.length > limit) break;
+      }
+      if (collected.length > limit || candidates.length < scanTake) break;
+      const tail = candidates.at(-1);
+      if (!tail) break;
+      scanCursor = { effectiveFrom: tail.effectiveFrom, id: tail.id };
+    }
+
+    return toCursorPage(collected, limit, (item) => ({ effectiveFrom: item.effectiveFrom.toISOString(), id: item.id }));
   }
 
   async createComponent(dto: CreatePayrollComponentDto, user: AuthUser) {

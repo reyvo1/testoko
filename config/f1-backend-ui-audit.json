@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-29T17:04:04.166Z",
+  "generatedAt": "2026-10-03T12:04:02.332Z",
   "source": {
     "prismaSchema": "apps/api/prisma/schema.prisma",
-    "controllerCount": 42,
-    "routeCount": 507,
+    "controllerCount": 43,
+    "routeCount": 509,
     "prismaModelCount": 195,
     "uiApps": [
       "admin",
@@ -122,7 +122,8 @@
         "GET /inventory/warehouses"
       ],
       "uiApps": [
-        "admin"
+        "admin",
+        "pos"
       ],
       "gap": "Batch, serial, location, transfer, opname sudah kuat. Condition bucket general seperti AVAILABLE/DAMAGED/QUARANTINE/LOST belum terlihat sebagai inventory condition ledger first-class."
     },
@@ -419,25 +420,34 @@
       "id": "F10",
       "title": "AI / forecasting / operator assistant",
       "targetPhase": "F10",
-      "status": "PARTIAL",
+      "status": "EXPOSED",
       "requiredModels": [
         "ForecastRun",
-        "ReorderSuggestion"
+        "ReorderSuggestion",
+        "OperatorInsight",
+        "AssistantInteraction"
       ],
       "presentModels": [
         "ForecastRun",
-        "ReorderSuggestion"
+        "ReorderSuggestion",
+        "OperatorInsight",
+        "AssistantInteraction"
       ],
-      "backendRouteCount": 3,
+      "backendRouteCount": 8,
       "backendRoutes": [
         "GET /forecasts",
         "POST /forecasts/run",
-        "GET /forecasts/:id"
+        "GET /forecasts/:id",
+        "GET /operator-insights",
+        "POST /operator-insights/refresh",
+        "PATCH /operator-insights/:id/status",
+        "GET /operator-assistant/history",
+        "POST /operator-assistant/query"
       ],
       "uiApps": [
         "admin"
       ],
-      "gap": "Forecast/reorder foundation ada. Operator assistant/AI explainability, permission-scoped context, anomaly insight, dan source-linked recommendation belum menjadi capability first-class."
+      "gap": "Source implementation lengkap: explainable forecast/reorder, permission-scoped deterministic operator assistant, anomaly insights, confidence, source links, dan human-confirmation guardrail tersedia. Runtime/browser/human UAT tetap wajib sebelum closure."
     },
     {
       "id": "F11",
@@ -576,7 +586,7 @@
     },
     {
       "controller": "apps/api/src/branch-continuity/branch-continuity.controller.ts",
-      "routeCount": 14,
+      "routeCount": 15,
       "uiApps": [
         "admin"
       ],
@@ -671,6 +681,14 @@
       "exposure": "EXPOSED_OR_PARTIAL"
     },
     {
+      "controller": "apps/api/src/kiosk/kiosk.controller.ts",
+      "routeCount": 1,
+      "uiApps": [
+        "pos"
+      ],
+      "exposure": "EXPOSED_OR_PARTIAL"
+    },
+    {
       "controller": "apps/api/src/master-data/master-data.controller.ts",
       "routeCount": 30,
       "uiApps": [
@@ -682,7 +700,8 @@
       "controller": "apps/api/src/mobile-ops/mobile-ops.controller.ts",
       "routeCount": 10,
       "uiApps": [
-        "admin"
+        "admin",
+        "pos"
       ],
       "exposure": "EXPOSED_OR_PARTIAL"
     },
@@ -843,6 +862,7 @@
       "controller": "apps/api/src/supervisor-approval/supervisor-approval.controller.ts",
       "routeCount": 3,
       "uiApps": [
+        "admin",
         "pos"
       ],
       "exposure": "EXPOSED_OR_PARTIAL"

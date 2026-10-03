@@ -58,14 +58,14 @@ test('checkpoint generator allows unrelated untracked transfer files', () => {
   assert.ok(existsSync(metadata.absolutePath));
 });
 
-test('Windows launchers create archive before copying and opening chat', () => {
-  const chat = readFileSync('pindah-chat-saja.cmd', 'utf8');
-  const account = readFileSync('pindah-akun-atau-chat.cmd', 'utf8');
-  for (const content of [chat, account]) {
-    assert.match(content, /create-chat-checkpoint\.mjs create/i);
-    assert.match(content, /generate-chat-context\.mjs first --no-open/i);
-    assert.match(content, /create-chat-checkpoint\.mjs open/i);
-  }
+test('npm chat handoff creates archive before generating and opening the new-chat context', () => {
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const command = pkg.scripts['chat:handoff'];
+  assert.match(command, /create-chat-checkpoint\.mjs create/);
+  assert.match(command, /generate-chat-context\.mjs first --no-open/);
+  assert.match(command, /create-chat-checkpoint\.mjs open/);
+  assert.ok(command.indexOf(' create') < command.indexOf(' first --no-open'));
+  assert.ok(command.indexOf(' first --no-open') < command.lastIndexOf(' open'));
 });
 
 test('generated first chat includes exact checkpoint artifact fields', () => {

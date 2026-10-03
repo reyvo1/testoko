@@ -133,5 +133,5 @@ Real Windows startup progressed past dependency install, SQLite generation/push,
 - `PayrollPayment.settlementAccountCode` and `accountingEventId` are aligned across canonical/SQLite/PostgreSQL schemas;
 - offline receipt payload uses an explicit strict-TypeScript Prisma JSON cast.
 
-The existing Windows checkout must regenerate Prisma Client and run SQLite `db push` before rebuilding the API. `apply-local-api-compile-fix.cmd` automates the focused regression → Prisma generate → non-destructive SQLite push → API build sequence without reinstalling dependencies. The added payroll fields are nullable; no local database reset is required. Focused regression is **7/7 PASS** and full dependency-free regression is **350/350 PASS**. Real corrected API build remains a user-local runtime gate.
+The existing checkout must regenerate Prisma Client and run SQLite `db push` before rebuilding the API. Jalur canonical sekarang adalah `node --test tests/api-local-compile-regression.test.mjs && npm run db:local:generate && npm run db:local:push && npm run build -w @toko360/api`, tanpa reinstall dependency. The added payroll fields are nullable; no local database reset is required. Focused regression is **7/7 PASS** and full dependency-free regression is **350/350 PASS**. Real corrected API build remains a user-local runtime gate.
 

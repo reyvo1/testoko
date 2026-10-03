@@ -15,7 +15,7 @@ const required = [
   'CONTRIBUTING.md', 'docs/DEVELOPMENT-WORKFLOW.md', 'docs/IMPLEMENTATION-ROADMAP.md', 'docs/AUTOMATED-WORK-STARTER.md', 'docs/QUALITY-GATES.md', 'docs/PROJECT-CHECKPOINTS.md', 'docs/GITHUB-SETUP.md', 'docs/PROJECT-STATE.md', 'docs/SESSION-HANDOFF.md', 'docs/adr/README.md',
   'config/workflow-policy.json', 'config/module-delivery-map.json', 'config/implementation-backlog.json', 'config/work-automation.json', 'work-items/README.md', 'scripts/workflow.mjs', 'scripts/start-work.mjs', 'scripts/validate-pr-policy.mjs',
   '.github/workflows/workflow-governance.yml', '.github/workflows/release-candidate.yml', '.github/ISSUE_TEMPLATE/bug.yml', '.github/ISSUE_TEMPLATE/database-change.yml', '.github/ISSUE_TEMPLATE/integration.yml', '.github/ISSUE_TEMPLATE/release.yml',
-  '.env.local.example', '.env.postgres.example', 'setup-local.cmd', 'start-local.cmd', 'buat-work-item.cmd', 'mulai-pekerjaan-otomatis.cmd', 'lanjutkan-pekerjaan.cmd', 'status-pekerjaan.cmd', 'cek-workflow.cmd', 'quality-fast.cmd', 'quality-full.cmd',
+  '.env.local.example', '.env.postgres.example', 'scripts/setup-local.mjs', 'scripts/reset-local-db.mjs', 'scripts/run-quality-gate.mjs', 'scripts/generate-chat-context.mjs', 'scripts/create-chat-checkpoint.mjs',
   'apps/api/prisma/schema.prisma', 'apps/api/prisma/schema.sqlite.prisma', 'apps/api/prisma/schema.postgresql.prisma',
   'apps/api/src/app.module.ts', 'apps/employee-portal/app/page.tsx', 'packages/plugin-sdk/src/index.ts', '.github/workflows/ci.yml',
 ];

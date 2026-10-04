@@ -134,7 +134,7 @@ test('every transfer route is permission gated and none is a public peer route',
   // Acknowledging that goods arrived is tenant administration. A branch that could acknowledge
   // another's stock would make the transfer ledger meaningless.
   //
-  // The permission is integration.manage, not inventory.manage, and that is deliberate: the panel
+  // The permission is integration.manage, not inventory.transfer, and that is deliberate: the panel
   // lives in the settings workspace, whose gate grants integration.manage. Widening the settings gate
   // instead would hand every settings operator inventory write access product-wide. The wider
   // permission buys visibility and an audited status change only — the service contains no inventory

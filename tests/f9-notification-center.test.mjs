@@ -15,6 +15,9 @@ test('F9 provider configuration is tenant scoped and secrets stay redacted', () 
   assert.match(service, /rows\.map\(\(\{ encryptedSecrets, \.\.\.row \}\) => \(\{ \.\.\.row, hasSecrets: Boolean\(encryptedSecrets\) \}\)\)/);
   assert.match(controller, /@Get\('notifications\/providers'\)/);
   assert.match(admin, /platform\/integrations/);
+  assert.match(platformController, /@Roles\('SUPER_ADMIN','OWNER','ADMIN'\) @Permissions\('integration\.manage'\) @Post\('integrations'\)/);
+  assert.match(platformController, /@Roles\('SUPER_ADMIN','OWNER','ADMIN'\) @Permissions\('integration\.manage'\) @Patch\('integrations\/:id'\)/);
+  assert.match(admin, /const canManageIntegrations = hasAnyRole\('SUPER_ADMIN', 'OWNER', 'ADMIN'\) && canAll\('integration\.manage'\)/);
   assert.match(admin, /encryptedSecrets: JSON\.stringify\(\{ token:/);
   assert.doesNotMatch(admin, /setProviders\([^)]*encryptedSecrets/);
 });

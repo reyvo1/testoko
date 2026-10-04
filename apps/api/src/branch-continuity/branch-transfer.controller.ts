@@ -12,14 +12,14 @@ import { AbandonBranchTransferDto, AcknowledgeTransferArrivalDto } from './dto/b
 // a branch that could acknowledge another's stock would make the transfer ledger meaningless.
 //
 // Permission note, recorded because it is a real trade-off rather than a detail. These routes are
-// gated on `integration.manage`, not `inventory.manage`, because the operator surface lives in the
+// gated on `integration.manage`, not `inventory.transfer`, because the operator surface lives in the
 // settings workspace whose gate grants `integration.manage`. The alternative — widening the settings
-// gate to `inventory.manage` — would hand every settings operator inventory write access across the
+// gate to `inventory.transfer` — would hand every settings operator inventory write access across the
 // whole product, which is far worse.
 //
 // What `integration.manage` can and cannot do here: it can see and record the acknowledgement, and
 // abandon a leg with a reason. It still CANNOT move stock. Posting inventory stays behind
-// receiveTransfer under `inventory.manage`, and the service contains no inventory write at all — a
+// receiveTransfer under `inventory.transfer`, and the service contains no inventory write at all — a
 // test asserts that. So the wider permission buys visibility and an audited status change, not a
 // posting.
 @ApiTags('branch-transfer')

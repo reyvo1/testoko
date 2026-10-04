@@ -60,7 +60,8 @@ test('loyalty program can be created, and every numeric field is coerced', () =>
   assert.match(extensionsDto, /class CreateLoyaltyProgramDto[\s\S]*earnRate\?: number;[\s\S]*redemptionRate\?: number;[\s\S]*minimumRedeem\?: number;[\s\S]*pointsExpireDays\?: number;/);
   // @Permissions('loyalty.manage') AND @Roles(SUPER_ADMIN, OWNER, ADMIN). The two guards throw
   // independently, so the control needs the permission AND the role, not the permission alone.
-  assert.match(admin.extensions, /disabled=\{busy \|\| !canAll\('loyalty\.manage'\)\}/);
+  assert.match(admin.extensions, /const canManageLoyaltyPrograms = hasAnyRole\('SUPER_ADMIN', 'OWNER', 'ADMIN'\) && canAll\('loyalty\.manage'\)/);
+  assert.match(admin.extensions, /\{canManageLoyaltyPrograms && <button disabled=\{busy\}>Tambah program<\/button>\}/);
 });
 
 test('shipment can be created, and recipient is the object shape the trip manifest reads back', () => {
@@ -103,6 +104,15 @@ test('storefront contact profile can be edited, and the payload is the whitelist
   // the pre-edit values even after a successful PATCH.
   assert.match(body, /await loadAccount\(accountToken\)/);
   assert.match(storefrontDto, /class UpdateStorefrontProfileDto[\s\S]*name\?: string;[\s\S]*email\?: string;[\s\S]*phone\?: string;[\s\S]*address\?: string;/);
+});
+
+test('commerce lifecycle controls mirror backend role+permission guards and refresh auth canonically', () => {
+  assert.match(admin.extensions, /const canManagePayments = hasAnyRole\('SUPER_ADMIN', 'OWNER', 'ADMIN', 'FINANCE'\) && canAll\('payment\.manage'\)/);
+  assert.match(admin.extensions, /const canManageShipments = hasAnyRole\('SUPER_ADMIN', 'OWNER', 'ADMIN', 'WAREHOUSE'\) && canAll\('shipment\.manage'\)/);
+  assert.match(admin.extensions, /const canCancelOrders = hasAnyRole\('SUPER_ADMIN', 'OWNER', 'ADMIN', 'WAREHOUSE', 'FINANCE'\) && canAll\('order\.cancel'\)/);
+  const action = admin.extensions.slice(admin.extensions.indexOf('async function orderAction'), admin.extensions.indexOf('const extensionMode'));
+  assert.match(action, /authFetch\(`\$\{API\}\/orders\/\$\{order\.id\}\/\$\{action\}`, token,/);
+  assert.doesNotMatch(action, /fetch\(/, 'order lifecycle actions must use authFetch so refresh-token recovery stays consistent');
 });
 
 test('the seven forms stay wired to their route, so a rename cannot silently orphan one', () => {

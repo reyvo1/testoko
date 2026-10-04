@@ -180,7 +180,7 @@ export class TelegramCommandService {
   private async lookup(platformUserId: string, args: string[]): Promise<CommandResult> {
     const code = args[0];
     if (!code) return { ok: false, reply: 'Gunakan: /stok <barcode|sku>' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     const user = this.asUser(identity);
     const product = await this.mobileOps.findProductForLookup(user, code);
     if (!product) return { ok: false, reply: `Produk ${code} tidak ditemukan atau tidak aktif.` };
@@ -197,7 +197,7 @@ export class TelegramCommandService {
   private async openDraft(platformUserId: string, args: string[]): Promise<CommandResult> {
     const [deviceId, warehouseId, locationId, opnameId] = args;
     if (!deviceId || !warehouseId) return { ok: false, reply: 'Gunakan: /buka <perangkat> <gudang> [lokasi] [opnameId]' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     const draft = await this.mobileOps.openDraft(this.asUser(identity), { deviceId, warehouseId, locationId, opnameId });
     return {
       ok: true,
@@ -211,7 +211,7 @@ export class TelegramCommandService {
     if (!draftId || !code || !quantity) return { ok: false, reply: 'Gunakan: /scan <draftId> <barcode|sku> <jumlah>' };
     const count = Number(quantity);
     if (!Number.isFinite(count)) return { ok: false, reply: 'Jumlah harus berupa angka.' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     const saved = await this.mobileOps.addScan(this.asUser(identity), draftId, { barcode: code, quantity: count });
     return { ok: true, reply: `Tercatat. Draft ${saved.id}: ${saved.lineCount} baris, ${saved.totalUnits} unit.` };
   }
@@ -219,7 +219,7 @@ export class TelegramCommandService {
   private async discrepancy(platformUserId: string, args: string[]): Promise<CommandResult> {
     const [draftId] = args;
     if (!draftId) return { ok: false, reply: 'Gunakan: /selisih <draftId>' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     const review = await this.mobileOps.reviewDiscrepancy(this.asUser(identity), draftId);
     // Field names come from reviewDiscrepancy itself (counted/system/difference, not quantity/systemQty):
     // a guess here would render "undefined" into a chat and still look like a working feature.
@@ -239,7 +239,7 @@ export class TelegramCommandService {
   private async submit(platformUserId: string, args: string[]): Promise<CommandResult> {
     const [draftId, opnameId] = args;
     if (!draftId || !opnameId) return { ok: false, reply: 'Gunakan: /kirim <draftId> <opnameId>' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     const result = await this.mobileOps.submitDraft(this.asUser(identity), draftId, opnameId);
     return {
       ok: true,
@@ -253,7 +253,7 @@ export class TelegramCommandService {
     if (!draftId) return { ok: false, reply: 'Gunakan: /batal <draftId> <alasan>' };
     const reason = reasonParts.join(' ').trim();
     if (!reason) return { ok: false, reply: 'Alasan pembatalan wajib diisi.' };
-    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.manage');
+    const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
     await this.mobileOps.discardDraft(this.asUser(identity), draftId, reason);
     return { ok: true, reply: `Draft ${draftId} dibatalkan.` };
   }

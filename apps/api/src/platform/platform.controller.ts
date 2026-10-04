@@ -49,8 +49,8 @@ import { PlatformService } from './platform.service';
   @Permissions('custom_field.manage') @Post('custom-field-values') setCustomFieldValue(@Body() dto: SetCustomFieldValueDto, @CurrentUser() user: AuthUser) { return this.platform.setCustomFieldValue(dto, user); }
 
   @Get('integrations') integrations(@CurrentUser() user: AuthUser, @Query('companyId') companyId?: string) { return this.platform.listIntegrations(user, companyId); }
-  @Roles('SUPER_ADMIN','OWNER','ADMIN') @Post('integrations') createIntegration(@Body() dto: CreateIntegrationDto, @CurrentUser() user: AuthUser) { return this.platform.createIntegration(dto, user); }
-  @Roles('SUPER_ADMIN','OWNER','ADMIN') @Patch('integrations/:id') updateIntegration(@Param('id') id: string, @Body() dto: UpdateIntegrationDto, @CurrentUser() user: AuthUser) { return this.platform.updateIntegration(id, dto, user); }
+  @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('integration.manage') @Post('integrations') createIntegration(@Body() dto: CreateIntegrationDto, @CurrentUser() user: AuthUser) { return this.platform.createIntegration(dto, user); }
+  @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('integration.manage') @Patch('integrations/:id') updateIntegration(@Param('id') id: string, @Body() dto: UpdateIntegrationDto, @CurrentUser() user: AuthUser) { return this.platform.updateIntegration(id, dto, user); }
 
   @Permissions('webhook.manage') @Get('webhooks') webhooks(@CurrentUser() user: AuthUser, @Query('companyId') companyId?: string) { return this.platform.listWebhooks(user, companyId); }
   @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('webhook.manage') @Post('webhooks') createWebhook(@Body() dto: CreateWebhookDto, @CurrentUser() user: AuthUser) { return this.platform.createWebhook(dto, user); }

@@ -45,7 +45,7 @@ function seed() {
     .run('u-1', 'br-1', 'staf@acme.test', 'Staf Gudang', 'x', 1, now(), now());
   c.prepare('INSERT INTO Role (id, name) VALUES (?,?)').run('r-1', 'WAREHOUSE_STAFF');
   c.prepare('INSERT INTO UserRole (userId, roleId) VALUES (?,?)').run('u-1', 'r-1');
-  c.prepare('INSERT INTO Permission (id, code) VALUES (?,?)').run('p-1', 'inventory.manage');
+  c.prepare('INSERT INTO Permission (id, code) VALUES (?,?)').run('p-1', 'inventory.opname');
   c.prepare('INSERT INTO RolePermission (roleId, permissionId) VALUES (?,?)').run('r-1', 'p-1');
   c.prepare("INSERT INTO Employee (id, companyId, branchId, userId, employeeNumber, fullName, employmentStatus, hireDate, timezone, workLocationType, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
     .run('e-1', 'acme', 'br-1', 'u-1', 'EMP-1', 'Staf Gudang', 'ACTIVE', now(), 'Asia/Makassar', 'WAREHOUSE', 1, now(), now());
@@ -89,11 +89,11 @@ test('NEGATIVE CONTROL: the binding-row shortcut would grant a permission the em
   assert.ok(!cols.includes('branchId'), 'the binding must not carry a branch — branch comes from the employee');
   assert.ok(!cols.includes('permissions'), 'the binding must not carry permissions — they come from the role join');
   // And the shortcut, given the claim, would indeed have granted it.
-  const shortcut = bypassResolve('tg-999', { branchId: 'br-other', permissions: ['inventory.manage', 'user.manage'] });
+  const shortcut = bypassResolve('tg-999', { branchId: 'br-other', permissions: ['inventory.opname', 'user.manage'] });
   assert.equal(shortcut.permissions.length, 2, 'the shortcut grants whatever it is told — which is why it is forbidden');
   // The real path grants only what the role join actually says.
   const real = resolve('tg-999');
-  assert.deepEqual(real.permissions, ['inventory.manage'], 'the real path resolves through UserRole/RolePermission');
+  assert.deepEqual(real.permissions, ['inventory.opname'], 'the real path resolves through UserRole/RolePermission');
   assert.equal(real.branchId, 'br-1', 'the real path takes branch from the employee');
 });
 
@@ -106,7 +106,7 @@ test('a bound identity resolves to the employee permissions and branch', () => {
   assert.equal(identity.companyId, 'acme');
   assert.equal(identity.branchId, 'br-1');
   assert.deepEqual(identity.roles, ['WAREHOUSE_STAFF']);
-  assert.deepEqual(identity.permissions, ['inventory.manage']);
+  assert.deepEqual(identity.permissions, ['inventory.opname']);
 });
 
 test('an unknown platform id resolves to nothing', () => {
@@ -142,12 +142,12 @@ test('a disabled account behind a live employee resolves to no identity at all',
   assert.ok(identity !== null, 'the binding and employment are both still live, so an identity object is returned');
   assert.deepEqual(identity.permissions, [], 'a suspended account carries no permission');
   assert.deepEqual(identity.roles, [], 'and no role');
-  assert.equal(identity.permissions.includes('inventory.manage'), false, 'the inventory permission is gone with the account');
+  assert.equal(identity.permissions.includes('inventory.opname'), false, 'the inventory permission is gone with the account');
   // The permission is genuinely present before suspension, so the empty list is a consequence and not
   // a fixture that never had the permission in the first place.
   conn().prepare('UPDATE User SET isActive=1 WHERE id=?').run('u-1');
-  assert.deepEqual(resolve('tg-1').permissions, ['inventory.manage'], 'before suspension the permission is there');
-  assert.deepEqual(resolve('tg-1').permissions, ['inventory.manage'], 'reactivating restores resolution');
+  assert.deepEqual(resolve('tg-1').permissions, ['inventory.opname'], 'before suspension the permission is there');
+  assert.deepEqual(resolve('tg-1').permissions, ['inventory.opname'], 'reactivating restores resolution');
 });
 
 test('a draft belongs to its device and resumes rather than restarts', () => {

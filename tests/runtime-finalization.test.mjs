@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const installer = readFileSync('scripts/install-dependencies.mjs', 'utf8');
 const seed = readFileSync('apps/api/prisma/seed.ts', 'utf8');
@@ -55,6 +55,31 @@ test('promotion permissions used by controllers are part of canonical permission
   const permissionList = seed.slice(seed.indexOf('const permissionCodes'), seed.indexOf('for (const code of permissionCodes)'));
   assert.match(permissionList, /promotion\.view/);
   assert.match(permissionList, /promotion\.manage/);
+});
+
+function controllerFiles(dir) {
+  const rows = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) rows.push(...controllerFiles(path));
+    else if (entry.isFile() && entry.name.endsWith('.controller.ts')) rows.push(path);
+  }
+  return rows;
+}
+
+test('every controller permission is present in the canonical seed permission list', () => {
+  const permissionList = seed.slice(seed.indexOf('const permissionCodes'), seed.indexOf('for (const code of permissionCodes)'));
+  const canonical = new Set([...permissionList.matchAll(/'([^']+)'/g)].map((match) => match[1]));
+  assert.ok(canonical.size > 100, `expected canonical permission catalogue, found ${canonical.size}`);
+
+  const unknown = [];
+  for (const file of controllerFiles('apps/api/src')) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/@Permissions\(\s*['"]([^'"]+)['"]/g)) {
+      if (!canonical.has(match[1])) unknown.push(`${file}: ${match[1]}`);
+    }
+  }
+  assert.deepEqual(unknown, [], `controller references non-canonical permissions:\n${unknown.join('\n')}`);
 });
 
 test('demo seed company ID is a standards-valid deterministic UUID', () => {

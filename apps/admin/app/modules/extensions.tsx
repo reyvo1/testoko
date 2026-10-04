@@ -50,7 +50,16 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
   // gate their writes on a distinct permission (integration.manage, notification.manage,
   // loyalty.manage, promotion.manage). Rendering every control for every operator produced
   // buttons that could only 403.
-  const { canAll } = usePermissions(token);
+  const { canAll, identity } = usePermissions(token);
+  const hasAnyRole = (...roles: string[]) => Boolean(identity?.roles.some((role) => roles.includes(role)));
+  const canManageLoyaltyPrograms = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN') && canAll('loyalty.manage');
+  const canManageIntegrations = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN') && canAll('integration.manage');
+  const canManageNotificationLifecycle = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN') && canAll('notification.manage');
+  const canQueueNotifications = canAll('notification.manage');
+  const canManagePromotions = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN') && canAll('promotion.manage');
+  const canManagePayments = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN', 'FINANCE') && canAll('payment.manage');
+  const canManageShipments = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN', 'WAREHOUSE') && canAll('shipment.manage');
+  const canCancelOrders = hasAnyRole('SUPER_ADMIN', 'OWNER', 'ADMIN', 'WAREHOUSE', 'FINANCE') && canAll('order.cancel');
   const [programs, setPrograms] = useState<LoyaltyProgram[]>([]);
   const [loyaltyCustomers, setLoyaltyCustomers] = useState<LoyaltyCustomer[]>([]);
   const [loyaltyCustomerId, setLoyaltyCustomerId] = useState('');
@@ -410,8 +419,8 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
         if (!reason) throw new Error('Alasan pembatalan wajib diisi.');
         body = { reason };
       }
-      const response = await fetch(`${API}/orders/${order.id}/${action}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}),
+      const response = await authFetch(`${API}/orders/${order.id}/${action}`, token, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Aksi fulfillment gagal.');
@@ -446,7 +455,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
                   @Roles(SUPER_ADMIN, OWNER, ADMIN) — the two guards throw independently, so
                   holding the permission is not enough. A control rendered for a manager would
                   only ever produce a 403. */}
-              <button disabled={busy || !canAll('loyalty.manage')}>Tambah program</button>
+              {canManageLoyaltyPrograms && <button disabled={busy}>Tambah program</button>}
             </form>
             <div className="inlineEditor">
               <label>Pelanggan<select value={loyaltyCustomerId} onChange={(event) => { setLoyaltyCustomerId(event.target.value); setLoyaltyForm((current) => ({ ...current, customerId: event.target.value })); }}><option value="">Pilih pelanggan</option>{loyaltyCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}</select></label>
@@ -455,7 +464,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <label>Tipe<select value={loyaltyForm.type} onChange={(event) => setLoyaltyForm({ ...loyaltyForm, type: event.target.value })}>{['EARN','REDEEM','ADJUSTMENT','EXPIRE','REFUND'].map((type) => <option key={type}>{type}</option>)}</select></label>
               <label>Poin<input type="number" step="1" value={loyaltyForm.points} onChange={(event) => setLoyaltyForm({ ...loyaltyForm, points: Math.trunc(Number(event.target.value) || 0) })} /></label>
               <label>Catatan<input value={loyaltyForm.notes} onChange={(event) => setLoyaltyForm({ ...loyaltyForm, notes: event.target.value })} /></label>
-              <div className="rowActions">(canAll('loyalty.manage') ? <button type="button" disabled={busy || !loyaltyForm.customerId || !loyaltyForm.programId} onClick={() => void postLoyaltyTransaction()}>Simpan transaksi poin</button> : null)</div>
+              <div className="rowActions">{canAll('loyalty.manage') && <button type="button" disabled={busy || !loyaltyForm.customerId || !loyaltyForm.programId} onClick={() => void postLoyaltyTransaction()}>Simpan transaksi poin</button>}</div>
             </div>
           </Panel>}
           {showDevices && <Panel eyebrow="DEVICE REGISTRATION" title="Daftarkan node toko" badge="signed sync">
@@ -464,7 +473,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <label>Nama<input value={deviceForm.name} onChange={(e) => setDeviceForm({ ...deviceForm, name: e.target.value })} placeholder="POS Kasir 1" /></label>
               <label>Platform<input value={deviceForm.platform} onChange={(e) => setDeviceForm({ ...deviceForm, platform: e.target.value })} placeholder="POS_WEB / EDGE_NODE" /></label>
               <label>Versi aplikasi<input value={deviceForm.appVersion} onChange={(e) => setDeviceForm({ ...deviceForm, appVersion: e.target.value })} placeholder="0.5.3" /></label>
-              (canAll('integration.manage') ? <button type="button" disabled={busy} onClick={() => void registerDevice()}>Daftarkan device</button> : null)
+              {canManageIntegrations && <button type="button" disabled={busy} onClick={() => void registerDevice()}>Daftarkan device</button>}
             </div>
           </Panel>}
         </section>}
@@ -472,7 +481,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
           <Table head={['Kode', 'Nama', 'Platform', 'Last seen', 'Status', 'Aksi']} rows={devices.map((d) => [
             <strong>{d.code}</strong>, d.name, `${d.platform ?? '-'}${d.appVersion ? ` · ${d.appVersion}` : ''}`, d.lastSeenAt ? tanggal(d.lastSeenAt) : '-',
             <StatusChip status={d.isActive === false ? 'OFF' : 'ON'} />,
-            <div className="rowActions">(canAll('integration.manage') ? <button type="button" className="secondary" disabled={busy || d.isActive === false} onClick={() => void rotateCredential(d)}>Rotasi secret</button> : null)(canAll('integration.manage') ? <button type="button" className="secondary" disabled={busy} onClick={() => void setDeviceActive(d, d.isActive === false)}>{d.isActive === false ? 'Aktifkan' : 'Nonaktifkan'}</button> : null)</div>,
+            <div className="rowActions">{canManageIntegrations && <button type="button" className="secondary" disabled={busy || d.isActive === false} onClick={() => void rotateCredential(d)}>Rotasi secret</button>}{canManageIntegrations && <button type="button" className="secondary" disabled={busy} onClick={() => void setDeviceActive(d, d.isActive === false)}>{d.isActive === false ? 'Aktifkan' : 'Nonaktifkan'}</button>}</div>,
           ])} empty="Belum ada device." />
           {credential && <div className="notice success"><strong>SECRET SEKALI TAMPIL</strong><br/>Key ID: <code>{credential.keyId}</code><br/>Secret: <code>{credential.secret}</code><br/><small>Simpan pada secure store node toko. Setelah panel ini ditutup, server tidak akan menampilkan secret lagi.</small></div>}
         </Panel>}
@@ -483,9 +492,9 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <label>Nama<input value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} /></label>
               {providerForm.channel === 'WHATSAPP' && <label>Endpoint provider<input value={providerForm.url} onChange={(e) => setProviderForm({ ...providerForm, url: e.target.value })} placeholder="https://provider.example/messages" /></label>}
               <label>Token / secret<input type="password" value={providerForm.token} onChange={(e) => setProviderForm({ ...providerForm, token: e.target.value })} placeholder="Disimpan terenkripsi oleh server" /></label>
-              (canAll('notification.manage') ? <button type="button" disabled={busy} onClick={() => void saveNotificationProvider()}>Simpan provider</button> : null)
+              {canManageIntegrations && <button type="button" disabled={busy} onClick={() => void saveNotificationProvider()}>Simpan provider</button>}
             </div>
-            <Table head={['Provider', 'Channel', 'Status', 'Health', 'Aksi']} rows={providers.map((p) => [<strong>{p.name}</strong>, String((p.config as { channel?: string } | null)?.channel ?? p.provider), <StatusChip status={p.status} />, p.lastError ? <small title={p.lastError}>DEGRADED</small> : p.lastHealthCheckAt ? <small>{tanggal(p.lastHealthCheckAt)}</small> : '-', (canAll('notification.manage') ? <button type="button" className="secondary" disabled={busy} onClick={() => void setProviderStatus(p, p.status === 'CONNECTED' ? 'DISABLED' : 'CONNECTED')}>{p.status === 'CONNECTED' ? 'Nonaktifkan' : 'Aktifkan'}</button> : null)])} empty="Belum ada provider notifikasi." />
+            <Table head={['Provider', 'Channel', 'Status', 'Health', 'Aksi']} rows={providers.map((p) => [<strong>{p.name}</strong>, String((p.config as { channel?: string } | null)?.channel ?? p.provider), <StatusChip status={p.status} />, p.lastError ? <small title={p.lastError}>DEGRADED</small> : p.lastHealthCheckAt ? <small>{tanggal(p.lastHealthCheckAt)}</small> : '-', (canManageIntegrations ? <button type="button" className="secondary" disabled={busy} onClick={() => void setProviderStatus(p, p.status === 'CONNECTED' ? 'DISABLED' : 'CONNECTED')}>{p.status === 'CONNECTED' ? 'Nonaktifkan' : 'Aktifkan'}</button> : null)])} empty="Belum ada provider notifikasi." />
           </Panel>}
           {showNotifications && <Panel eyebrow="NOTIFICATION TEMPLATE" title="Template provider-neutral" badge={`${templates.length} template`}>
             <div className="formStack">
@@ -494,7 +503,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <label>Subject<input value={templateForm.subject} onChange={(e) => setTemplateForm({ ...templateForm, subject: e.target.value })} placeholder="Opsional" /></label>
               <label>Body<textarea value={templateForm.body} onChange={(e) => setTemplateForm({ ...templateForm, body: e.target.value })} placeholder="Pesanan {{order.number}} sudah dikirim" /></label>
               <label><input type="checkbox" checked={templateForm.isActive} onChange={(e) => setTemplateForm({ ...templateForm, isActive: e.target.checked })} /> Template aktif</label>
-              (canAll('notification.manage') ? <button type="button" disabled={busy} onClick={() => void saveTemplate()}>{editingTemplateId ? 'Perbarui template' : 'Simpan template'}</button> : null)
+              {canManageNotificationLifecycle && <button type="button" disabled={busy} onClick={() => void saveTemplate()}>{editingTemplateId ? 'Perbarui template' : 'Simpan template'}</button>}
               {editingTemplateId && <><span className="mutedText">Mode ubah: {templateForm.code} · {templateForm.channel} akan diperbarui, bukan diduplikasi.</span><button type="button" className="secondary" onClick={cancelTemplateEdit}>Batal ubah</button></>}
             </div>
             <Table head={['Kode', 'Channel', 'Status', 'Aksi']} rows={templates.slice(0, 30).map((t) => [<strong>{t.code}</strong>, t.channel, <StatusChip status={t.isActive === false ? 'NONAKTIF' : 'AKTIF'} />, <button type="button" className="secondary" onClick={() => editTemplate(t)}>Edit</button>])} empty="Belum ada template." />
@@ -505,7 +514,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
             <label><input type="checkbox" checked={digestConfig.enabled} onChange={(e) => setDigestConfig({ ...digestConfig, enabled: e.target.checked })} /> Aktifkan pengiriman owner digest</label>
             <label>Jam kirim (0-23)<input type="number" min="0" max="23" value={digestConfig.hour} onChange={(e) => setDigestConfig({ ...digestConfig, hour: Math.min(23, Math.max(0, Number(e.target.value) || 0)) })} /></label>
             <label>Penerima Telegram terverifikasi<select multiple value={digestConfig.recipientBindingIds} onChange={(e) => setDigestConfig({ ...digestConfig, recipientBindingIds: Array.from(e.target.selectedOptions).map((option) => option.value) })}>{digestConfig.availableRecipients.map((recipient) => <option key={recipient.id} value={recipient.id}>{recipient.employeeNumber ? `${recipient.employeeNumber} · ` : ''}{recipient.employeeName}{recipient.isPrimary ? ' · PRIMARY' : ''}</option>)}</select></label>
-            <div className="rowActions">(canAll('notification.manage') ? <button type="button" disabled={busy} onClick={() => void saveDigestConfig()}>Simpan daily digest</button> : null)<button type="button" className="secondary" disabled={busy} onClick={() => void previewDigest()}>Preview hari ini</button><button type="button" className="secondary" disabled={busy || !digestConfig.enabled || digestConfig.recipientBindingIds.length === 0} onClick={() => void sendDigestNow()}>Kirim sekarang</button></div>
+            <div className="rowActions">{canManageNotificationLifecycle && <button type="button" disabled={busy} onClick={() => void saveDigestConfig()}>Simpan daily digest</button>}<button type="button" className="secondary" disabled={busy} onClick={() => void previewDigest()}>Preview hari ini</button>{canManageNotificationLifecycle && <button type="button" className="secondary" disabled={busy || !digestConfig.enabled || digestConfig.recipientBindingIds.length === 0} onClick={() => void sendDigestNow()}>Kirim sekarang</button>}</div>
           </div>
           {digestPreview && <div className="notice"><strong>Preview digest</strong><pre className="digestPreviewText">{digestPreview.text}</pre></div>}
           <p className="sectionHelp">Recipient raw tidak diterima. Verifikasi Telegram dilakukan dari Employee Portal terlebih dahulu; binding yang dicabut otomatis membuat pengiriman fail-closed.</p>
@@ -517,11 +526,11 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
             <label>Penerima<input value={notificationForm.recipient} onChange={(e) => setNotificationForm({ ...notificationForm, recipient: e.target.value })} placeholder="chat id / nomor WhatsApp / email" /></label>
             <label>Subject<input value={notificationForm.subject} onChange={(e) => setNotificationForm({ ...notificationForm, subject: e.target.value })} placeholder="Opsional" /></label>
             <label>Body manual<textarea value={notificationForm.body} onChange={(e) => setNotificationForm({ ...notificationForm, body: e.target.value })} placeholder="Kosongkan bila memakai template tanpa variable." /></label>
-            (canAll('notification.manage') ? <button type="button" disabled={busy} onClick={() => void queueNotification()}>Masukkan antrean</button> : null)
+            {canQueueNotifications && <button type="button" disabled={busy} onClick={() => void queueNotification()}>Masukkan antrean</button>}
           </div>
         </Panel>}
         {showNotifications && <Panel eyebrow="DELIVERY HISTORY" title="Notification Center" badge={`${notifications.length} item`}>
-          <Table head={['Channel', 'Penerima', 'Status', 'Provider', 'Attempt', 'Error', 'Aksi']} rows={notifications.map((n) => [<strong>{n.channel}</strong>, n.recipient, <StatusChip status={n.status} />, n.provider ?? '-', String(n.attempts ?? 0), n.lastError ? <small title={n.lastError}>{n.lastError.slice(0, 70)}</small> : '-', <div className="rowActions">{canAll('notification.manage') && n.status === 'QUEUED' && <button type="button" className="secondary" disabled={busy} onClick={() => void notificationAction(n, 'cancel')}>Batal</button>}{canAll('notification.manage') && ['FAILED','CANCELLED'].includes(n.status) && <button type="button" className="secondary" disabled={busy} onClick={() => void notificationAction(n, 'replay')}>Replay</button>}</div>])} empty="Belum ada notifikasi." />
+          <Table head={['Channel', 'Penerima', 'Status', 'Provider', 'Attempt', 'Error', 'Aksi']} rows={notifications.map((n) => [<strong>{n.channel}</strong>, n.recipient, <StatusChip status={n.status} />, n.provider ?? '-', String(n.attempts ?? 0), n.lastError ? <small title={n.lastError}>{n.lastError.slice(0, 70)}</small> : '-', <div className="rowActions">{canManageNotificationLifecycle && n.status === 'QUEUED' && <button type="button" className="secondary" disabled={busy} onClick={() => void notificationAction(n, 'cancel')}>Batal</button>}{canManageNotificationLifecycle && ['FAILED','CANCELLED'].includes(n.status) && <button type="button" className="secondary" disabled={busy} onClick={() => void notificationAction(n, 'replay')}>Replay</button>}</div>])} empty="Belum ada notifikasi." />
         </Panel>}
       </>}
 
@@ -544,7 +553,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <label>Quota / customer<input type="number" min="1" step="1" value={promoForm.perCustomerLimit} onChange={(e)=>setPromoForm({...promoForm,perCustomerLimit:e.target.value})} placeholder="opsional"/></label>
               <label>Mulai<input type="date" value={promoForm.startsAt} onChange={(e)=>setPromoForm({...promoForm,startsAt:e.target.value})}/></label>
               <label>Selesai<input type="date" value={promoForm.endsAt} onChange={(e)=>setPromoForm({...promoForm,endsAt:e.target.value})}/></label>
-              (canAll('promotion.manage') ? <button type="button" disabled={busy} onClick={()=>void savePromo()}>Simpan promo</button> : null)
+              {canManagePromotions && <button type="button" disabled={busy} onClick={()=>void savePromo()}>Simpan promo</button>}
             </div>
           </Panel>
           <Panel eyebrow="PROMOTION RULES" title="Promo Aktif & Preview" badge="server authoritative">
@@ -555,7 +564,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
               <button type="button" className="secondary" disabled={busy} onClick={()=>void previewPromo()}>Preview rule</button>
             </div>
             {promoPreview && <div className="notice sectionBlockBottom"><strong>{promoPreview.appliedRule ? `${promoPreview.appliedRule.code} · ${promoPreview.appliedRule.name}` : 'Tidak ada rule terpakai'}</strong><small>Subtotal {new Intl.NumberFormat('id-ID').format(promoPreview.subtotal)} · Discount {new Intl.NumberFormat('id-ID').format(promoPreview.discount)}</small>{promoPreview.note && <small>{promoPreview.note}</small>}</div>}
-            <Table head={['Kode','Tipe','Channel','Quota','Status','Aksi']} rows={promos.slice(0,30).map((p)=>[<strong>{p.code}</strong>,p.type,p.channel,`${p.perCustomerLimit??'-'} / ${p.usageLimit??'-'}`,<StatusChip status={p.isActive?'ACTIVE':'INACTIVE'}/>,(canAll('promotion.manage') ? <button type="button" className="secondary" disabled={busy} onClick={()=>void updatePromoStatus(p,!p.isActive)}>{p.isActive?'Nonaktifkan':'Aktifkan'}</button> : null)])} empty="Belum ada promo." />
+            <Table head={['Kode','Tipe','Channel','Quota','Status','Aksi']} rows={promos.slice(0,30).map((p)=>[<strong>{p.code}</strong>,p.type,p.channel,`${p.perCustomerLimit??'-'} / ${p.usageLimit??'-'}`,<StatusChip status={p.isActive?'ACTIVE':'INACTIVE'}/>,(canManagePromotions ? <button type="button" className="secondary" disabled={busy} onClick={()=>void updatePromoStatus(p,!p.isActive)}>{p.isActive?'Nonaktifkan':'Aktifkan'}</button> : null)])} empty="Belum ada promo." />
             <p className="sectionHelp">Preview memakai endpoint server yang sama dengan rule checkout. BOGO menggunakan unit eligible termurah sebagai free item. Quantity break memakai persen; bundle memakai nominal per grup. Quota dicatat saat Sale/Order benar-benar dibuat.</p>
           </Panel>
         </section>}
@@ -578,12 +587,12 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
             rows={orders.map((o) => {
               const payment = o.payments[0];
               const actions: React.ReactNode[] = [];
-              if (o.status === 'PENDING_PAYMENT' && Boolean(payment && ['QRIS', 'TRANSFER', 'CARD'].includes(payment.method))) actions.push(<button key="confirm" type="button" className="secondary" disabled={busy} onClick={() => { setDialog({ kind: 'confirm-payment', order: o }); setDialogValue(''); }}>Konfirmasi bayar</button>);
-              if (o.status === 'PENDING_PAYMENT' && payment?.method === 'INVOICE') if (canAll('payment.manage')) actions.push(<button key="credit" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'authorize-invoice')}>Otorisasi termin</button>);
-              if (['PAID', 'PROCESSING'].includes(o.status)) if (canAll('shipment.manage')) actions.push(<button key="pack" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'pack')}>Pack</button>);
-              if (o.status === 'PACKED') if (canAll('shipment.manage')) actions.push(<button key="ship" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'ship')}>Ship</button>);
-              if (o.status === 'SHIPPED') if (canAll('shipment.manage')) actions.push(<button key="deliver" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'deliver')}>Deliver</button>);
-              if (payment?.status !== 'PAID' && ['PENDING_PAYMENT', 'PROCESSING', 'PACKED'].includes(o.status)) actions.push(<button key="cancel" type="button" className="secondary dangerButton" disabled={busy} onClick={() => { setDialog({ kind: 'cancel', order: o }); setDialogValue(''); }}>Batalkan</button>);
+              if (o.status === 'PENDING_PAYMENT' && Boolean(payment && ['QRIS', 'TRANSFER', 'CARD'].includes(payment.method)) && canManagePayments) actions.push(<button key="confirm" type="button" className="secondary" disabled={busy} onClick={() => { setDialog({ kind: 'confirm-payment', order: o }); setDialogValue(''); }}>Konfirmasi bayar</button>);
+              if (o.status === 'PENDING_PAYMENT' && payment?.method === 'INVOICE' && canManagePayments) actions.push(<button key="credit" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'authorize-invoice')}>Otorisasi termin</button>);
+              if (['PAID', 'PROCESSING'].includes(o.status) && canManageShipments) actions.push(<button key="pack" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'pack')}>Pack</button>);
+              if (o.status === 'PACKED' && canManageShipments) actions.push(<button key="ship" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'ship')}>Ship</button>);
+              if (o.status === 'SHIPPED' && canManageShipments) actions.push(<button key="deliver" type="button" className="secondary" disabled={busy} onClick={() => void orderAction(o, 'deliver')}>Deliver</button>);
+              if (payment?.status !== 'PAID' && ['PENDING_PAYMENT', 'PROCESSING', 'PACKED'].includes(o.status) && canCancelOrders) actions.push(<button key="cancel" type="button" className="secondary dangerButton" disabled={busy} onClick={() => { setDialog({ kind: 'cancel', order: o }); setDialogValue(''); }}>Batalkan</button>);
               return [<strong>{o.number}</strong>, o.customerName, <small>{o.fulfillmentType ?? 'DELIVERY'} · {o.shippingMethodName ?? o.shippingMethodCode ?? '-'}</small>, <small>{payment?.method ?? 'UNSELECTED'} / {payment?.status ?? '-'}</small>, <StatusChip status={o.status} />, <div className="rowActions">{actions.length ? actions : <span>-</span>}</div>];
             })}
             empty="Belum ada order storefront."
@@ -604,7 +613,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
           </label>
           <div className="modalActions">
             <button type="button" className="secondary" disabled={busy} onClick={() => { setDialog(null); setDialogValue(''); }}>Kembali</button>
-            {canAll(dialog.kind === 'confirm-payment' ? 'payment.manage' : 'order.cancel') && <button type="button" className={dialog.kind === 'cancel' ? 'dangerButton' : ''} disabled={busy || !dialogValue.trim()} onClick={() => void orderAction(dialog.order, dialog.kind, dialogValue)}>{busy ? 'Memproses…' : dialog.kind === 'confirm-payment' ? 'Konfirmasi pembayaran' : 'Batalkan order'}</button>}
+            {(dialog.kind === 'confirm-payment' ? canManagePayments : canCancelOrders) && <button type="button" className={dialog.kind === 'cancel' ? 'dangerButton' : ''} disabled={busy || !dialogValue.trim()} onClick={() => void orderAction(dialog.order, dialog.kind, dialogValue)}>{busy ? 'Memproses…' : dialog.kind === 'confirm-payment' ? 'Konfirmasi pembayaran' : 'Batalkan order'}</button>}
           </div>
         </div>
       </div>}

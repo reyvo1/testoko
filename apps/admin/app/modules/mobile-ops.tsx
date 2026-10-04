@@ -56,7 +56,7 @@ export default function MobileOpsView({ token }: { token: string }) {
   const [reviewError, setReviewError] = useState('');
   const { canAll } = usePermissions(token);
   const canManageUsers = canAll('user.manage');
-  const canCountStock = canAll('inventory.manage');
+  const canCountStock = canAll('inventory.opname');
 
   async function load() {
     const tasks: Promise<void>[] = [];

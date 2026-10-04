@@ -58,12 +58,12 @@ function seed() {
   c.prepare('INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)')
     .run('p-1', 'acme', 'SKU-1', 'BC-1', 'Kopi 250g', 1000, 15000, 1, now(), now());
 
-  // An employee whose role actually carries inventory.manage.
+  // An employee whose role actually carries inventory.opname.
   c.prepare('INSERT INTO User (id, branchId, email, name, passwordHash, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')
     .run('u-1', 'br-1', 'staf@acme.test', 'Staf Gudang', 'x', 1, now(), now());
   c.prepare('INSERT INTO Role (id, name) VALUES (?,?)').run('r-1', 'WAREHOUSE_STAFF');
   c.prepare('INSERT INTO UserRole (userId, roleId) VALUES (?,?)').run('u-1', 'r-1');
-  c.prepare('INSERT INTO Permission (id, code) VALUES (?,?)').run('p-1', 'inventory.manage');
+  c.prepare('INSERT INTO Permission (id, code) VALUES (?,?)').run('p-1', 'inventory.opname');
   c.prepare('INSERT INTO RolePermission (roleId, permissionId) VALUES (?,?)').run('r-1', 'p-1');
   c.prepare('INSERT INTO Employee (id, companyId, branchId, userId, employeeNumber, fullName, employmentStatus, hireDate, timezone, workLocationType, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .run('e-1', 'acme', 'br-1', 'u-1', 'EMP-1', 'Staf Gudang', 'PERMANENT', now(), 'Asia/Makassar', 'WAREHOUSE', 1, now(), now());

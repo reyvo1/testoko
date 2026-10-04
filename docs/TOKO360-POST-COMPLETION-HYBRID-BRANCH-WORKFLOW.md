@@ -176,7 +176,7 @@ A test asserts the negative directly: `StockTransferStatus` must still contain e
 
 ### POST-1B permission decision (recorded because it is a trade-off)
 
-The transfer routes are gated on `integration.manage`, not `inventory.manage`, because the panel lives in the `settings` workspace whose gate grants `integration.manage`. The alternative — widening the `settings` gate — would hand every settings operator inventory write access product-wide.
+The transfer routes are gated on `integration.manage`, not `inventory.transfer`, because the panel lives in the `settings` workspace whose gate grants `integration.manage`. The alternative — widening the `settings` gate — would hand every settings operator inventory write access product-wide.
 
 What the wider permission buys is visibility and an audited status change. It cannot move stock: the service contains no inventory write, and a test asserts that. The repo's own workspace-permission gate caught this mismatch, which is recorded here because the gate earned its keep.
 
@@ -229,7 +229,7 @@ Delivered in `apps/api/src/mobile-ops/` plus the operator panel at
 Data (parity across canonical / SQLite / PostgreSQL): `TelegramIdentityBinding`, `MobileOpnameDraft`,
 enum `MobileDraftStatus` (`OPEN` / `SUBMITTED` / `DISCARDED`).
 
-Surface: 10 routes — 3 binding routes (`user.manage`) and 7 draft routes (`inventory.manage`), including the draft list that makes the wave supervisable.
+Surface: 10 routes — 3 binding routes (`user.manage`) and 7 draft routes (`inventory.opname`), including the draft list that makes the wave supervisable.
 
 How each roadmap requirement is met, and what is missing:
 

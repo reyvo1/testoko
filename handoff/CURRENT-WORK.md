@@ -1,5 +1,16 @@
 # CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
 
+## Backend/frontend contract parity root fix — 2026-10-04
+
+- Source authority: uploaded full-local audit ZIP and GitHub `main` were identical at `c1f232da583b61d822f756143d73e966cb0cbf9c` before this repair.
+- GitHub regression evidence on that exact commit: Workflow Governance PASS, but Full System Simulation and Full Automated UAT failed first at API TypeScript `mobile-ops.service.ts:386`; downstream browser/runtime/Stage failures were artifact-missing cascade, not independent product failures.
+- Root build fix: MobileOps discrepancy rows now have an explicit nullable result contract, so unresolved barcode/SKU rows can legitimately carry `null` product/snapshot fields without violating TypeScript.
+- Permission parity fix: removed the non-canonical `inventory.manage` permission from MobileOps and standardized stock-count operations on canonical `inventory.opname`; Branch Transfer Admin actions now use backend-authoritative `integration.manage`; branch-transfer documentation correctly names `inventory.transfer` for stock posting.
+- Admin mutation parity fix: malformed permission ternaries in `extensions.tsx` are executable JSX again; role+permission combinations now mirror backend guards for loyalty, integrations/devices/providers, notification lifecycle, promotions, payment, shipment, and order cancellation. Order lifecycle mutations use canonical `authFetch`, preserving refresh-token recovery. Platform integration POST/PATCH now explicitly require `integration.manage` in addition to the existing ADMIN-class role gate.
+- Regression gates hardened: UI source audit rejects permission ternaries rendered as JSX text; runtime-finalization rejects any controller permission missing from the canonical seed catalogue; focused parity/security regression is **111/111 PASS**; `ci:ui:audit` PASS with 464 controls; full repository/product/contextual/canonical/P5 audits PASS (1085 files, 509 API handlers, 464 controls).
+- Local `npm ci` could not complete in the assistant container, so no local TypeScript/build PASS is claimed. Exact GitHub runner install/build/browser/PostgreSQL UAT is the next authority. `productReady=false`; Human Stage-20 remains PENDING.
+
+
 ## Ubuntu full-audit local closure — 2026-10-04
 
 - Full-audit source ran on Ubuntu with local Prisma generation before the runtime-backed suite.

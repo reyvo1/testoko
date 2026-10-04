@@ -1,7 +1,7 @@
 // The SUPER_ADMIN bypass is the reason a permission cannot be judged by reading a token.
 //
 // I claimed the draft list was unreachable for the bootstrap admin because that token's 117
-// permissions did not include inventory.manage. It returned HTTP 200 the moment it was actually
+// permissions did not include inventory.opname. It returned HTTP 200 the moment it was actually
 // called, because PermissionsGuard short-circuits for SUPER_ADMIN before looking at permissions at
 // all. Same shape as a regression test that passes because its check is blind: a plausible reading of
 // the source, confidently reported, and wrong.
@@ -47,11 +47,11 @@ test('the Admin UI bypass names the same unrestricted roles as the API guard', (
 });
 
 test('no route is documented as unreachable on the strength of a token inspection', () => {
-  // The POST-1C draft routes are gated inventory.manage. Their reachability was asserted from a
+  // The POST-1C draft routes are gated inventory.opname. Their reachability was asserted from a
   // decoded JWT and it was wrong. This test cannot prove reachability — only the live call can — so
   // it records the reason in code where the next person will read it before repeating the mistake.
   const controller = read('apps/api/src/mobile-ops/mobile-ops.controller.ts');
-  assert.match(controller, /@Get\('drafts'\)\s*\n\s*@Permissions\('inventory\.manage'\)/);
+  assert.match(controller, /@Get\('drafts'\)\s*\n\s*@Permissions\('inventory\.opname'\)/);
   assert.match(
     read('apps/api/src/auth/permissions.guard.ts'),
     /SUPER_ADMIN/,

@@ -94,7 +94,7 @@ test('no route performs an action on behalf of a platform identity', () => {
   // takes the id in the body only to locate a record for revocation.
   const bodies = controller.split(/@(Get|Post|Put)\(/).slice(2).filter((_, i) => i % 2 === 0);
   for (const b of bodies) {
-    assert.match(b, /@Permissions\('(?:user|inventory)\.manage'\)/, 'every mobile-ops handler must be permission gated');
+    assert.match(b, /@Permissions\('(?:user\.manage|inventory\.opname)'\)/, 'every mobile-ops handler must be permission gated');
     assert.doesNotMatch(b, /@Public\(\)/, 'no mobile-ops route may be public');
   }
   // Nothing in the service performs a Telegram API call, so there is no bot handler here at all — only
@@ -191,7 +191,7 @@ test('the draft list is reachable and tenant-scoped, and the operator screen act
   // operator: it could sit OPEN forever with nobody aware of it. The endpoint existing is not the point —
   // the screen calling it is, because an uncalled endpoint is the same dead-surface failure in reverse.
   const ui = read('apps/admin/app/modules/mobile-ops.tsx');
-  assert.match(controller, /@Get\('drafts'\)\s*\n\s*@Permissions\('inventory\.manage'\)/, 'the list must be permission gated');
+  assert.match(controller, /@Get\('drafts'\)\s*\n\s*@Permissions\('inventory\.opname'\)/, 'the list must be permission gated');
   const body = service.slice(service.indexOf('async listDrafts('), service.indexOf('async getDraft('));
   assert.match(body, /const baseWhere = \{\s*companyId,/, 'every draft page must start from authenticated tenant scope');
   assert.match(body, /take: limit \+ 1/, 'the list must be bounded by cursor pagination');

@@ -316,7 +316,7 @@ export default function BranchSyncView({ token }: { token: string }) {
           <span key={`${t.transferId}-d`}>{t.destinationQuantity ?? '-'}</span>,
           <StatusChip key={`${t.transferId}-c`} status={t.destinationState ?? 'UNKNOWN'} />,
           <small key={`${t.transferId}-r`}>{t.discrepancyReason ?? '-'}</small>,
-          canAll('inventory.manage')
+          canAll('integration.manage')
             ? <div key={`${t.transferId}-a`} className="actionRow">
                 <input
                   key={`${t.transferId}-i`}
@@ -342,7 +342,7 @@ export default function BranchSyncView({ token }: { token: string }) {
         <label>Alasan pembatalan<input required value={abandonReason} onChange={(e) => setAbandonReason(e.target.value)} placeholder="Cabang tujuan tidak dapat dihubungi selama 30 hari" /></label>
         <div className="actionRow">
           <button type="button" className="secondary" onClick={() => { setAbandon(null); setAbandonReason(''); }}>Batal</button>
-          {canAll('inventory.manage') && <button disabled={busy || !abandonReason.trim()}>Batalkan transfer</button>}
+          {canAll('integration.manage') && <button disabled={busy || !abandonReason.trim()}>Batalkan transfer</button>}
         </div>
       </form>
     </Panel>}

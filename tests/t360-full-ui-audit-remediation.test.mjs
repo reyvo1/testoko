@@ -425,6 +425,17 @@ test('D3 security.tsx is self-service by design, not an oversight', () => {
   assert.ok(!ui.includes('usePermissions'), 'security.tsx must not invent a permission gate the API does not enforce');
 });
 
+test('D3 permission ternaries are executable JSX expressions, never literal UI text', () => {
+  const dir = new URL('../apps/admin/app/modules/', import.meta.url);
+  const broken = [];
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.tsx')) continue;
+    const src = fs.readFileSync(new URL(file, dir), 'utf8');
+    if (/>\s*\((?:canAll|canAny)\([^\n]*\?\s*<button/.test(src) || /^\s*\((?:canAll|canAny)\([^\n]*\?\s*<button/m.test(src)) broken.push(file);
+  }
+  assert.deepEqual(broken, [], `permission ternary rendered as literal JSX text: ${broken.join(', ')}`);
+});
+
 test('D3 gating uses JSX the react-jsx transform actually accepts', () => {
   // `cond && {canAll(..) && <button/>}` fails to parse under jsx: react-jsx with a confusing
   // TS1005/TS1381, and it broke four controls in operations-control.tsx during this work.

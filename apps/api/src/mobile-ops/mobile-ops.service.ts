@@ -372,7 +372,11 @@ export class MobileOpsService {
     const systemByProduct = new Map<string, number>();
     for (const item of snapshot) systemByProduct.set(item.productId, (systemByProduct.get(item.productId) ?? 0) + item.systemQty);
 
-    const rows = resolved.products.map((entry) => {
+    const rows: Array<{
+      key: string; productId: string | null; productName: string | null; sku: string | null;
+      unit: string | null; counted: number; system: number | null; difference: number | null;
+      matched: boolean; resolved: boolean; note: string | null;
+    }> = resolved.products.map((entry) => {
       const system = systemByProduct.get(entry.productId) ?? null;
       const difference = system === null ? null : entry.counted - system;
       return {

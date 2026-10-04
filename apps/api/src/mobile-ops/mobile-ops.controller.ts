@@ -40,43 +40,43 @@ export class MobileOpsController {
   }
 
   @Get('drafts')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   listDrafts(@CurrentUser() user: AuthUser, @Query() query: ListMobileDraftsQueryDto) {
     return this.service.listDrafts(user, query.status, query.warehouseId, query.limit, query.cursor);
   }
 
   @Post('drafts/open')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   openDraft(@Body() dto: OpenMobileDraftDto, @CurrentUser() user: AuthUser) {
     return this.service.openDraft(user, dto);
   }
 
   @Post('drafts/:draftId/scan')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   addScan(@Param('draftId') draftId: string, @Body() dto: AddMobileScanDto, @CurrentUser() user: AuthUser) {
     return this.service.addScan(user, draftId, dto);
   }
 
   @Get('drafts/:draftId')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   getDraft(@Param('draftId') draftId: string, @CurrentUser() user: AuthUser) {
     return this.service.getDraft(user, draftId);
   }
 
   @Get('drafts/:draftId/discrepancy')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   discrepancy(@Param('draftId') draftId: string, @CurrentUser() user: AuthUser) {
     return this.service.reviewDiscrepancy(user, draftId);
   }
 
   @Post('drafts/:draftId/submit')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   submit(@Param('draftId') draftId: string, @Body() dto: SubmitMobileDraftDto, @CurrentUser() user: AuthUser) {
     return this.service.submitDraft(user, draftId, dto.opnameId);
   }
 
   @Post('drafts/:draftId/discard')
-  @Permissions('inventory.manage')
+  @Permissions('inventory.opname')
   discard(@Param('draftId') draftId: string, @Body() dto: DiscardMobileDraftDto, @CurrentUser() user: AuthUser) {
     return this.service.discardDraft(user, draftId, dto.reason);
   }

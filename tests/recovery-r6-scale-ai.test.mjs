@@ -81,6 +81,9 @@ test('R6 exact-source PostgreSQL probe is wired into both GitHub workflows and a
   assert.match(uat, /npm run ci:r6:probe/);
   const probe = read('scripts/ci-r6-scale-ai-probe.mjs');
   assert.match(probe, /path\.resolve\(root, 'apps\/api', archiveRelativePath\)/);
+  assert.match(probe, /companyTimeZoneFromBranchContext/);
+  assert.match(probe, /businessDateKeyInTimeZone/);
+  assert.doesNotMatch(probe, /now\.toISOString\(\)\.slice\(0,\s*10\)/);
   assert.match(summary, /r6ScaleAi/);
   assert.match(report, /R6 scale\/summary\/archive\/capability runtime probe/);
 });

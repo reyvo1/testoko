@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
+import { businessDateKeyInTimeZone, companyTimeZoneFromBranchContext } from './lib/business-date-key.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'handoff/quality/github-r2-hr-payroll-probe-latest.json');
@@ -31,7 +32,9 @@ const login = await request('/auth/login', { method: 'POST', body: { email, pass
 const token = login.accessToken;
 if (!token || !login.user?.sub) throw new Error('Login R2 tidak menghasilkan token/user identity.');
 const stamp = Date.now();
-const today = new Date().toISOString().slice(0, 10);
+const branchContext = await request('/auth/branch-context', { token });
+const companyTimeZone = companyTimeZoneFromBranchContext(branchContext);
+const today = businessDateKeyInTimeZone(new Date(), companyTimeZone);
 
 let employee = await request('/employee/me', { token, expect: 200 }).catch(async (error) => {
   if (!String(error?.message || '').includes('expected 200, got 404')) throw error;

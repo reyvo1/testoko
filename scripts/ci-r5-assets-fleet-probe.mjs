@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
+import { businessDateKeyInTimeZone, companyTimeZoneFromBranchContext } from './lib/business-date-key.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'handoff/quality/github-r5-assets-fleet-probe-latest.json');
@@ -44,7 +45,9 @@ const login = await request('/auth/login', { method: 'POST', body: { email, pass
 const token = login.accessToken;
 if (!token) throw new Error('Login R5 tidak menghasilkan access token.');
 const stamp = Date.now();
-const today = new Date().toISOString().slice(0, 10);
+const branchContext = await request('/auth/branch-context', { token });
+const companyTimeZone = companyTimeZoneFromBranchContext(branchContext);
+const today = businessDateKeyInTimeZone(new Date(), companyTimeZone);
 const warehouses = await request('/inventory/warehouses', { token });
 const warehouse = warehouses?.[0];
 if (!warehouse?.id) throw new Error('Gudang bootstrap R5 runtime tidak tersedia.');

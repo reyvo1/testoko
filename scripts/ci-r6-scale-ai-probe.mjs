@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { PrismaClient } from '@prisma/client';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
+import { businessDateKeyInTimeZone, companyTimeZoneFromBranchContext } from './lib/business-date-key.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'handoff/quality/github-r6-scale-ai-probe-latest.json');
@@ -38,7 +39,9 @@ try {
   const scope = tokenScope(token);
   const stamp = Date.now();
   const now = new Date();
-  const businessDate = now.toISOString().slice(0, 10);
+  const branchContext = await request('/auth/branch-context', { token });
+  const companyTimeZone = companyTimeZoneFromBranchContext(branchContext);
+  const businessDate = businessDateKeyInTimeZone(now, companyTimeZone);
   const warehouses = await request('/inventory/warehouses', { token });
   const warehouse = warehouses?.[0];
   if (!warehouse?.id) throw new Error('Gudang R6 runtime tidak tersedia.');
@@ -58,7 +61,9 @@ try {
   const summaries = await request(`/analytics/daily-summaries?from=${businessDate}&to=${businessDate}`, { token });
   const saleSummary = summaries.sales?.find((row) => row.channel === 'POS' && Number(row.transactionCount) >= 1);
   const financeSummary = summaries.finance?.find((row) => row.accountId === account.id && Number(row.debit) >= 50000);
-  if (!saleSummary || !financeSummary || materialized.salesChannels < 1 || materialized.financeAccounts < 1) throw new Error('R6 daily summary materialization tidak menghasilkan aggregate runtime yang diharapkan.');
+  if (!saleSummary || !financeSummary || materialized.salesChannels < 1 || materialized.financeAccounts < 1) {
+    throw new Error(`R6 daily summary materialization tidak menghasilkan aggregate runtime yang diharapkan. businessDate=${businessDate} timezone=${companyTimeZone} sourceSales=${materialized.sourceSales} sourceJournalLines=${materialized.sourceJournalLines} salesChannels=${materialized.salesChannels} financeAccounts=${materialized.financeAccounts}`);
+  }
 
   const assistant = await request('/operator-assistant/query', { method: 'POST', token, body: { question: 'Ringkas kondisi operasional yang tersedia.', intent: 'AUTO' } });
   const aiTruth = assistant.capabilityType === 'DETERMINISTIC_RULE_BASED' && assistant.aiProvider === null && /tidak memakai model AI\/LLM eksternal/i.test(assistant.guardrail || '');

@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { PrismaClient } from '@prisma/client';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
+import { businessDateKeyInTimeZone, companyTimeZoneFromBranchContext } from './lib/business-date-key.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'handoff/quality/github-p3-productization-probe-latest.json');
@@ -90,7 +91,9 @@ try {
   if (revokedKey.isActive !== false) throw new Error('P3 API key revoke tidak menonaktifkan key.');
 
   const stamp = Date.now();
-  const businessDate = new Date().toISOString().slice(0, 10);
+  const branchContext = await request('/auth/branch-context', { token: primaryToken });
+  const companyTimeZone = companyTimeZoneFromBranchContext(branchContext);
+  const businessDate = businessDateKeyInTimeZone(new Date(), companyTimeZone);
   const materialized = await request('/analytics/daily-summaries/materialize', { method: 'POST', token: primaryToken, body: { businessDate } });
   const summaries = await request(`/analytics/daily-summaries?from=${businessDate}&to=${businessDate}`, { token: primaryToken });
   if (!Number.isInteger(materialized.salesChannels) || !Number.isInteger(materialized.financeAccounts) || !Array.isArray(summaries.sales) || !Array.isArray(summaries.finance)) {

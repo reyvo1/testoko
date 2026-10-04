@@ -169,12 +169,16 @@ function parseArgs(argv) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function probeLoopbackPort(port) {
+function probeApiBindPort(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.unref();
     server.once('error', reject);
-    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => {
+    // apps/api/src/main.ts calls app.listen(port) without an explicit host,
+    // so Stage-20 must probe the same wildcard bind semantics. Probing only
+    // 127.0.0.1 can report a false free port while an IPv6 wildcard listener
+    // already owns :::port, which then makes Nest fail with EADDRINUSE.
+    server.listen({ port, exclusive: true }, () => {
       const address = server.address();
       const actual = typeof address === 'object' && address ? address.port : port;
       server.close((error) => error ? reject(error) : resolve(actual));
@@ -182,12 +186,12 @@ function probeLoopbackPort(port) {
   });
 }
 
-async function selectStage20ApiPort(preferredPort) {
+export async function selectStage20ApiPort(preferredPort) {
   try {
-    return { requested: preferredPort, actual: await probeLoopbackPort(preferredPort), fallback: false };
+    return { requested: preferredPort, actual: await probeApiBindPort(preferredPort), fallback: false };
   } catch (error) {
     if (error?.code !== 'EADDRINUSE') throw error;
-    const actual = await probeLoopbackPort(0);
+    const actual = await probeApiBindPort(0);
     return { requested: preferredPort, actual, fallback: true };
   }
 }

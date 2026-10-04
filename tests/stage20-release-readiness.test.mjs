@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import net from 'node:net';
 import test from 'node:test';
 import {
   indexCovers,
   parsePostgresUrl,
   summarizePlan,
   splitSqlStatements,
+  selectStage20ApiPort,
   validateNonProductionConfig,
   validateUatResults,
 } from '../scripts/run-stage20-release-readiness.mjs';
@@ -150,11 +152,60 @@ test('Stage-20 persists and emits sanitized API startup diagnostics before propa
 });
 
 
-test('Stage-20 falls back to an isolated loopback port when preferred API port is occupied', () => {
+test('Stage-20 port probe matches Nest wildcard bind semantics', () => {
   const source = fs.readFileSync('scripts/run-stage20-release-readiness.mjs','utf8');
+  assert.match(source, /function probeApiBindPort\(port\)/);
+  assert.match(source, /server\.listen\(\{ port, exclusive: true \}/);
+  assert.doesNotMatch(source, /server\.listen\(\{ host: '127\.0\.0\.1', port, exclusive: true \}/);
   assert.match(source, /selectStage20ApiPort/);
   assert.match(source, /error\?\.code !== 'EADDRINUSE'/);
-  assert.match(source, /probeLoopbackPort\(0\)/);
+  assert.match(source, /probeApiBindPort\(0\)/);
   assert.match(source, /API_PORT: String\(apiPortSelection\.actual\)/);
   assert.match(source, /apiPort: apiPortSelection/);
+});
+
+function listen(server, options) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => { server.off('listening', onListening); reject(error); };
+    const onListening = () => { server.off('error', onError); resolve(); };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(options);
+  });
+}
+
+function close(server) {
+  return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}
+
+test('Stage-20 falls back when an IPv6 wildcard listener owns the preferred API port', async (t) => {
+  const blocker = net.createServer();
+  try {
+    try {
+      await listen(blocker, { host: '::', port: 0, ipv6Only: true, exclusive: true });
+    } catch (error) {
+      if (['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error?.code)) {
+        t.skip(`IPv6 wildcard bind unavailable on this runner: ${error.code}`);
+        return;
+      }
+      throw error;
+    }
+
+    const address = blocker.address();
+    assert.equal(typeof address, 'object');
+    const preferredPort = address.port;
+    const selected = await selectStage20ApiPort(preferredPort);
+    assert.equal(selected.requested, preferredPort);
+    assert.equal(selected.fallback, true);
+    assert.notEqual(selected.actual, preferredPort);
+
+    const verifier = net.createServer();
+    try {
+      await listen(verifier, { port: selected.actual, exclusive: true });
+    } finally {
+      await close(verifier);
+    }
+  } finally {
+    if (blocker.listening) await close(blocker);
+  }
 });

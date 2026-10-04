@@ -70,6 +70,17 @@ test('R3 provider simulation uses a real dedicated bootstrap employee fixture in
 });
 
 
+
+test('R3 cashier-target runtime fixture uses a real active CASHIER instead of the admin identity', () => {
+  const residualProbe = fs.readFileSync('scripts/ci-r3-residual-probe.mjs', 'utf8');
+  assert.match(residualProbe, /const users = await request\('\/users', \{ token \}\)/);
+  assert.match(residualProbe, /assignment\?\.role\?\.name === 'CASHIER'/);
+  assert.match(residualProbe, /request\('\/users', \{[\s\S]*method: 'POST'[\s\S]*roleNames: \['CASHIER'\]/);
+  assert.match(residualProbe, /targets: \{ \[cashier\.id\]: targetValue \}/);
+  assert.match(residualProbe, /row\.userId === cashier\.id/);
+  assert.doesNotMatch(residualProbe, /targets: \{ \[identity\.sub\]: targetValue \}/);
+});
+
 test('R3 residual F37/F39/F42/F43 operator surfaces are wired to real APIs', () => {
   const residual = fs.readFileSync('apps/admin/app/modules/r3-operations.tsx', 'utf8');
   const page = fs.readFileSync('apps/admin/app/page.tsx', 'utf8');

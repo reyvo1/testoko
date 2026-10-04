@@ -3196,3 +3196,13 @@ karena tidak ada yang memeriksa `display` yang benar-benar dipakai browser. Geom
 tidak membedakan "CSS tidak ter-apply" dari "CSS ter-apply tapi display salah warisan".
 Computed style harus dilaporkan dari runner, bukan ditebak dari reproduksi lokal - dan
 reproduksi lokal yang "mengudi aman" bisa jadi salah karena tidak meniru kondisi sebenarnya.
+
+## 2026-10-04 — GitHub R3 residual probe root fix: active cashier fixture
+
+- Regression evidence from both exact-source PostgreSQL GitHub workflows: all build/browser/runtime gates reached R3, then `ci:r3:residual-probe` failed at `POST /sales/cashier-targets` with HTTP 400 because the probe used the authenticated SUPER_ADMIN (`identity.sub`) as the cashier target. `CashierTargetService` correctly rejects any user who is not an active `CASHIER` in the current branch; that business gate is preserved unchanged.
+- Root cause: `SEED_MODE=bootstrap` intentionally does not create the demo cashier. The R3 probe incorrectly depended on demo/residual seed state instead of provisioning its own branch-local operator fixture.
+- Root fix: R3 now queries `/users` for an active branch `CASHIER`; when none exists it creates one through the real `POST /users` administration contract with `roleNames: ['CASHIER']`. Retries reuse the existing cashier, so the fixture is deterministic/idempotent and still exercises the real role/branch invariant.
+- R8 is intentionally unchanged. Its missing `github-r3-residual-probe-latest.json` failure was downstream fail-closed behavior after R3 aborted; R8 must continue requiring a real PASS evidence file rather than synthesizing or skipping it.
+- Regression guard: `tests/recovery-r3-reporting-integrations.test.mjs` now rejects any return to `identity.sub` as cashier target and requires the probe to select/create a real active `CASHIER` through `/users`.
+- No UAT assertion, authorization rule, Stage-20 rule, or aggregate gate was weakened. Human Stage-20 remains PENDING.
+- Pending: rerun both exact-source GitHub PostgreSQL workflows. R3 must PASS and emit `handoff/quality/github-r3-residual-probe-latest.json`; only then may R8 exact-source evidence PASS.

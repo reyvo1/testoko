@@ -59,10 +59,39 @@ try {
 
   const digestConfig = await request('/reports/daily-digest/config', { token });
   const multiOutlet = await request('/reports/multi-outlet', { token });
+
+  // CashierTargetService intentionally rejects users who are not active CASHIERs in the
+  // authenticated branch. Bootstrap CI deliberately creates only the admin/employee identities,
+  // so using identity.sub here couples this probe to invalid seed residue and makes a clean
+  // PostgreSQL run fail for the correct business reason. Build a real operator fixture through
+  // the same Users API an administrator uses, and reuse an existing active cashier when one is
+  // already present so retries stay idempotent.
+  const users = await request('/users', { token });
+  let cashier = Array.isArray(users)
+    ? users.find((candidate) => candidate?.isActive === true
+      && Array.isArray(candidate?.roles)
+      && candidate.roles.some((assignment) => assignment?.role?.name === 'CASHIER'))
+    : null;
+  let cashierFixtureAction = 'EXISTING';
+  if (!cashier) {
+    cashier = await request('/users', {
+      method: 'POST',
+      token,
+      body: {
+        name: 'R3 CI Cashier',
+        email: `r3-cashier-${identity.branchId}@example.invalid`,
+        password: 'R3-CI-Cashier-Password-2026!',
+        roleNames: ['CASHIER'],
+      },
+    });
+    cashierFixtureAction = 'CREATED';
+  }
+  if (!cashier?.id || cashier?.isActive === false) throw new Error('Fixture kasir aktif R3 tidak tersedia.');
+
   const targetValue = 250000 + (stamp % 10000);
-  await request('/sales/cashier-targets', { method: 'POST', token, body: { targets: { [identity.sub]: targetValue } } });
+  await request('/sales/cashier-targets', { method: 'POST', token, body: { targets: { [cashier.id]: targetValue } } });
   const cashierTargets = await request('/sales/cashier-targets', { token });
-  const cashierTargetVisible = cashierTargets.rows?.some((row) => row.userId === identity.sub && Number(row.target) === targetValue);
+  const cashierTargetVisible = cashierTargets.rows?.some((row) => row.userId === cashier.id && Number(row.target) === targetValue);
 
   const device = await request('/devices', { method: 'POST', token, body: {
     code: `R3-${stamp}`,
@@ -142,7 +171,9 @@ try {
     deviceId: device.id,
     marketplaceOrderId: marketplace.id,
     paymentProviderEventId: paymentFixture.id,
-    note: 'R3 residual exact-runtime probe proves F37 payment diagnostics, F39 report discoverability/target lifecycle, F42 edge diagnostics + ack/requeue, and F43 MarketplaceOrder operator runtime on PostgreSQL.',
+    cashierUserId: cashier.id,
+    cashierFixtureAction,
+    note: 'R3 residual exact-runtime probe proves F37 payment diagnostics, F39 report discoverability/target lifecycle with a real active branch cashier, F42 edge diagnostics + ack/requeue, and F43 MarketplaceOrder operator runtime on PostgreSQL.',
   };
   fs.mkdirSync(path.dirname(output), { recursive: true });
   fs.writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);

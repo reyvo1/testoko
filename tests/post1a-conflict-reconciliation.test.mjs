@@ -102,11 +102,12 @@ test('a conflict cannot be resolved twice', () => {
   assert.match(service, /if \(conflict\.strategy !== 'PENDING'\) throw new BadRequestException\(`Konflik sudah berstatus \$\{conflict\.strategy\}\.`\)/);
 });
 
-test('a concurrently created conflict is read back, not thrown away', () => {
-  // Two nodes can detect the same conflict at once. The unique key settles it; the loser must return
-  // the winner's row rather than surface an error the operator cannot act on.
-  assert.match(service, /\}\)\.catch\(\(\) => null\);/);
-  assert.match(service, /if \(!created\) \{\s*const raced = await this\.prisma\.syncConflict\.findFirst\(\{ where: \{ nodeId: node\.id, eventId \} \}\);\s*if \(raced\) return raced;/);
+test('a concurrently created conflict is read back, but unrelated persistence errors stay fatal', () => {
+  // Two nodes can detect the same conflict at once. Only P2002 means the other writer won; masking
+  // any other database error here would turn an outage into a fake concurrency replay.
+  const record = service.slice(service.indexOf('async recordConflict('), service.indexOf('async resolveConflict('));
+  assert.match(record, /syncConflict\.create\([\s\S]*P2002[\s\S]*return null[\s\S]*throw error/);
+  assert.match(record, /if \(!created\) \{\s*const raced = await this\.prisma\.syncConflict\.findFirst\(\{ where: \{ nodeId: node\.id, eventId \} \}\);\s*if \(raced\) return raced;/);
 });
 
 test('the watermark is monotonic, so a stale write cannot make a newer one look current', () => {

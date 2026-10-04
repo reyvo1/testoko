@@ -8,7 +8,7 @@ import { Panel, StatusChip, Table } from '../ui';
 const API=process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000/api/v1';
 type KeyRow={id:string;name:string;keyPrefix:string;scopes:string[];isActive:boolean;lastUsedAt?:string|null;expiresAt?:string|null;apiKey?:string;warning?:string;branchId?:string|null;locationLabel?:string|null};
 type BranchRow={id:string;code:string;name:string};
-async function req<T>(token:string,path:string,init?:RequestInit){const r=await authFetch(`${API}${path}`,token,{...init,headers:{'Content-Type':'application/json',...(init?.headers??{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(Array.isArray(d.message)?d.message.join(', '):d.message??'Request gagal');return d as T;}
+async function req<T>(token:string,path:string,init?:RequestInit){const r=await authFetch(`${API}${path}`,token,{...init,headers:{'Content-Type':'application/json',...(init?.headers??{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(`HTTP ${r.status}: ${Array.isArray(d.message)?d.message.join(', '):d.message??'Request gagal'}`);return d as T;}
 
 export default function ApiKeysView({token}:{token:string}){
   const [rows,setRows]=useState<KeyRow[]>([]);
@@ -30,7 +30,7 @@ export default function ApiKeysView({token}:{token:string}){
   useEffect(()=>{void load().catch(e=>setMsg(e instanceof Error?e.message:'Gagal memuat API key'));},[token]);
   // /master-data/branches is the real listing; a bare /branches does not exist and 404s, which
   // left the pin selector silently empty — an operator would conclude pinning was unavailable.
-  useEffect(()=>{void req<BranchRow[]>(token,'/master-data/branches').then(setBranches).catch(()=>setBranches([]));},[token]);
+  useEffect(()=>{void req<BranchRow[]>(token,'/master-data/branches').then(setBranches).catch((error)=>{setBranches([]);setMsg(error instanceof Error?`Daftar cabang gagal dimuat: ${error.message}`:'Daftar cabang gagal dimuat.');});},[token]);
   async function create(e:FormEvent){e.preventDefault();setBusy(true);try{const row=await req<KeyRow>(token,'/api-keys',{method:'POST',body:JSON.stringify({name,scopes:scopes.split(',').map(x=>x.trim()).filter(Boolean),...(branchId?{branchId}:{}),...(locationLabel.trim()?{locationLabel:locationLabel.trim()}:{})})});setSecret(row.apiKey??'');setSecretLabel(`Key baru · ${row.keyPrefix}`);setName('');setBranchId('');setLocationLabel('');await load();setMsg('API key dibuat. Simpan secret sebelum meninggalkan halaman.');}catch(e){setMsg(e instanceof Error?e.message:'Gagal membuat key');}finally{setBusy(false);}}
   async function revoke(id:string){setBusy(true);try{await req(token,`/api-keys/${id}/revoke`,{method:'PATCH'});await load();setMsg('API key dicabut.');}catch(e){setMsg(e instanceof Error?e.message:'Gagal revoke');}finally{setBusy(false);}}
   async function rotate(e:FormEvent){e.preventDefault();if(!rotateTarget)return;setBusy(true);try{const row=await req<KeyRow>(token,`/api-keys/${rotateTarget.id}/rotate`,{method:'POST',body:'{}'});setSecret(row.apiKey??'');setSecretLabel(`Rotasi ${rotateTarget.name} · ${row.keyPrefix}`);setRotateTarget(null);setRotateConfirmation('');await load();setMsg('API key dirotasi. Secret lama langsung tidak berlaku.');}catch(error){setMsg(error instanceof Error?error.message:'Gagal rotate key');}finally{setBusy(false);}}

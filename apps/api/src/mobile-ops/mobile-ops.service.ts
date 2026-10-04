@@ -3,6 +3,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/auth.types';
+import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+
+type MobileDraftLine = { key: string; barcode: string | null; sku: string | null; quantity: number; unit: string | null; note: string | null };
 
 // POST-1C — Telegram identity resolution and mobile stock-opname drafts.
 //
@@ -167,20 +170,43 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     const needle = code?.trim();
     if (!needle) return null;
-    return this.prisma.product.findFirst({
+    const primary = await this.prisma.product.findFirst({
       where: { companyId, isActive: true, OR: [{ barcode: needle }, { sku: needle }] },
       select: { id: true, name: true, sku: true, barcode: true, unit: true, salePrice: true },
     });
+    if (primary) return { ...primary, quantityFactor: 1 };
+    const alternate = await this.prisma.productBarcode.findFirst({
+      where: { code: needle, product: { companyId, isActive: true } },
+      select: {
+        code: true, quantityFactor: true, unitCode: true,
+        product: { select: { id: true, name: true, sku: true, barcode: true, unit: true, salePrice: true } },
+      },
+    });
+    if (!alternate) return null;
+    const factor = Number(alternate.quantityFactor);
+    if (!Number.isSafeInteger(factor) || factor < 1) {
+      throw new BadRequestException(`Barcode ${needle} memiliki quantityFactor yang tidak aman untuk stok integer.`);
+    }
+    return { ...alternate.product, barcode: alternate.code, unit: alternate.unitCode ?? alternate.product.unit, quantityFactor: factor };
   }
 
-  async listBindings(user: AuthUser) {
+  async listBindings(user: AuthUser, limitValue?: string, cursorValue?: string) {
     const companyId = this.tenant(user);
-    return this.prisma.telegramIdentityBinding.findMany({
-      where: { companyId }, orderBy: { createdAt: 'desc' },
+    const limit = parsePageLimit(limitValue);
+    const cursor = decodeCursor<{ createdAt: string; id: string }>(cursorValue);
+    const rows = await this.prisma.telegramIdentityBinding.findMany({
+      where: {
+        companyId,
+        AND: cursor ? [{ OR: [
+          { createdAt: { lt: new Date(cursor.createdAt) } },
+          { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+        ] }] : undefined,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
       select: { id: true, employeeId: true, displayName: true, isActive: true, revokedAt: true, revokedReason: true, lastUsedAt: true, createdAt: true },
-      // platformUserId is intentionally not returned: this is an operator screen, and a chat id there
-      // is a credential-adjacent value with no reason to be on it.
     });
+    return toCursorPage(rows, limit, (row) => ({ createdAt: row.createdAt.toISOString(), id: row.id }));
   }
 
   // ---------------------------------------------------------------- mobile drafts
@@ -190,38 +216,28 @@ export class MobileOpsService {
   async openDraft(user: AuthUser, dto: { deviceId: string; warehouseId: string; locationId?: string; opnameId?: string }) {
     const companyId = this.tenant(user);
     if (!dto.deviceId?.trim()) throw new BadRequestException('deviceId wajib diisi; draft terikat perangkat.');
-    // Warehouse carries no companyId — the tenant arrives through its branch. Filtering on the branch's
-    // company is what actually scopes this to the caller's tenant.
-    const warehouse = await this.prisma.warehouse.findFirst({
-      where: { id: dto.warehouseId, branch: { companyId } },
-      select: { id: true, branchId: true },
-    });
-    if (!warehouse) throw new NotFoundException('Gudang tidak ditemukan pada tenant ini.');
+    await this.assertDraftScope(companyId, dto.warehouseId, dto.locationId, dto.opnameId);
     const existing = await this.prisma.mobileOpnameDraft.findFirst({
-      where: { deviceId: dto.deviceId, warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, status: 'OPEN' },
+      where: { companyId, deviceId: dto.deviceId.trim(), warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, status: 'OPEN' },
     });
     if (existing) {
-      // Resume, not restart. Returning the stored lines is the entire point of a resumable count.
-      //
-      // But the resume path used to ignore the opnameId the caller passed, so a draft opened before
-      // a StockOpname existed could never be attached to one afterwards: it stayed opname-less for
-      // life, reviewDiscrepancy had no snapshot to compare against, and every line read
-      // system=null. A device that is handed the opname on its second scan is the normal case — the
-      // count starts before a supervisor opens the canonical count, and that is exactly when the
-      // supervisor hands it over. So fill it in when it is missing.
+      if (existing.employeeId !== user.sub) {
+        throw new ForbiddenException('Perangkat masih memiliki draft OPEN milik operator lain. Draft lama harus dikirim atau dibuang sebelum perangkat diserahterimakan.');
+      }
+      if (existing.opnameId && dto.opnameId && existing.opnameId !== dto.opnameId) {
+        throw new BadRequestException('Draft sudah terikat ke StockOpname lain dan tidak boleh dipindahkan.');
+      }
       let draft = existing;
       if (!existing.opnameId && dto.opnameId) {
         const attached = await this.prisma.mobileOpnameDraft.update({
-          where: { id: existing.id },
-          data: { opnameId: dto.opnameId },
-          select: { id: true, opnameId: true },
+          where: { id: existing.id }, data: { opnameId: dto.opnameId },
         });
-        draft = { ...existing, opnameId: attached.opnameId };
+        draft = attached;
       }
       return { id: draft.id, resumed: true, status: draft.status, opnameId: draft.opnameId, lineCount: this.lineCount(draft.lines), lastScannedAt: draft.lastScannedAt };
     }
     const created = await this.prisma.mobileOpnameDraft.create({
-      data: { companyId, employeeId: user.sub, deviceId: dto.deviceId, warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, opnameId: dto.opnameId ?? null, lines: [], deviceLocalAt: new Date() },
+      data: { companyId, employeeId: user.sub, deviceId: dto.deviceId.trim(), warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, opnameId: dto.opnameId ?? null, lines: [], deviceLocalAt: new Date() },
     });
     return { id: created.id, resumed: false, status: created.status, opnameId: created.opnameId, lineCount: 0, lastScannedAt: null };
   }
@@ -257,29 +273,43 @@ export class MobileOpsService {
   // with nobody aware of it. Scoped by company on every query, and the line count is reported so an
   // operator can see which drafts are worth opening — `lines` itself is a device-local Json payload
   // and is deliberately not projected here.
-  async listDrafts(user: AuthUser, status?: 'OPEN' | 'SUBMITTED' | 'DISCARDED', warehouseId?: string) {
+  async listDrafts(
+    user: AuthUser,
+    status?: 'OPEN' | 'SUBMITTED' | 'POSTED' | 'DISCARDED',
+    warehouseId?: string,
+    limitValue?: string,
+    cursorValue?: string,
+  ) {
     const companyId = this.tenant(user);
+    const limit = parsePageLimit(limitValue);
+    const cursor = decodeCursor<{ updatedAt: string; id: string }>(cursorValue);
+    const baseWhere = {
+      companyId,
+      ...(status ? { status } : {}),
+      ...(warehouseId ? { warehouseId } : {}),
+    };
     const drafts = await this.prisma.mobileOpnameDraft.findMany({
       where: {
-        companyId,
-        ...(status ? { status } : {}),
-        // Warehouse carries no companyId, so the tenant check has to go through its branch — same rule
-        // openDraft applies, and applying it here too keeps the filter from becoming a cross-tenant read.
-        ...(warehouseId ? { warehouse: { branch: { companyId } } } : {}),
+        ...baseWhere,
+        AND: cursor ? [{ OR: [
+          { updatedAt: { lt: new Date(cursor.updatedAt) } },
+          { updatedAt: new Date(cursor.updatedAt), id: { lt: cursor.id } },
+        ] }] : undefined,
       },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
       select: {
         id: true, deviceId: true, warehouseId: true, locationId: true, opnameId: true,
         status: true, lastScannedAt: true, deviceLocalAt: true, createdAt: true, updatedAt: true, lines: true,
       },
     });
-    const warehouseIds = [...new Set(drafts.map((d) => d.warehouseId))];
+    const page = toCursorPage(drafts, limit, (draft) => ({ updatedAt: draft.updatedAt.toISOString(), id: draft.id }));
+    const warehouseIds = [...new Set(page.items.map((d) => d.warehouseId))];
     const warehouses = warehouseIds.length
-      ? await this.prisma.warehouse.findMany({ where: { id: { in: warehouseIds } }, select: { id: true, name: true, code: true } })
+      ? await this.prisma.warehouse.findMany({ where: { id: { in: warehouseIds }, branch: { companyId } }, select: { id: true, name: true, code: true } })
       : [];
     const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
-    const rows = drafts.map((draft) => ({
+    const rows = page.items.map((draft) => ({
       id: draft.id,
       deviceId: draft.deviceId,
       warehouseId: draft.warehouseId,
@@ -293,19 +323,22 @@ export class MobileOpsService {
       deviceLocalAt: draft.deviceLocalAt,
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
-      // A draft with an opname is filed; one without is still waiting for a supervisor to point it at a
-      // canonical count. That distinction is what the operator is scanning this list for.
       awaitingFiling: draft.status === 'OPEN' && !draft.opnameId,
     }));
+    const countsByStatus = await this.prisma.mobileOpnameDraft.groupBy({
+      by: ['status'],
+      where: { companyId, ...(warehouseId ? { warehouseId } : {}) },
+      _count: { _all: true },
+    });
+    const total = countsByStatus.reduce((sum, row) => sum + row._count._all, 0);
+    const count = (value: string) => countsByStatus.find((row) => row.status === value)?._count._all ?? 0;
+    const awaitingFiling = await this.prisma.mobileOpnameDraft.count({
+      where: { companyId, status: 'OPEN', opnameId: null, ...(warehouseId ? { warehouseId } : {}) },
+    });
     return {
       rows,
-      counts: {
-        total: rows.length,
-        open: rows.filter((r) => r.status === 'OPEN').length,
-        submitted: rows.filter((r) => r.status === 'SUBMITTED').length,
-        discarded: rows.filter((r) => r.status === 'DISCARDED').length,
-        awaitingFiling: rows.filter((r) => r.awaitingFiling).length,
-      },
+      pageInfo: page.pageInfo,
+      counts: { total, open: count('OPEN'), submitted: count('SUBMITTED'), posted: count('POSTED'), discarded: count('DISCARDED'), awaitingFiling },
       note: 'Draft OPEN tanpa opnameId belum filed ke penghitungan kanonik. Penyesuaian inventory tetap lewat alur StockOpname dengan persetujuan.',
     };
   }
@@ -332,62 +365,38 @@ export class MobileOpsService {
     const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
     if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
     const lines = this.linesOf(draft.lines);
-    const barcodes = lines.map((l) => l.barcode).filter((b): b is string => Boolean(b));
-    const products = await this.prisma.product.findMany({
-      where: { companyId, OR: [{ barcode: { in: barcodes } }, ...(lines.some((l) => l.sku) ? [{ sku: { in: lines.map((l) => l.sku).filter((s): s is string => Boolean(s)) } }] : [])] },
-      select: { id: true, name: true, barcode: true, sku: true },
-    });
-    const byBarcode = new Map(products.filter((p) => p.barcode).map((p) => [p.barcode as string, p]));
-    const bySku = new Map(products.filter((p) => p.sku).map((p) => [p.sku as string, p]));
-
-    // The snapshot to measure against, when the draft is already filed under an opname.
+    const resolved = await this.resolveDraftLines(companyId, lines);
     const snapshot = draft.opnameId
-      ? await this.prisma.stockOpnameItem.findMany({ where: { opnameId: draft.opnameId }, select: { productId: true, batchNumber: true, systemQty: true } })
+      ? await this.prisma.stockOpnameItem.findMany({ where: { opnameId: draft.opnameId }, select: { productId: true, systemQty: true } })
       : [];
-    // A batch-tracked product occupies one row per batch; a phone counts the product, not the batch.
-    // Summing the batches is what makes the comparison mean the same thing on both sides.
     const systemByProduct = new Map<string, number>();
-    for (const item of snapshot) {
-      systemByProduct.set(item.productId, (systemByProduct.get(item.productId) ?? 0) + item.systemQty);
-    }
+    for (const item of snapshot) systemByProduct.set(item.productId, (systemByProduct.get(item.productId) ?? 0) + item.systemQty);
 
-    const rows = lines.map((l) => {
-      const product = (l.barcode ? byBarcode.get(l.barcode) : undefined) ?? (l.sku ? bySku.get(l.sku) : undefined);
-      const system = product ? systemByProduct.get(product.id) ?? null : null;
-      const counted = l.quantity;
-      // difference stays null when there is nothing to compare against, so "not counted yet" can never
-      // be mistaken for "counted and matched".
-      const difference = system === null ? null : counted - system;
+    const rows = resolved.products.map((entry) => {
+      const system = systemByProduct.get(entry.productId) ?? null;
+      const difference = system === null ? null : entry.counted - system;
       return {
-        key: l.key,
-        productId: product?.id ?? null,
-        productName: product?.name ?? null,
-        sku: l.sku,
-        unit: l.unit,
-        counted,
-        system,
-        difference,
-        matched: difference === 0,
-        resolved: Boolean(product),
-        note: l.note,
+        key: entry.keys.join(','), productId: entry.productId, productName: entry.productName, sku: entry.sku,
+        unit: entry.unit, counted: entry.counted, system, difference, matched: difference === 0, resolved: true,
+        note: entry.notes.filter(Boolean).join(' · ') || null,
       };
     });
+    for (const line of resolved.unresolved) {
+      rows.push({
+        key: line.key, productId: null, productName: null, sku: line.sku, unit: line.unit,
+        counted: line.quantity, system: null, difference: null, matched: false, resolved: false, note: line.note,
+      });
+    }
     const compared = rows.filter((r) => r.difference !== null);
     return {
-      draftId: draft.id,
-      status: draft.status,
-      opnameId: draft.opnameId ?? null,
-      lines: rows,
-      unresolved: rows.filter((r) => !r.resolved).length,
-      comparedCount: compared.length,
-      // Over/short are counted lines, not a verdict about missing stock. Only a supervisor-approved
-      // canonical posting can conclude that, and this endpoint cannot.
+      draftId: draft.id, status: draft.status, opnameId: draft.opnameId ?? null, lines: rows,
+      unresolved: resolved.unresolved.length, comparedCount: compared.length,
       overCounted: compared.filter((r) => (r.difference ?? 0) > 0).length,
       shortCounted: compared.filter((r) => (r.difference ?? 0) < 0).length,
       matchedCount: compared.filter((r) => r.difference === 0).length,
       netDifference: compared.reduce((sum, r) => sum + (r.difference ?? 0), 0),
       note: draft.opnameId
-        ? 'Selisih dihitung terhadap snapshot StockOpname saat penghitungan dibuka. Penyesuaian inventory tetap lewat alur adjustment kanonik dengan persetujuan.'
+        ? 'Selisih dihitung terhadap snapshot StockOpname saat penghitungan dibuka. Barcode alternatif/UOM dikonversi ke base unit oleh server.'
         : 'Draft belum terikat ke StockOpname, jadi belum ada snapshot sistem. Kirimkan draft ke opname kanonik untuk melihat selisih.',
     };
   }
@@ -410,96 +419,64 @@ export class MobileOpsService {
     if (draft.status !== 'OPEN') throw new BadRequestException(`Draft berstatus ${draft.status}.`);
     const lines = this.linesOf(draft.lines);
     if (lines.length === 0) throw new BadRequestException('Draft kosong tidak dapat dikirim.');
-    const opname = await this.prisma.stockOpname.findFirst({ where: { id: opnameId } });
+    const opname = await this.assertDraftScope(companyId, draft.warehouseId, draft.locationId ?? undefined, opnameId);
     if (!opname) throw new NotFoundException('StockOpname tidak ditemukan.');
-    // The opname must belong to the same warehouse the draft was counting, or the count is filed
-    // against the wrong stock.
-    if (opname.warehouseId !== draft.warehouseId) {
-      throw new BadRequestException('StockOpname dan draft harus pada gudang yang sama.');
-    }
-    // Counting may only be filled while the opname is still open for it. Filing into an opname that is
-    // already WAITING_APPROVAL or COMPLETED would rewrite numbers a supervisor has already ruled on.
     if (opname.status !== 'COUNTING' && opname.status !== 'DRAFT') {
       throw new BadRequestException(`StockOpname berstatus ${opname.status}; hitungan tidak dapat diisi lagi.`);
     }
+    if (draft.opnameId && draft.opnameId !== opnameId) {
+      throw new BadRequestException('Draft sudah terikat ke StockOpname lain dan tidak boleh dipindahkan.');
+    }
 
-    // Resolve the counted lines to products first: writing a quantity onto an item needs its productId,
-    // and a line that resolves to nothing must not be silently dropped on the way through.
-    const barcodes = lines.map((l) => l.barcode).filter((b): b is string => Boolean(b));
-    const skus = lines.map((l) => l.sku).filter((s): s is string => Boolean(s));
-    const products = await this.prisma.product.findMany({
-      where: { companyId, OR: [{ barcode: { in: barcodes } }, ...(skus.length ? [{ sku: { in: skus } }] : [])] },
-      select: { id: true, name: true, barcode: true, sku: true },
-    });
-    const byBarcode = new Map(products.filter((p) => p.barcode).map((p) => [p.barcode as string, p]));
-    const bySku = new Map(products.filter((p) => p.sku).map((p) => [p.sku as string, p]));
-
+    const resolved = await this.resolveDraftLines(companyId, lines);
+    if (resolved.unresolved.length) {
+      throw new BadRequestException(`Barcode/SKU tidak dikenali: ${resolved.unresolved.map((line) => line.key).join(', ')}. Draft tetap OPEN.`);
+    }
     const items = await this.prisma.stockOpnameItem.findMany({
-      where: { opnameId: opname.id }, select: { id: true, productId: true, batchNumber: true, systemQty: true, countedQty: true, reason: true },
+      where: { opnameId }, select: { id: true, productId: true, batchNumber: true, systemQty: true },
     });
     const byProduct = new Map<string, typeof items>();
-    for (const item of items) {
-      const list = byProduct.get(item.productId) ?? [];
-      list.push(item);
-      byProduct.set(item.productId, list);
-    }
+    for (const item of items) byProduct.set(item.productId, [...(byProduct.get(item.productId) ?? []), item]);
 
-    const unresolved: string[] = [];
     const notInOpname: string[] = [];
-    const updates: Array<{ id: string; data: { countedQty: number; difference: number; reason: string } }> = [];
-    for (const line of lines) {
-      const product = (line.barcode ? byBarcode.get(line.barcode) : undefined) ?? (line.sku ? bySku.get(line.sku) : undefined);
-      if (!product) { unresolved.push(line.key); continue; }
-      const candidates = byProduct.get(product.id) ?? [];
-      if (candidates.length === 0) { notInOpname.push(product.name ?? product.id); continue; }
-      // A batch-tracked product has one row per batch. The device counted the product as a whole, so the
-      // total goes on the row that is still uncounted; if every batch is already counted the count is
-      // spread across them in order, which is the same thing the canonical count screen does by hand.
-      // Either way the quantity that reaches inventory is the quantity that was counted.
-      const target = candidates.find((c) => c.countedQty === null);
-      if (target) {
-        updates.push({ id: target.id, data: { countedQty: line.quantity, difference: line.quantity - target.systemQty, reason: line.note ?? 'Dihitung perangkat mobile' } });
-        continue;
-      }
-      let remaining = line.quantity;
-      for (const candidate of candidates) {
-        if (remaining <= 0) break;
-        const alreadyCounted = candidate.countedQty ?? 0;
-        const capacity = Math.max(0, candidate.systemQty - alreadyCounted);
-        if (capacity === 0) continue;
-        const take = Math.min(capacity, remaining);
-        updates.push({ id: candidate.id, data: { countedQty: alreadyCounted + take, difference: alreadyCounted + take - candidate.systemQty, reason: candidate.reason ?? 'Dihitung perangkat mobile' } });
-        remaining -= take;
-      }
-      if (remaining > 0) {
-        updates.push({ id: candidates[0].id, data: { countedQty: (candidates[0].countedQty ?? 0) + remaining, difference: (candidates[0].countedQty ?? 0) + remaining - candidates[0].systemQty, reason: 'Dihitung perangkat mobile (melebihi snapshot)' } });
-      }
+    const ambiguousBatch: string[] = [];
+    const updates: Array<{ id: string; countedQty: number; difference: number; reason: string }> = [];
+    for (const entry of resolved.products) {
+      const candidates = byProduct.get(entry.productId) ?? [];
+      if (!candidates.length) { notInOpname.push(entry.productName); continue; }
+      if (candidates.length > 1) { ambiguousBatch.push(entry.productName); continue; }
+      const item = candidates[0];
+      updates.push({
+        id: item.id,
+        countedQty: entry.counted,
+        difference: entry.counted - item.systemQty,
+        reason: entry.notes.filter(Boolean).join(' · ') || 'Dihitung perangkat mobile',
+      });
     }
-
-    // A line that cannot be resolved, or a product that is not in this opname, must not be dropped in
-    // silence — the operator would see "sent" and believe the count is complete when it is not.
-    if (unresolved.length || notInOpname.length) {
-      throw new BadRequestException(
-        `Baris tidak dapat dipetakan ke item StockOpname: ${[...unresolved.map((k) => `baris ${k}`), ...notInOpname.map((n) => `produk ${n}`)].join('; ')}. Draft tetap OPEN.`
-      );
+    if (notInOpname.length || ambiguousBatch.length) {
+      const messages = [
+        ...notInOpname.map((name) => `produk ${name} tidak ada di opname`),
+        ...ambiguousBatch.map((name) => `produk ${name} memiliki beberapa batch; scan mobile belum membawa identitas batch`),
+      ];
+      throw new BadRequestException(`${messages.join('; ')}. Draft tetap OPEN agar supervisor tidak menerima alokasi stok hasil tebakan.`);
     }
 
     const saved = await this.prisma.$transaction(async (tx) => {
       for (const update of updates) {
-        await tx.stockOpnameItem.update({ where: { id: update.id }, data: update.data });
+        await tx.stockOpnameItem.update({
+          where: { id: update.id },
+          data: { countedQty: update.countedQty, difference: update.difference, reason: update.reason },
+        });
       }
       const row = await tx.mobileOpnameDraft.update({ where: { id: draft.id }, data: { status: 'SUBMITTED', opnameId } });
       await tx.auditLog.create({
-        data: { companyId, userId: user.sub, action: 'MOBILE_OPNAME_DRAFT_SUBMITTED', entityType: 'MobileOpnameDraft', entityId: draft.id, payload: { opnameId, lineCount: lines.length, filledItems: updates.length } },
+        data: { companyId, userId: user.sub, action: 'MOBILE_OPNAME_DRAFT_SUBMITTED', entityType: 'MobileOpnameDraft', entityId: draft.id, payload: { opnameId, rawLineCount: lines.length, productCount: updates.length } },
       });
       return row;
     });
     return {
-      id: saved.id,
-      status: saved.status,
-      opnameId: saved.opnameId,
-      filledItems: updates.length,
-      note: 'Hitungan draft sudah masuk ke item StockOpname. Pengajuan dan persetujuan tetap lewat alur StockOpname kanonik; posting inventory belum dilakukan.',
+      id: saved.id, status: saved.status, opnameId: saved.opnameId, filledItems: updates.length,
+      note: 'Hitungan mobile sudah dikonversi ke base unit dan masuk ke item StockOpname. Posting inventory tetap menunggu alur StockOpname kanonik.',
     };
   }
 
@@ -516,11 +493,64 @@ export class MobileOpsService {
     return { id: saved.id, status: saved.status };
   }
 
+  private async assertDraftScope(companyId: string, warehouseId: string, locationId?: string, opnameId?: string) {
+    const warehouse = await this.prisma.warehouse.findFirst({ where: { id: warehouseId, branch: { companyId } }, select: { id: true } });
+    if (!warehouse) throw new NotFoundException('Gudang tidak ditemukan pada tenant ini.');
+    if (locationId) {
+      const location = await this.prisma.warehouseLocation.findFirst({ where: { id: locationId, warehouseId, isActive: true }, select: { id: true } });
+      if (!location) throw new BadRequestException('Lokasi/rak tidak aktif atau bukan milik gudang draft.');
+    }
+    if (!opnameId) return null;
+    const opname = await this.prisma.stockOpname.findFirst({ where: { id: opnameId }, select: { id: true, warehouseId: true, locationId: true, status: true } });
+    if (!opname) throw new NotFoundException('StockOpname tidak ditemukan.');
+    if (opname.warehouseId !== warehouseId) throw new BadRequestException('StockOpname dan draft harus pada gudang yang sama.');
+    if ((opname.locationId ?? null) !== (locationId ?? null)) throw new BadRequestException('Lokasi StockOpname harus sama persis dengan lokasi draft mobile.');
+    return opname;
+  }
+
+  private async resolveDraftLines(companyId: string, lines: MobileDraftLine[]) {
+    const barcodes = [...new Set(lines.map((line) => line.barcode).filter((value): value is string => Boolean(value)))];
+    const skus = [...new Set(lines.map((line) => line.sku).filter((value): value is string => Boolean(value)))];
+    const products = await this.prisma.product.findMany({
+      where: { companyId, isActive: true, OR: [
+        ...(barcodes.length ? [{ barcode: { in: barcodes } }] : []),
+        ...(skus.length ? [{ sku: { in: skus } }] : []),
+      ] },
+      select: { id: true, name: true, sku: true, barcode: true, unit: true },
+    });
+    const alternates = barcodes.length ? await this.prisma.productBarcode.findMany({
+      where: { code: { in: barcodes }, product: { companyId, isActive: true } },
+      select: { code: true, quantityFactor: true, unitCode: true, product: { select: { id: true, name: true, sku: true, unit: true } } },
+    }) : [];
+    const primaryBarcode = new Map(products.filter((p) => p.barcode).map((p) => [p.barcode as string, { product: p, factor: 1, unit: p.unit }]));
+    const bySku = new Map(products.map((p) => [p.sku, { product: p, factor: 1, unit: p.unit }]));
+    const alternateBarcode = new Map<string, { product: { id: string; name: string; sku: string; unit: string }; factor: number; unit: string }>();
+    for (const row of alternates) {
+      const factor = Number(row.quantityFactor);
+      if (!Number.isSafeInteger(factor) || factor < 1) throw new BadRequestException(`Barcode ${row.code} memiliki quantityFactor yang tidak aman untuk stok integer.`);
+      alternateBarcode.set(row.code, { product: row.product, factor, unit: row.unitCode ?? row.product.unit });
+    }
+    const aggregated = new Map<string, { productId: string; productName: string; sku: string; unit: string; counted: number; keys: string[]; notes: string[] }>();
+    const unresolved: MobileDraftLine[] = [];
+    for (const line of lines) {
+      const match = (line.barcode ? primaryBarcode.get(line.barcode) ?? alternateBarcode.get(line.barcode) : undefined) ?? (line.sku ? bySku.get(line.sku) : undefined);
+      if (!match) { unresolved.push(line); continue; }
+      const baseQuantity = line.quantity * match.factor;
+      if (!Number.isSafeInteger(baseQuantity) || baseQuantity < 1) throw new BadRequestException(`Kuantitas ${line.key} tidak dapat dikonversi aman ke base unit.`);
+      const current = aggregated.get(match.product.id) ?? { productId: match.product.id, productName: match.product.name, sku: match.product.sku, unit: match.product.unit, counted: 0, keys: [], notes: [] };
+      current.counted += baseQuantity;
+      current.keys.push(line.key);
+      if (line.note) current.notes.push(line.note);
+      aggregated.set(match.product.id, current);
+    }
+    return { products: [...aggregated.values()], unresolved };
+  }
+
   // ---------------------------------------------------------------- internals
 
-  private linesOf(raw: unknown): Array<{ key: string; barcode: string | null; sku: string | null; quantity: number; unit: string | null; note: string | null }> {
+  private linesOf(raw: unknown): MobileDraftLine[] {
     if (!Array.isArray(raw)) return [];
-    return raw.filter((l): l is { key: string; barcode: string | null; sku: string | null; quantity: number; unit: string | null; note: string | null } =>
+    return raw.filter((l): l is MobileDraftLine =>
       Boolean(l) && typeof (l as { key?: unknown }).key === 'string' && Number.isFinite((l as { quantity?: unknown }).quantity));
   }
 

@@ -99,7 +99,7 @@
     "ci:worker:probe": "node scripts/ci-worker-runtime-probe.mjs",
     "ci:audit:production": "node scripts/ci-audit-production-deps.mjs",
     "test:dependency-free": "node --test tests/*.test.mjs",
-    "ci:preflight:local": "npm run workflow:validate && npm run validate:repo && npm run test:dependency-free",
+    "ci:preflight:local": "npm run workflow:validate && npm run validate:repo && npm run db:local:generate && npm run test:dependency-free",
     "ci:security:proposal": "node scripts/ci-propose-security-dependency-refresh.mjs",
     "uat:pre-github:local": "node scripts/run-local-candidate-gate.mjs",
     "audit:full:repo": "node scripts/audit-full-repository.mjs && npm run audit:product:completeness && npm run audit:admin:contextual && npm run audit:canonical:ownership && npm run audit:p5:visual",
@@ -135,7 +135,8 @@
     "concurrently": "^9.2.1",
     "dotenv-cli": "^8.0.0",
     "postcss": "8.5.28",
-    "tailwindcss": "4.3.3"
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.9.0"
   },
   "engines": {
     "node": ">=20.9.0"

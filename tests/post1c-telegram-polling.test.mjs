@@ -188,6 +188,8 @@ test('the API gains no route that acts on a platform id, and the command logic i
   // worker's wiring problem with exactly such a route, so this asserts the refusal stays refused.
   const controller = fs.readFileSync(
     new URL('../apps/api/src/mobile-ops/mobile-ops.controller.ts', import.meta.url), 'utf8');
+  const dto = fs.readFileSync(
+    new URL('../apps/api/src/mobile-ops/dto/mobile-ops.dto.ts', import.meta.url), 'utf8');
   // Strip comments first. A structural assertion that does not will match the sentence explaining why
   // the rule exists — and go green precisely when someone adds the thing the sentence forbids.
   const code = controller.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
@@ -195,19 +197,13 @@ test('the API gains no route that acts on a platform id, and the command logic i
     'the controller must not dispatch commands; the transport owns that');
   assert.doesNotMatch(code, /@Post\([^)]*dispatch/i,
     'no HTTP route may accept a platform id and act on it');
-  // platformUserId legitimately appears on the BINDING admin route — that is an operator registering
-  // which chat belongs to which employee, behind user.manage. The property worth locking is that it
-  // appears nowhere else, and above all not on anything that dispatches.
-  const platformIdLines = code.split('\n')
-    .map((line, index) => ({ index, line }))
-    .filter(({ line }) => line.includes('platformUserId'));
-  assert.ok(platformIdLines.length > 0, 'the binding route should still exist');
-  for (const { line } of platformIdLines) {
-    assert.ok(
-      /bind\(|platformUserId: string/.test(line),
-      `platformUserId may only appear on the binding route, found: ${line.trim()}`,
-    );
-  }
+  // The controller binds through a validated DTO rather than accepting a raw platform id. The DTO
+  // is the only HTTP boundary allowed to declare platformUserId; no dispatch route may consume it.
+  assert.match(code, /@Post\('telegram\/bindings'\)/);
+  assert.match(code, /bind\(@Body\(\) dto: BindMobileIdentityDto/);
+  assert.match(dto, /export class BindMobileIdentityDto/);
+  assert.match(dto, /platformUserId!:\s*string/);
+  assert.doesNotMatch(code, /platformUserId:\s*string/, 'controller must not accept a raw platform id parameter');
 
   // A copy of the dispatcher in the worker would be free to disagree with the real one.
   const worker = fs.readFileSync(new URL('../apps/worker/src/index.ts', import.meta.url), 'utf8');

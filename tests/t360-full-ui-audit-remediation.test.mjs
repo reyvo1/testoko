@@ -211,15 +211,15 @@ test('C3 payroll has a reachable operator path for components and rule sets', ()
   assert.match(ctrl, /@Get\('employee-components'\)/, 'existing assignments must be readable');
 
   const ui = admin('modules/hr-payroll.tsx');
-  // The catalogue read may go through the direct `api()` helper or the permission-aware
-  // `read()` wrapper; both satisfy the operator path this test is about. Asserting one
-  // literal call shape broke when the HR loader was migrated to `read()` even though the
-  // surface was unchanged, so the contract is pinned to the route, not the helper.
-  assert.match(ui, /(api|read)<(?:CursorRows<)?PayrollComponent(?:\[\]|>)>\('\/payroll\/components(?:\?limit=50)?'/, 'the admin UI must load the component catalogue');
-  if (/read<(?:CursorRows<)?PayrollComponent/.test(ui)) {
-    assert.match(ui, /async function read<T>\(path: string, fallback: T\)/, 'the permission-aware read helper must exist when the catalogue is loaded through it');
-    assert.match(ui, /if \(!canReadHrPath\(identity, path\)\) return fallback;/, 'the read helper must refuse a path the operator may not read instead of firing a 403');
-  }
+  // Payroll bootstrap now uses the canonical permission-aware reader directly. The audit
+  // pins that contract so authorization gaps may degrade to an explicit typed fallback,
+  // while transport/server failures still propagate instead of becoming false-empty UI.
+  assert.match(ui, /import \{ readOptional \} from '\.\.\/read-path-contract';/, 'payroll must use the canonical optional-read contract');
+  assert.match(
+    ui,
+    /readOptional\(identity, '\/payroll\/components\?limit=50', \{ items: \[\], pageInfo: \{\} \} as CursorRows<PayrollComponent>, \(path\) => api<CursorRows<PayrollComponent>>\(path\)\)/,
+    'the admin UI must load the paginated component catalogue through the canonical permission-aware reader',
+  );
   assert.match(ui, /api\('\/payroll\/components',\{method:'POST'/, 'an operator must be able to create a salary component');
   assert.match(ui, /api\('\/payroll\/employee-components',\{method:'POST'/, 'an operator must be able to assign a component to an employee');
   assert.match(ui, /api\(endpoint,\{method:'POST'[\s\S]{0,400}ruleCode/, 'an operator must be able to create tax/social rule sets');

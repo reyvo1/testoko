@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountType, Prisma, TaxTransactionDirection } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
+import { businessMonthStart, parseBusinessDateBoundary } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
@@ -365,16 +366,19 @@ export class AccountingCoreService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
-  private taxDateRange(fromValue?: string, toValue?: string) {
-    const from = fromValue ? new Date(`${fromValue}T00:00:00.000Z`) : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-    const to = toValue ? new Date(`${toValue}T23:59:59.999Z`) : new Date();
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) throw new BadRequestException('Rentang tanggal pajak tidak valid.');
+  private async taxDateRange(companyId: string, fromValue?: string, toValue?: string) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new BadRequestException('Company tidak ditemukan.');
+    const now = new Date();
+    const from = parseBusinessDateBoundary(fromValue, businessMonthStart(now, company.timezone), company.timezone, false);
+    const to = parseBusinessDateBoundary(toValue, now, company.timezone, true);
+    if (from > to) throw new BadRequestException('Rentang tanggal pajak tidak valid.');
     return { from, to };
   }
 
   async listTaxTransactions(user: AuthUser, fromValue?: string, toValue?: string, directionValue?: string, limitValue?: string, cursorValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.taxDateRange(fromValue, toValue);
+    const { from, to } = await this.taxDateRange(scope.companyId, fromValue, toValue);
     const allowedDirections = ['INPUT','OUTPUT','WITHHOLDING','SELF_ASSESSED'] as const;
     if (directionValue && !allowedDirections.includes(directionValue as typeof allowedDirections[number])) throw new BadRequestException('Direction pajak tidak valid.');
     const limit = parsePageLimit(limitValue);
@@ -396,7 +400,7 @@ export class AccountingCoreService {
 
   async listTaxDocuments(user: AuthUser, fromValue?: string, toValue?: string, limitValue?: string, cursorValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.taxDateRange(fromValue, toValue);
+    const { from, to } = await this.taxDateRange(scope.companyId, fromValue, toValue);
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<{ issueDate: string; id: string }>(cursorValue);
     const rows = await this.prisma.taxDocument.findMany({
@@ -411,7 +415,7 @@ export class AccountingCoreService {
 
   async taxReconciliation(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.taxDateRange(fromValue, toValue);
+    const { from, to } = await this.taxDateRange(scope.companyId, fromValue, toValue);
     const transactions = await this.prisma.taxTransaction.findMany({
       where: { companyId: scope.companyId, branchId: scope.branchId, transactionDate: { gte: from, lte: to } },
       orderBy: [{ transactionDate: 'asc' }, { id: 'asc' }],

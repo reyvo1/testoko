@@ -266,7 +266,6 @@ export default function EmployeeMasterView({ token }: { token: string }) {
             employmentStatus: form.employmentStatus,
             hireDate: form.hireDate,
             contractEnd: form.contractEnd || undefined,
-            timezone: 'Asia/Makassar',
           }),
         });
         setMessage('Karyawan berhasil dibuat.');

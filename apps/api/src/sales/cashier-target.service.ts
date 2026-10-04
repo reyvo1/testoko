@@ -1,62 +1,95 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/auth.types';
+import { businessDayBounds } from '../common/business-time';
 
-/**
- * T360-20260825 Fitur 5: target & progres kasir.
- * Target penjualan per kasir per hari disimpan di SystemSetting (namespace sales, key cashier_targets).
- * Progres real-time = total sale COMPLETED kasir hari ini vs target. Tanpa migrasi schema.
- */
-type TargetMap = Record<string, number>; // userId -> target rupiah harian
-
+type TargetMap = Record<string, number>;
 const KEY = 'cashier_targets';
 
 @Injectable()
 export class CashierTargetService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async loadTargets(companyId: string): Promise<TargetMap> {
+  private requireScope(user: AuthUser) {
+    if (!user.companyId || !user.branchId) throw new ForbiddenException('Target kasir membutuhkan company dan branch aktif.');
+    return { companyId: user.companyId, branchId: user.branchId };
+  }
+
+  private async loadTargets(companyId: string, branchId: string): Promise<TargetMap> {
     const setting = await this.prisma.systemSetting.findFirst({
-      where: { companyId, namespace: 'sales', key: KEY },
+      where: { companyId, branchId, userId: null, namespace: 'sales', key: KEY },
+    }) ?? await this.prisma.systemSetting.findFirst({
+      // Compatibility read for the old company-wide row. New writes are always branch scoped.
+      where: { companyId, branchId: null, userId: null, namespace: 'sales', key: KEY },
     });
     if (!setting) return {};
-    return (typeof setting.value === 'string' ? JSON.parse(setting.value) : setting.value) as TargetMap;
+    try {
+      const value = typeof setting.value === 'string' ? JSON.parse(setting.value) : setting.value;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+      return value as TargetMap;
+    } catch {
+      return {};
+    }
+  }
+
+  private async activeCashiers(companyId: string, branchId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        branchId,
+        branch: { companyId },
+        isActive: true,
+        roles: { some: { role: { name: 'CASHIER' } } },
+      },
+      select: { id: true, name: true },
+      take: 200,
+    });
   }
 
   async saveTargets(user: AuthUser, targets: TargetMap) {
+    const scope = this.requireScope(user);
+    const cashiers = await this.activeCashiers(scope.companyId, scope.branchId);
+    const allowedIds = new Set(cashiers.map((cashier) => cashier.id));
     const clean: TargetMap = {};
     for (const [userId, value] of Object.entries(targets ?? {})) {
+      if (!allowedIds.has(userId)) throw new BadRequestException(`User ${userId} bukan kasir aktif pada branch ini.`);
       const v = Number(value);
-      if (!Number.isFinite(v) || v < 0) throw new BadRequestException(`Target tidak valid untuk user ${userId}.`);
+      if (!Number.isFinite(v) || v < 0 || !Number.isSafeInteger(Math.round(v))) throw new BadRequestException(`Target tidak valid untuk user ${userId}.`);
       clean[userId] = Math.round(v);
     }
-    const existing = await this.prisma.systemSetting.findFirst({ where: { companyId: user.companyId as string, namespace: 'sales', key: KEY } });
-    const value = clean as unknown as import('@prisma/client').Prisma.InputJsonValue;
-    if (existing) await this.prisma.systemSetting.update({ where: { id: existing.id }, data: { value, updatedAt: new Date() } });
-    else await this.prisma.systemSetting.create({
-      data: { companyId: user.companyId as string, branchId: user.branchId ?? null, namespace: 'sales', key: KEY, value },
+    const value = clean as unknown as Prisma.InputJsonValue;
+    const existing = await this.prisma.systemSetting.findFirst({
+      where: { companyId: scope.companyId, branchId: scope.branchId, userId: null, namespace: 'sales', key: KEY },
+      select: { id: true },
     });
+    if (existing) await this.prisma.systemSetting.update({ where: { id: existing.id }, data: { value, updatedAt: new Date() } });
+    else await this.prisma.systemSetting.create({ data: { companyId: scope.companyId, branchId: scope.branchId, namespace: 'sales', key: KEY, value } });
     return clean;
   }
 
-  /** Progres semua kasir pada branch token (atau satu kasir bila self). */
   async progress(user: AuthUser) {
-    const companyId = user.companyId as string;
-    const targets = await this.loadTargets(companyId);
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-
-    const cashiers = await this.prisma.user.findMany({
-      where: { branchId: user.branchId ?? undefined, branch: { companyId }, isActive: true },
-      select: { id: true, name: true },
-      take: 100,
-    });
+    const scope = this.requireScope(user);
+    const [targets, company, cashiers] = await Promise.all([
+      this.loadTargets(scope.companyId, scope.branchId),
+      this.prisma.company.findUnique({ where: { id: scope.companyId }, select: { timezone: true } }),
+      this.activeCashiers(scope.companyId, scope.branchId),
+    ]);
+    if (!company) throw new ForbiddenException('Tenant target kasir tidak ditemukan.');
+    const now = new Date();
+    const { start } = businessDayBounds(now, company.timezone);
 
     const rows = await Promise.all(cashiers.map(async (cashier) => {
       const agg = await this.prisma.sale.aggregate({
-        where: { cashierShift: { userId: cashier.id }, status: 'COMPLETED', createdAt: { gte: start } },
-        _sum: { total: true }, _count: true,
+        where: {
+          branchId: scope.branchId,
+          branch: { companyId: scope.companyId },
+          cashierShift: { userId: cashier.id },
+          status: 'COMPLETED',
+          createdAt: { gte: start, lte: now },
+        },
+        _sum: { total: true },
+        _count: true,
       });
-      // fallback: sale tanpa shift juga dihitung via createdById-like field tidak ada — cukup shift-based
       const achieved = Number(agg._sum.total ?? 0);
       const target = targets[cashier.id] ?? 0;
       return {
@@ -70,6 +103,6 @@ export class CashierTargetService {
       };
     }));
 
-    return { generatedAt: new Date().toISOString(), rows: rows.sort((a, b) => b.achieved - a.achieved) };
+    return { generatedAt: now.toISOString(), rows: rows.sort((a, b) => b.achieved - a.achieved) };
   }
 }

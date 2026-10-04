@@ -460,7 +460,10 @@ export class BranchSyncService {
     if (existing) return existing;
     const created = await this.prisma.syncConflict.create({
       data: { companyId: scope.companyId, nodeId: node.id, peerNodeId: '', eventId, aggregateType: outbox.aggregateType, aggregateId: outbox.aggregateId, baseVersion, remoteVersion, strategy: 'PENDING' },
-    }).catch(() => null);
+    }).catch((error: unknown) => {
+      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002') return null;
+      throw error;
+    });
     if (!created) {
       const raced = await this.prisma.syncConflict.findFirst({ where: { nodeId: node.id, eventId } });
       if (raced) return raced;
@@ -589,9 +592,11 @@ export class BranchSyncService {
         data: { lastEventId, cursor: position, lastSyncAt: new Date(), lagCount: lag },
       });
     }
-    await this.prisma.syncCursor.create({
-      data: { companyId: scope.companyId, nodeId: node.id, peerNodeId: node.id, lastEventId, cursor: position, lastSyncAt: new Date() },
-    }).catch(() => undefined);
+    await this.prisma.syncCursor.upsert({
+      where: { nodeId_peerNodeId: { nodeId: node.id, peerNodeId: node.id } },
+      update: { lastEventId, cursor: position, lastSyncAt: new Date() },
+      create: { companyId: scope.companyId, nodeId: node.id, peerNodeId: node.id, lastEventId, cursor: position, lastSyncAt: new Date() },
+    });
   }
 
   private async recordInbox(
@@ -600,7 +605,10 @@ export class BranchSyncService {
   ) {
     await this.prisma.syncInbox.create({
       data: { companyId: scope.companyId, nodeId: node.id, peerNodeId: peer.id, eventId: event.eventId, eventType: event.eventType, schemaVersion: event.schemaVersion, outcome, errorMessage, payloadDigest: this.digest(payload) },
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002') return undefined;
+      throw error;
+    });
   }
 
   private async audit(

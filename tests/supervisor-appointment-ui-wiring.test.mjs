@@ -26,13 +26,14 @@ test('the Access Control panel actually calls the supervisor PIN endpoint', () =
     'the target must be the user whose row the operator acted on');
 });
 
-test('the panel reads the live approver status, and tolerates the module being unreachable', () => {
-  // Without the status read the badge is decorative: it would claim "Belum ada supervisor" forever
-  // even after a successful appointment, which is the same class of lie as a status that never
-  // changes. The catch keeps the user list usable when the approval module fails.
+test('the panel reads live approver status, degrading authorization only while surfacing outages', () => {
+  // Operators without approval visibility may receive 401/403 and get a neutral fallback. A network
+  // or 5xx failure is not equivalent to "not configured" and must still fail the workspace load.
   assert.match(accessControl, /'\/supervisor-approval\/status'/);
-  assert.match(accessControl, /\.catch\(\(\)=>null\)/,
-    'a failing status read must not blank the whole page');
+  assert.match(accessControl, /optionalAuthorization/);
+  assert.match(accessControl, /\\b\(401\|403\)\\b/);
+  assert.match(accessControl, /HTTP \$\{response\.status\}/);
+  assert.doesNotMatch(accessControl, /\.catch\(\(\)=>null\)/);
   assert.match(accessControl, /setSupervisorStatus\(nextSupervisorStatus\)/,
     'and the result must reach state, not be fetched and discarded');
 });

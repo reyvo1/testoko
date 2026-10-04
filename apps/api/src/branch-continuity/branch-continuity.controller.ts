@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { BranchConnectionState } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Permissions } from '../auth/permissions.decorator';
 import { BranchContinuityService } from './branch-continuity.service';
+import { DeclareContinuityCapabilityDto, MarkReadWatermarkDto, RecordBackupMetadataDto, RejoinBranchDto, ReportConnectivityDto, SetNodePolicyDto, VerifyRestoreChecksumDto } from './dto/branch-continuity.dto';
 
 // POST-1B — local-first branch continuity.
 //
@@ -26,7 +26,7 @@ export class BranchContinuityController {
 
   @Put('capabilities')
   @Permissions('integration.manage')
-  declareCapability(@Body() dto: { flowCode: string; label: string; offlineCapable: boolean; degradedImpact?: string; localAuthoritative?: boolean }, @CurrentUser() user: AuthUser) {
+  declareCapability(@Body() dto: DeclareContinuityCapabilityDto, @CurrentUser() user: AuthUser) {
     return this.service.declareCapability(user, dto);
   }
 
@@ -38,7 +38,7 @@ export class BranchContinuityController {
 
   @Put('nodes/:nodeId/policy')
   @Permissions('integration.manage')
-  setNodePolicy(@Param('nodeId') nodeId: string, @Body() dto: { flowCode: string; offlineCapable: boolean; degradedImpact?: string }, @CurrentUser() user: AuthUser) {
+  setNodePolicy(@Param('nodeId') nodeId: string, @Body() dto: SetNodePolicyDto, @CurrentUser() user: AuthUser) {
     return this.service.setNodePolicy(user, nodeId, dto);
   }
 
@@ -57,7 +57,7 @@ export class BranchContinuityController {
 
   @Post('nodes/:nodeId/read-watermark')
   @Permissions('integration.manage')
-  markSynced(@Param('nodeId') nodeId: string, @Body() dto: { resource: string; sourceCursor?: string }, @CurrentUser() user: AuthUser) {
+  markSynced(@Param('nodeId') nodeId: string, @Body() dto: MarkReadWatermarkDto, @CurrentUser() user: AuthUser) {
     return this.service.markSynced(user, nodeId, dto);
   }
 
@@ -69,7 +69,7 @@ export class BranchContinuityController {
 
   @Put('connectivity')
   @Permissions('integration.manage')
-  reportConnectivity(@Body() dto: { branchId: string; state: BranchConnectionState; lagCount?: number; reason?: string }, @CurrentUser() user: AuthUser) {
+  reportConnectivity(@Body() dto: ReportConnectivityDto, @CurrentUser() user: AuthUser) {
     return this.service.reportConnectivity(user, dto);
   }
 
@@ -89,7 +89,7 @@ export class BranchContinuityController {
 
   @Post('backups')
   @Permissions('integration.manage')
-  recordBackup(@Body() dto: { nodeId: string; completedAt: string; checksum: string; sizeBytes: number; kind?: 'LOCAL' | 'CENTRAL' }, @CurrentUser() user: AuthUser) {
+  recordBackup(@Body() dto: RecordBackupMetadataDto, @CurrentUser() user: AuthUser) {
     return this.service.recordBackupMetadata(user, dto);
   }
 
@@ -101,13 +101,13 @@ export class BranchContinuityController {
 
   @Post('backups/verify-restore')
   @Permissions('integration.manage')
-  verifyRestore(@Body() dto: { nodeId: string; checksum: string }, @CurrentUser() user: AuthUser) {
+  verifyRestore(@Body() dto: VerifyRestoreChecksumDto, @CurrentUser() user: AuthUser) {
     return this.service.verifyRestoreChecksum(user, dto);
   }
 
   @Post('rejoin')
   @Permissions('integration.manage')
-  rejoin(@Body() dto: { code: string; name: string; role: 'CENTRAL' | 'BRANCH'; branchId?: string }, @CurrentUser() user: AuthUser) {
+  rejoin(@Body() dto: RejoinBranchDto, @CurrentUser() user: AuthUser) {
     return this.service.rejoinBranch(user, dto);
   }
 }

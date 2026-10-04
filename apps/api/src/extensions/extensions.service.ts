@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { SecretProtectorService } from '../platform/secret-protector.service';
 import type { EdgeDeviceIdentity } from './edge-device-auth.service';
 import { AuthUser } from '../auth/auth.types';
+import { businessDateKey, parseBusinessDateBoundary, zonedDateParts, zonedLocalToUtc } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -35,13 +36,6 @@ function renderNotificationTemplate(text: string | null | undefined, data: unkno
   });
 }
 
-function boundaryDate(value: string, endOfDay = false): Date {
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const parsed = dateOnly ? new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`) : new Date(value);
-  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Format tanggal tidak valid.');
-  return parsed;
-}
-
 type DbClient = Prisma.TransactionClient | PrismaService;
 type TenantScope = { companyId: string; branchId: string };
 
@@ -64,6 +58,12 @@ export class ExtensionsService {
 
   private hasPermission(user: AuthUser, permission: string): boolean {
     return user.roles.includes('SUPER_ADMIN') || user.roles.includes('OWNER') || user.permissions.includes('*') || user.permissions.includes(permission);
+  }
+
+  private async companyTimeZone(client: DbClient, companyId: string): Promise<string> {
+    const company = await client.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new BadRequestException('Company tidak ditemukan.');
+    return company.timezone;
   }
 
   private async denyTenantAccess(
@@ -596,8 +596,10 @@ export class ExtensionsService {
   async createFiscalPeriod(dto: CreateFiscalPeriodDto, user: AuthUser) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId, 'FiscalPeriod');
-    const startDate = boundaryDate(dto.startDate, false);
-    const endDate = boundaryDate(dto.endDate, true);
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const now = new Date();
+    const startDate = parseBusinessDateBoundary(dto.startDate, now, timeZone, false);
+    const endDate = parseBusinessDateBoundary(dto.endDate, now, timeZone, true);
     if (startDate > endDate) throw new BadRequestException('Tanggal awal periode tidak boleh melewati tanggal akhir.');
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.fiscalPeriod.findFirst({
@@ -728,6 +730,7 @@ export class ExtensionsService {
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId, 'BankStatement');
     if (!dto.fileName.trim()) throw new BadRequestException('Nama file bank statement wajib sebagai identitas idempoten.');
     if (!dto.lines.length) throw new BadRequestException('Bank statement harus memiliki baris transaksi.');
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
     return this.prisma.$transaction(async (tx) => {
       const account = await this.assertBankAccount(tx, user, scope, dto.bankAccountId);
       const normalizedLines = dto.lines.map((line) => {
@@ -750,8 +753,10 @@ export class ExtensionsService {
       });
       const firstDate = normalizedLines.reduce((min, line) => line.transactionDate < min ? line.transactionDate : min, normalizedLines[0].transactionDate);
       const lastDate = normalizedLines.reduce((max, line) => line.transactionDate > max ? line.transactionDate : max, normalizedLines[0].transactionDate);
-      const periodStart = dto.periodStart ? boundaryDate(dto.periodStart, false) : boundaryDate(firstDate.toISOString().slice(0, 10), false);
-      const periodEnd = dto.periodEnd ? boundaryDate(dto.periodEnd, true) : boundaryDate(lastDate.toISOString().slice(0, 10), true);
+      const firstLocal = businessDateKey(firstDate, timeZone);
+      const lastLocal = businessDateKey(lastDate, timeZone);
+      const periodStart = parseBusinessDateBoundary(dto.periodStart ?? firstLocal, firstDate, timeZone, false);
+      const periodEnd = parseBusinessDateBoundary(dto.periodEnd ?? lastLocal, lastDate, timeZone, true);
       if (periodStart > periodEnd) throw new BadRequestException('Periode bank statement tidak valid.');
       if (normalizedLines.some((line) => line.transactionDate < periodStart || line.transactionDate > periodEnd)) {
         throw new BadRequestException('Ada baris bank statement di luar periodStart/periodEnd.');
@@ -826,8 +831,10 @@ export class ExtensionsService {
   async createReconciliation(dto: CreateReconciliationDto, user: AuthUser) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId, 'BankReconciliation');
-    const startDate = boundaryDate(dto.startDate, false);
-    const endDate = boundaryDate(dto.endDate, true);
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const now = new Date();
+    const startDate = parseBusinessDateBoundary(dto.startDate, now, timeZone, false);
+    const endDate = parseBusinessDateBoundary(dto.endDate, now, timeZone, true);
     if (startDate > endDate) throw new BadRequestException('Tanggal awal rekonsiliasi tidak boleh melewati tanggal akhir.');
     return this.prisma.$transaction(async (tx) => {
       await this.scopedBankStatement(tx, user, scope, dto.statementId);
@@ -1239,7 +1246,7 @@ export class ExtensionsService {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), take: 500,
     });
     const deviceIds = tenantDevices.map((device) => device.id);
-    const processed = deviceIds.length ? await this.prisma.offlineTransaction.findMany({ where: { deviceId: { in: deviceIds }, status: 'APPLIED', receivedAt: { gte: sinceDate } }, orderBy: { receivedAt: 'asc' }, take: 200 }).catch(() => []) : [];
+    const processed = deviceIds.length ? await this.prisma.offlineTransaction.findMany({ where: { deviceId: { in: deviceIds }, status: 'APPLIED', receivedAt: { gte: sinceDate } }, orderBy: { receivedAt: 'asc' }, take: 200 }) : [];
     const scopedEvents = events.filter((event) => {
       const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload as Record<string, unknown> : undefined;
       if (!payload) return true;
@@ -1312,8 +1319,11 @@ export class ExtensionsService {
 
   async dailySummaries(user: AuthUser, from?: string, to?: string) {
     const scope = this.requireTenantScope(user);
-    const end = to ? boundaryDate(to, true) : new Date();
-    const start = from ? boundaryDate(from) : new Date(end.getTime() - 30 * 86400000);
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const now = new Date();
+    const end = parseBusinessDateBoundary(to, now, timeZone, true);
+    const defaultStart = new Date(end.getTime() - 30 * 86400000);
+    const start = parseBusinessDateBoundary(from, defaultStart, timeZone, false);
     if (start > end) throw new BadRequestException('Rentang summary tidak valid.');
     const [sales, finance] = await Promise.all([
       this.prisma.dailySalesSummary.findMany({
@@ -1330,17 +1340,25 @@ export class ExtensionsService {
 
   async materializeDailySummaries(dto: MaterializeDailySummariesDto, user: AuthUser) {
     const scope = this.requireTenantScope(user);
-    const requested = dto.businessDate ? boundaryDate(dto.businessDate) : new Date();
-    const businessDate = new Date(Date.UTC(requested.getUTCFullYear(), requested.getUTCMonth(), requested.getUTCDate()));
-    const nextDate = new Date(businessDate.getTime() + 86400000);
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const requested = dto.businessDate
+      ? parseBusinessDateBoundary(dto.businessDate, new Date(), timeZone, false)
+      : new Date();
+    const local = zonedDateParts(requested, timeZone);
+    // Summary keys stay normalized at UTC midnight for stable uniqueness, while source rows
+    // are selected from the real company-local business-day window.
+    const businessDate = new Date(Date.UTC(local.year, local.month - 1, local.day));
+    const rangeStart = zonedLocalToUtc(local.year, local.month, local.day, 0, 0, timeZone);
+    const nextLocal = new Date(Date.UTC(local.year, local.month - 1, local.day + 1));
+    const nextDate = zonedLocalToUtc(nextLocal.getUTCFullYear(), nextLocal.getUTCMonth() + 1, nextLocal.getUTCDate(), 0, 0, timeZone);
     return this.prisma.$transaction(async (tx) => {
       const [sales, journalLines] = await Promise.all([
         tx.sale.findMany({
-          where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', createdAt: { gte: businessDate, lt: nextDate } },
+          where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', createdAt: { gte: rangeStart, lt: nextDate } },
           include: { items: { select: { quantity: true } } },
         }),
         tx.journalLine.findMany({
-          where: { account: { branchId: scope.branchId }, journalEntry: { date: { gte: businessDate, lt: nextDate } } },
+          where: { account: { branchId: scope.branchId }, journalEntry: { date: { gte: rangeStart, lt: nextDate } } },
           select: { accountId: true, debit: true, credit: true },
         }),
       ]);
@@ -1409,7 +1427,8 @@ export class ExtensionsService {
     const provider = (process.env.DATA_ARCHIVE_STORAGE_PROVIDER || '').trim().toLowerCase();
     if (provider !== 'local') throw new BadRequestException('Archive storage belum dikonfigurasi. Set DATA_ARCHIVE_STORAGE_PROVIDER=local hanya pada environment yang memang memakai local durable volume.');
     const cutoff = new Date(Date.now() - policy.warmDays * 86400000);
-    const requestedEnd = dto.rangeEnd ? boundaryDate(dto.rangeEnd, true) : cutoff;
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const requestedEnd = parseBusinessDateBoundary(dto.rangeEnd, cutoff, timeZone, true);
     if (requestedEnd > cutoff) throw new BadRequestException('rangeEnd archive tidak boleh lebih baru dari cutoff warmDays policy.');
     const previous = await this.prisma.dataArchiveRun.findFirst({ where: { companyId: scope.companyId, entityType: policy.entityType, status: 'COMPLETED' }, orderBy: { rangeEnd: 'desc' } });
     const rangeStart = previous?.rangeEnd ?? new Date('2000-01-01T00:00:00.000Z');

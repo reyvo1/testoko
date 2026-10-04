@@ -1,3 +1,5 @@
+import { businessDateKey } from '../common/business-time';
+
 /**
  * Reorder forecast — the part of F10 that "PARTIAL by productization depth" was describing.
  *
@@ -39,6 +41,7 @@ export type ForecastInput = {
   inboundInTransit: number;
   demand: DemandSample[];
   observedLeadTimeDays: number | null;
+  timeZone: string;
   now?: Date;
   packSize?: number | null;
   maxStock?: number | null;
@@ -82,7 +85,7 @@ export function computeReorderForecast(input: ForecastInput): ForecastResult {
   const now = input.now ?? new Date();
   const windowStart = new Date(now.getTime() - DEMAND_WINDOW_DAYS * 86_400_000);
   const samples = input.demand.filter((row) => row.date >= windowStart && row.date <= now);
-  const measuredDays = new Set(samples.map((row) => row.date.toISOString().slice(0, 10))).size;
+  const measuredDays = new Set(samples.map((row) => businessDateKey(row.date, input.timeZone))).size;
 
   const drivers: string[] = [];
   const canMeasure = samples.length > 0 && measuredDays >= MIN_SAMPLES_FOR_RATE;

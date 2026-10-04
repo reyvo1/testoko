@@ -140,7 +140,12 @@
     $('card-review').classList.toggle('hide', !draftRow.opnameId);
     return api('/mobile-ops/drafts/' + encodeURIComponent(draftRow.id))
       .then(function (full) { lines = (full && full.lines) || []; renderLines(); })
-      .catch(function () { lines = []; renderLines(); });
+      .catch(function (error) {
+        // Never turn a failed authoritative read into an empty count. An empty list means the
+        // server confirmed zero lines; a transport/server failure means the operator does not know.
+        say(error.message || 'Gagal memuat isi draft.', 'bad');
+        throw error;
+      });
   }
 
   // ---------------------------------------------------------------- actions
@@ -228,13 +233,9 @@
       .catch(function (error) { say(error.message, 'bad'); });
   }
 
-  function submitDraft() {
-    if (!draft) return;
-    var opnameId = $('opname').value.trim();
-    if (!opnameId) { say('Isi id opname lebih dulu.', 'bad'); return; }
-    if (!confirm('Kirim hitungan ke opname ' + opnameId + '?')) return;
+  function performSubmit(opnameId) {
     say('Mengirim…');
-    api('/mobile-ops/drafts/' + encodeURIComponent(draft.id) + '/submit', {
+    return api('/mobile-ops/drafts/' + encodeURIComponent(draft.id) + '/submit', {
       method: 'POST', body: { opnameId: opnameId },
     }).then(function (result) {
       say('Terkirim: ' + result.filledItems + ' item terisi di opname ' + result.opnameId
@@ -244,6 +245,16 @@
       renderLines();
       $('card-review').classList.add('hide');
     }).catch(function (error) { say(error.message, 'bad'); });
+  }
+
+  function submitDraft() {
+    if (!draft) return;
+    var opnameId = $('opname').value.trim();
+    if (!opnameId) { say('Isi id opname lebih dulu.', 'bad'); return; }
+    var dialog = $('submit-confirm');
+    $('submit-confirm-text').textContent = 'Kirim hitungan draft ini ke opname ' + opnameId + '? Stok belum berubah sampai alur StockOpname disetujui.';
+    dialog.dataset.opnameId = opnameId;
+    dialog.showModal();
   }
 
   // ---------------------------------------------------------------- camera
@@ -326,6 +337,14 @@
   $('code').addEventListener('keydown', function (event) { if (event.key === 'Enter') $('btn-scan').click(); });
   $('btn-review').addEventListener('click', review);
   $('btn-submit').addEventListener('click', submitDraft);
+  $('btn-submit-cancel').addEventListener('click', function () { $('submit-confirm').close(); });
+  $('btn-submit-confirm').addEventListener('click', function () {
+    var dialog = $('submit-confirm');
+    var opnameId = dialog.dataset.opnameId || '';
+    dialog.close();
+    if (!opnameId || !draft) return;
+    void performSubmit(opnameId);
+  });
   $('btn-camera').addEventListener('click', function () { scanner = true; startCamera(); });
   $('btn-camera-stop').addEventListener('click', stopCamera);
   $('btn-logout').addEventListener('click', function () {

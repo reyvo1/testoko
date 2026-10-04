@@ -114,8 +114,9 @@ test('the API address is resolved at runtime, never frozen at build time', () =>
 test('the submit wording cannot overstate what happened', () => {
   // The whole design is that a count never posts inventory without supervisor approval. A reply
   // implying the stock moved would be the most damaging thing this surface could say.
-  const submitStart = app.indexOf('function submitDraft');
-  assert.ok(submitStart > 0, 'submitDraft must exist');
+  const submitStart = app.indexOf('function performSubmit');
+  assert.ok(submitStart > 0, 'performSubmit must exist');
+  assert.ok(app.indexOf('function submitDraft', submitStart) > submitStart, 'submitDraft confirmation step must exist');
   const submit = app.slice(submitStart, app.indexOf('function startCamera'));
   // Assert the invariant, not a phrasing: the reply must say approval is still outstanding and name
   // the flow that owns it. An earlier version demanded the literal words "persetujuan supervisor" and

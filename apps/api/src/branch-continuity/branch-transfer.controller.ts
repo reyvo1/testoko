@@ -4,6 +4,7 @@ import { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Permissions } from '../auth/permissions.decorator';
 import { BranchTransferService } from './branch-transfer.service';
+import { AbandonBranchTransferDto, AcknowledgeTransferArrivalDto } from './dto/branch-continuity.dto';
 
 // POST-1B — offline inter-branch transfer tracking.
 //
@@ -35,7 +36,7 @@ export class BranchTransferController {
 
   @Post('transfers/:transferId/arrival')
   @Permissions('integration.manage')
-  acknowledgeArrival(@Param('transferId') transferId: string, @Body() dto: { receivedQuantity: number; note?: string }, @CurrentUser() user: AuthUser) {
+  acknowledgeArrival(@Param('transferId') transferId: string, @Body() dto: AcknowledgeTransferArrivalDto, @CurrentUser() user: AuthUser) {
     return this.service.acknowledgeArrival(user, transferId, dto);
   }
 
@@ -53,7 +54,7 @@ export class BranchTransferController {
 
   @Post('transfers/:transferId/abandon')
   @Permissions('integration.manage')
-  abandon(@Param('transferId') transferId: string, @Body() dto: { reason: string }, @CurrentUser() user: AuthUser) {
+  abandon(@Param('transferId') transferId: string, @Body() dto: AbandonBranchTransferDto, @CurrentUser() user: AuthUser) {
     return this.service.abandon(user, transferId, dto.reason);
   }
 }

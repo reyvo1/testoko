@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/auth.types';
+import { businessDayBounds } from '../common/business-time';
 
 /**
  * T360-20260825 Fitur 4: dashboard multi-outlet.
@@ -30,9 +31,12 @@ export class MultiOutletService {
   constructor(private readonly prisma: PrismaService) {}
 
   async overview(user: AuthUser) {
-    const companyId = user.companyId as string;
-    const start = new Date(); start.setHours(0, 0, 0, 0);
+    if (!user.companyId) throw new ForbiddenException('Dashboard multi-outlet harus punya tenant.');
+    const companyId = user.companyId;
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new ForbiddenException('Tenant multi-outlet tidak ditemukan.');
     const now = new Date();
+    const { start } = businessDayBounds(now, company.timezone);
 
     const branches = await this.prisma.branch.findMany({
       where: { companyId },
@@ -71,8 +75,8 @@ export class MultiOutletService {
         _count: true,
       }) : [],
       branchIds.length ? this.prisma.inventory.findMany({
-        where: { warehouse: { branchId: { in: branchIds } }, available: { lte: 5 } },
-        select: { warehouseId: true },
+        where: { warehouse: { branchId: { in: branchIds }, branch: { companyId } }, product: { companyId, isActive: true } },
+        select: { warehouseId: true, available: true, product: { select: { minStock: true } } },
       }) : [],
       branchIds.length ? this.prisma.order.findMany({
         where: { branchId: { in: branchIds }, status: { in: ['PAID', 'PROCESSING'] } },
@@ -120,6 +124,7 @@ export class MultiOutletService {
       : [];
     const lowStockByBranch = new Map<string, number>();
     for (const row of lowStockByWarehouse) {
+      if (row.product.minStock <= 0 || row.available > row.product.minStock) continue;
       const branchId = warehouses.find((warehouse) => warehouse.id === row.warehouseId)?.branchId;
       if (branchId) lowStockByBranch.set(branchId, (lowStockByBranch.get(branchId) ?? 0) + 1);
     }

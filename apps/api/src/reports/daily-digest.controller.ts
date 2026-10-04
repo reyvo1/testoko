@@ -5,6 +5,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Permissions } from '../auth/permissions.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { DailyDigestService } from './daily-digest.service';
+import { SaveDailyDigestConfigDto } from './dto/daily-digest.dto';
 
 @ApiTags('reports') @ApiBearerAuth() @Controller()
 export class DailyDigestController {
@@ -19,7 +20,7 @@ export class DailyDigestController {
   @Post('reports/daily-digest/config')
   @Roles('SUPER_ADMIN','OWNER','ADMIN')
   @Permissions('notification.manage')
-  saveConfig(@Body() dto: { enabled?: boolean; hour?: number; recipientBindingIds?: string[] }, @CurrentUser() user: AuthUser) {
+  saveConfig(@Body() dto: SaveDailyDigestConfigDto, @CurrentUser() user: AuthUser) {
     return this.digest.saveConfig(user, dto);
   }
 

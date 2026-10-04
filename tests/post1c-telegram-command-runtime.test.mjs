@@ -57,7 +57,7 @@ function seed() {
   c.exec('DELETE FROM AuditLog; DELETE FROM StockOpnameItem; DELETE FROM StockOpname; DELETE FROM MobileOpnameDraft;'
     + ' DELETE FROM TelegramIdentityBinding; DELETE FROM Employee; DELETE FROM UserRole; DELETE FROM RolePermission;'
     + ' DELETE FROM Role; DELETE FROM Permission; DELETE FROM User; DELETE FROM Product;'
-    + ' DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
+    + ' DELETE FROM WarehouseLocation; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
   c.prepare('INSERT INTO Company (id, name, timezone, currency, createdAt, updatedAt) VALUES (?,?,?,?,?,?)')
     .run('acme', 'Acme', 'Asia/Makassar', 'IDR', now(), now());
   c.prepare('INSERT INTO Branch (id, companyId, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
@@ -71,6 +71,11 @@ function seed() {
     .run('wh-1', 'W1', 'Gudang 1', 'br-1', 1, 1, now(), now());
   c.prepare('INSERT INTO Warehouse (id, code, name, branchId, isActive, isDefault, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')
     .run('wh-foreign', 'W2', 'Gudang Asing', 'br-2', 1, 1, now(), now());
+  // The command path intentionally uses a concrete rack. Since MobileOps now validates that every
+  // location belongs to the selected warehouse, the fixture must materialize that production
+  // invariant instead of relying on a free-form location id.
+  c.prepare('INSERT INTO WarehouseLocation (id, warehouseId, code, name, type, isDefault, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('rak-A', 'wh-1', 'RAK-A', 'Rak A', 'BIN', 0, 1, now(), now());
 
   const product = (id, sku, barcode, name, price, isActive = 1) => c.prepare(
     'INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)',
@@ -118,8 +123,8 @@ function seed() {
   bind('tb-4', 'e-3', 'tg-terminated');
   bind('tb-5', 'e-4', 'tg-nouser');
 
-  c.prepare('INSERT INTO StockOpname (id, number, warehouseId, status, startedAt, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
-    .run('so-1', 'SO-1', 'wh-1', 'COUNTING', now(), now(), now());
+  c.prepare('INSERT INTO StockOpname (id, number, warehouseId, locationId, status, startedAt, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')
+    .run('so-1', 'SO-1', 'wh-1', 'rak-A', 'COUNTING', now(), now(), now());
   c.prepare('INSERT INTO StockOpnameItem (id, opnameId, productId, batchNumber, systemQty, countedQty) VALUES (?,?,?,?,?,?)')
     .run('i-1', 'so-1', 'p-1', null, 10, null);
   c.prepare('INSERT INTO StockOpnameItem (id, opnameId, productId, batchNumber, systemQty, countedQty) VALUES (?,?,?,?,?,?)')

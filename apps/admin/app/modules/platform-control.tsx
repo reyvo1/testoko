@@ -25,11 +25,12 @@ type Props = { token:string; mode:Mode };
 async function call<T>(token:string,path:string,init?:RequestInit):Promise<T>{
   const response=await authFetch(`${API}${path}`,token,{...init,headers:{'Content-Type':'application/json',...(init?.headers??{})}});
   const data=await response.json();
-  if(!response.ok)throw new Error(Array.isArray(data.message)?data.message.join(', '):data.message??'Request gagal');
+  if(!response.ok)throw new Error(`HTTP ${response.status}: ${Array.isArray(data.message)?data.message.join(', '):data.message??'Request gagal'}`);
   return data as T;
 }
 function parseJson(value:string, fallback:unknown={}){ const trimmed=value.trim(); if(!trimmed)return fallback; return JSON.parse(trimmed); }
 function pretty(value:unknown){ try{return JSON.stringify(value,null,2);}catch{return String(value??'');} }
+async function optionalAuthorization<T>(promise:Promise<T>,fallback:T):Promise<T>{try{return await promise;}catch(error){if(error instanceof Error&&/\b(401|403)\b/.test(error.message))return fallback;throw error;}}
 
 export default function PlatformControlView({token,mode}:Props){
   // D-3: each platform sub-surface is gated by its own permission in
@@ -65,7 +66,7 @@ export default function PlatformControlView({token,mode}:Props){
       if(mode==='webhooks')setDeliveries(await call<WebhookDelivery[]>(token,'/platform/webhook-deliveries?limit=100'));
       if(mode==='approvals'){
         const [nextPolicies,nextRequests]=await Promise.all([call<ApprovalPolicy[]>(token,'/platform/approval-policies'),call<ApprovalRequest[]>(token,'/platform/approval-requests')]);
-        setDelegableUsers(await call<DelegableUser[]>(token,'/users').catch(()=>[] as DelegableUser[]));
+        setDelegableUsers(await optionalAuthorization(call<DelegableUser[]>(token,'/users'),[] as DelegableUser[]));
         setPolicies(nextPolicies);setRequests(nextRequests);
       }
       if(mode==='ui-config')setSchemas(await call<UiSchema[]>(token,'/platform/ui-schemas'));

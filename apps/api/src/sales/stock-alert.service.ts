@@ -1,29 +1,35 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { businessDateKey } from '../common/business-time';
 
 /**
  * T360-20260825 GROWTH PACK — Fitur 1: notifikasi stok menipis real-time.
  * Dipanggil dari sales.service setelah posting penjualan: bila available
  * produk <= minStock, buat Notification TELEGRAM (dedupe 1x per hari per produk).
  */
-
 const DEDUPE_PREFIX = 'low-stock-alert';
 
 @Injectable()
 export class StockAlertService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Kirim alert untuk daftar productId yang baru saja terjual. Idempotent per hari+produk+gudang. */
   async alertLowStock(companyId: string, branchId: string | null, productIds: string[], warehouseId: string) {
     if (!productIds.length) return { alerted: [] as string[] };
-    const recipients = await this.digestRecipients(companyId);
-    if (!recipients.length) return { alerted: [] as string[] };
+    const [recipients, company, warehouse] = await Promise.all([
+      this.digestRecipients(companyId),
+      this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } }),
+      this.prisma.warehouse.findFirst({ where: { id: warehouseId, branch: { companyId, ...(branchId ? { id: branchId } : {}) } }, select: { id: true } }),
+    ]);
+    if (!company || !warehouse || !recipients.length) return { alerted: [] as string[] };
 
-    const todayKey = new Date().toISOString().slice(0, 10);
-    // Bandingkan langsung terhadap minStock tiap produk (bukan ambang keras),
-    // supaya produk dengan minimum stok tinggi juga terdeteksi.
+    const todayKey = businessDateKey(new Date(), company.timezone);
     const inventories = await this.prisma.inventory.findMany({
-      where: { warehouseId, productId: { in: productIds } },
+      where: {
+        warehouseId,
+        warehouse: { branch: { companyId, ...(branchId ? { id: branchId } : {}) } },
+        productId: { in: productIds },
+        product: { companyId, isActive: true },
+      },
       select: { available: true, productId: true, product: { select: { name: true, sku: true, minStock: true } } },
     });
     const breached = inventories.filter((inv) => inv.available <= inv.product.minStock);
@@ -53,14 +59,30 @@ export class StockAlertService {
   }
 
   private async digestRecipients(companyId: string): Promise<string[]> {
-    // pakai konfigurasi penerima yang sama dengan laporan harian
     const setting = await this.prisma.systemSetting.findFirst({
       where: { companyId, namespace: 'reports', key: 'daily_digest' },
     });
     if (!setting) return [];
     try {
       const parsed = typeof setting.value === 'string' ? JSON.parse(setting.value) : setting.value;
-      return Array.isArray(parsed?.recipients) ? parsed.recipients.filter((r: unknown): r is string => typeof r === 'string') : [];
-    } catch { return []; }
+      const ids = Array.isArray(parsed?.recipientBindingIds)
+        ? parsed.recipientBindingIds.filter((id: unknown): id is string => typeof id === 'string' && !!id.trim()).slice(0, 10)
+        : [];
+      if (!ids.length) return [];
+      const bindings = await this.prisma.employeeChannelBinding.findMany({
+        where: {
+          id: { in: ids },
+          companyId,
+          channel: 'TELEGRAM',
+          verifiedAt: { not: null },
+          revokedAt: null,
+          externalUserId: { not: null },
+        },
+        select: { externalUserId: true },
+      });
+      return [...new Set(bindings.map((binding) => binding.externalUserId).filter((value): value is string => Boolean(value)))];
+    } catch {
+      return [];
+    }
   }
 }

@@ -103,7 +103,10 @@ test('no route performs an action on behalf of a platform identity', () => {
 });
 
 test('the operator binding screen never returns the platform identity itself', () => {
-  assert.match(service, /select: \{ id: true, employeeId: true, displayName: true, isActive: true, revokedAt: true, revokedReason: true, lastUsedAt: true, createdAt: true \},\s*\/\/ platformUserId is intentionally not returned/);
+  const body = service.slice(service.indexOf('async listBindings('), service.indexOf('// ---------------------------------------------------------------- mobile drafts'));
+  assert.match(body, /select: \{ id: true, employeeId: true, displayName: true, isActive: true, revokedAt: true, revokedReason: true, lastUsedAt: true, createdAt: true \}/);
+  assert.doesNotMatch(body, /platformUserId\s*:/, 'the credential-adjacent platform identity must not be projected by listBindings');
+  assert.match(body, /toCursorPage\(rows, limit/, 'binding administration must stay bounded and pageable');
 });
 
 // ---------------------------------------------------------------- drafts are not inventory
@@ -123,9 +126,10 @@ test('a draft never posts inventory or completes a StockOpname', () => {
   assert.doesNotMatch(service, /stockOpnameItem\.(create|upsert)/, 'the mobile surface must not add or replace count lines');
   // And the only write to a count item is a quantity, never a stock movement.
   const submit = service.slice(service.indexOf('async submitDraft('), service.indexOf('async discardDraft('));
-  for (const update of submit.matchAll(/stockOpnameItem\.update\(\{ where: \{ id: update\.id \}, data: update\.data \}\)/g)) {
-    assert.ok(update[0].includes('update.data'), 'the write must use the prepared counted-quantity payload');
-  }
+  const countWrites = [...submit.matchAll(/stockOpnameItem\.update\(/g)];
+  assert.equal(countWrites.length, 1, 'submitDraft must have exactly one count-item write call site');
+  assert.match(submit, /data: \{ countedQty: update\.countedQty, difference: update\.difference, reason: update\.reason \}/,
+    'the mobile write may fill the canonical count fields only');
   // The canonical opname lifecycle is untouched, exactly as the offline transfer wave left it.
   const prisma = schemas[0].src;
   assert.match(prisma, /enum StockOpnameStatus \{\s*DRAFT\s+COUNTING\s+WAITING_APPROVAL\s+COMPLETED\s+CANCELLED\s*\}/);
@@ -140,7 +144,7 @@ test('a draft is bound to the device that captured it', () => {
 });
 
 test('reopening a draft resumes it rather than starting a second count', () => {
-  assert.match(service, /where: \{ deviceId: dto\.deviceId, warehouseId: dto\.warehouseId, locationId: dto\.locationId \?\? null, status: 'OPEN' \}/);
+  assert.match(service, /where: \{ companyId, deviceId: dto\.deviceId\.trim\(\), warehouseId: dto\.warehouseId, locationId: dto\.locationId \?\? null, status: 'OPEN' \}/);
   // The original assertion pinned `lineCount(existing.lines)` by name, which broke the moment the
   // resume path stopped returning the raw row (it now returns the row with the opname attached).
   // What matters is that resume returns the STORED line count, not a fresh zero — assert on the
@@ -150,6 +154,8 @@ test('reopening a draft resumes it rather than starting a second count', () => {
   assert.match(resume, /lineCount: this\.lineCount\((?:existing|draft)\.lines\)/);
   assert.doesNotMatch(resume, /lineCount: 0/, 'a resumed draft must not report an empty count');
   assert.doesNotMatch(resume, /mobileOpnameDraft\.create\(/, 'and must not start a second draft');
+  assert.match(resume, /existing\.employeeId !== user\.sub/, 'a shared device must not resume another operator\'s open count');
+  assert.match(resume, /Perangkat masih memiliki draft OPEN milik operator lain/, 'cross-shift device reuse must fail visibly');
 });
 
 test('rescanning the same barcode adds to the line instead of duplicating it', () => {
@@ -169,9 +175,10 @@ test('a discarded draft is kept, not deleted', () => {
 });
 
 test('a draft can only be filed against an opname in the same warehouse', () => {
-  // Otherwise the count is filed against the wrong stock, which is invisible later. Asserted on the
-  // guard, not on the helper that happens to compute the line count today.
-  assert.match(service, /if \(opname\.warehouseId !== draft\.warehouseId\) \{\s*throw new BadRequestException\('StockOpname dan draft harus pada gudang yang sama\.'\);/);
+  // Scope is centralized so open/resume and submit cannot drift into different warehouse/location rules.
+  const scopeGuard = service.slice(service.indexOf('private async assertDraftScope('), service.indexOf('private async resolveDraftLines('));
+  assert.match(scopeGuard, /if \(opname\.warehouseId !== warehouseId\) throw new BadRequestException\('StockOpname dan draft harus pada gudang yang sama\.'\);/);
+  assert.match(scopeGuard, /opname\.locationId \?\? null\) !== \(locationId \?\? null\)/, 'location scope must match exactly too');
   assert.match(service, /Draft kosong tidak dapat dikirim\./, 'an empty draft must be refused rather than filed as a clean count');
   const submit = service.slice(service.indexOf('async submitDraft('), service.indexOf('async discardDraft('));
   assert.ok(/lines\.length === 0/.test(submit), 'the emptiness check must count the parsed lines');
@@ -186,16 +193,17 @@ test('the draft list is reachable and tenant-scoped, and the operator screen act
   const ui = read('apps/admin/app/modules/mobile-ops.tsx');
   assert.match(controller, /@Get\('drafts'\)\s*\n\s*@Permissions\('inventory\.manage'\)/, 'the list must be permission gated');
   const body = service.slice(service.indexOf('async listDrafts('), service.indexOf('async getDraft('));
-  assert.match(body, /where: \{\s*companyId,/, 'every draft query must be scoped to the tenant');
-  assert.ok(!/\{\s*companyId\s*\}/.test(body.slice(body.indexOf('findMany'), body.indexOf('findMany') + 200)) || /companyId/.test(body), 'tenant scope must be present on the query');
-  assert.match(body, /warehouse: \{ branch: \{ companyId \} \}/, 'a warehouse filter must stay tenant-scoped through its branch');
-  assert.match(body, /take: 200/, 'the list must be bounded');
+  assert.match(body, /const baseWhere = \{\s*companyId,/, 'every draft page must start from authenticated tenant scope');
+  assert.match(body, /take: limit \+ 1/, 'the list must be bounded by cursor pagination');
+  assert.match(body, /toCursorPage\(drafts, limit/, 'the bounded page must expose a continuation cursor');
+  assert.match(body, /warehouse\.findMany\(\{ where: \{ id: \{ in: warehouseIds \}, branch: \{ companyId \} \}/,
+    'warehouse labels must also be constrained to the authenticated tenant');
   // It reports what an operator scans for, not the raw device payload.
   assert.match(body, /awaitingFiling: draft\.status === 'OPEN' && !draft\.opnameId/);
   // `lines` must be SELECTED (lineCount needs it) but never PROJECTED into the response: the returned
   // rows are built field by field, and the device-local payload is not one of them.
   assert.match(body, /select: \{[\s\S]*?lines: true,[\s\S]*?\}/, 'lines must be selected so lineCount can be computed');
-  const returnedFields = body.slice(body.indexOf('const rows = drafts.map'), body.indexOf('return {\n      rows,'));
+  const returnedFields = body.slice(body.indexOf('const rows = page.items.map'), body.indexOf('return {\n      rows,'));
   // `draft.lines` may be READ to compute lineCount; what must never appear is the payload being handed
   // back as a field in its own right.
   for (const row of returnedFields.split('\n')) {
@@ -204,7 +212,9 @@ test('the draft list is reachable and tenant-scoped, and the operator screen act
   }
   assert.match(returnedFields, /lineCount: this\.lineCount\(draft\.lines\)/, 'and the line count must still be computed from it');
   // And the screen must use it, under the same permission the route requires.
-  assert.match(ui, /req<DraftList>\(token, '\/mobile-ops\/drafts'\)/, 'the operator screen must call the list');
+  assert.match(ui, /req<DraftList>\(token, '\/mobile-ops\/drafts\?limit=50'\)/, 'the operator screen must call the bounded first page');
+  assert.match(ui, /loadMoreDrafts/, 'the operator screen must expose continuation rather than silently truncating drafts');
+  assert.match(ui, /drafts\?\.pageInfo\?\.nextCursor/, 'continuation must use the server cursor');
   assert.match(ui, /canCountStock/, 'and must be gated on the permission the route requires');
   assert.match(ui, /Lihat selisih/, 'and must expose the discrepancy review, or the count still has no reader');
   assert.match(ui, /req<Discrepancy>\(token, `\/mobile-ops\/drafts\/\$\{draftId\}\/discrepancy`\)/);
@@ -236,8 +246,10 @@ test('submitting a draft actually writes the counts into the canonical opname it
   // exactly what the buggy version did.
   const body = service.slice(service.indexOf('async submitDraft('), service.indexOf('async discardDraft('));
   assert.match(body, /stockOpnameItem\.update\(/, 'submitDraft must write counted quantities onto the opname items');
-  assert.match(body, /countedQty: line\.quantity/, 'and it must write the quantity that was counted');
-  assert.match(body, /difference: line\.quantity - target\.systemQty/, 'with the difference against the snapshot the opname captured');
+  assert.match(body, /countedQty: entry\.counted/, 'and it must write the server-resolved base-unit quantity that was counted');
+  assert.match(body, /difference: entry\.counted - item\.systemQty/, 'with the difference against the snapshot the opname captured');
+  assert.match(body, /resolveDraftLines\(companyId, lines\)/, 'barcode and UOM identity must be resolved server-side before writing counts');
+  assert.match(body, /ambiguousBatch/, 'multi-batch allocation must fail closed rather than guess a batch');
   // It must be one transaction: counts applied and the draft marked SUBMITTED together, or neither.
   assert.match(body, /this\.prisma\.\$transaction\(async \(tx\) => \{/, 'counts and draft status must commit together');
   assert.ok(body.indexOf('$transaction') < body.indexOf("status: 'SUBMITTED'"), 'the write must be inside the transaction that marks the draft');
@@ -245,7 +257,8 @@ test('submitting a draft actually writes the counts into the canonical opname it
   assert.doesNotMatch(body, /stockOpname\.update\(\{ where: \{ id: opname\.id \}, data: \{ status:/, 'submitDraft must not advance the opname past counting');
   assert.doesNotMatch(body, /inventory\.(create|update|upsert)|inventoryMovement\.create/);
   // A count that cannot be mapped must be refused out loud, never dropped silently.
-  assert.match(body, /if \(unresolved\.length \|\| notInOpname\.length\) \{/);
+  assert.match(body, /if \(resolved\.unresolved\.length\) \{/);
+  assert.match(body, /if \(notInOpname\.length \|\| ambiguousBatch\.length\) \{/);
   assert.match(body, /Draft tetap OPEN/);
   // Counting may only land while the opname is still open for it.
   assert.match(body, /if \(opname\.status !== 'COUNTING' && opname\.status !== 'DRAFT'\) \{/);
@@ -258,7 +271,7 @@ test('discrepancy review compares against the opname snapshot, not live stock', 
   // a count opened last week silently measured against today's numbers.
   const body = service.slice(service.indexOf('async reviewDiscrepancy('), service.indexOf('async submitDraft('));
   assert.match(body, /stockOpnameItem\.findMany\(\{ where: \{ opnameId: draft\.opnameId \}/, 'the snapshot must come from the opname items');
-  assert.match(body, /const difference = system === null \? null : counted - system;/, 'difference must be measured, and null when there is nothing to measure against');
+  assert.match(body, /const difference = system === null \? null : entry\.counted - system;/, 'difference must use the same base-unit resolved count submitted to the opname');
   assert.match(body, /difference === 0/, 'and matched must be a real comparison, not a default');
   // The summary the operator reads must count the comparison, and never claim a verdict.
   assert.match(body, /overCounted: compared\.filter\(\(r\) => \(r\.difference \?\? 0\) > 0\)\.length/);
@@ -267,12 +280,36 @@ test('discrepancy review compares against the opname snapshot, not live stock', 
 });
 
 test('a tenant cannot reach another tenant warehouse or draft', () => {
-  // Warehouse has no companyId; the tenant arrives through its branch. Getting that wrong would let a
-  // draft be opened against another company's stock.
-  assert.match(service, /where: \{ id: dto\.warehouseId, branch: \{ companyId \} \}/);
+  // Warehouse has no companyId; the tenant arrives through its branch. Scope is centralized and reused
+  // by both draft opening and submission so either path cannot drift into another tenant.
+  const scopeGuard = service.slice(service.indexOf('private async assertDraftScope('), service.indexOf('private async resolveDraftLines('));
+  assert.match(scopeGuard, /warehouse\.findFirst\(\{ where: \{ id: warehouseId, branch: \{ companyId \} \}/);
+  const open = service.slice(service.indexOf('async openDraft('), service.indexOf('async addScan('));
+  const submit = service.slice(service.indexOf('async submitDraft('), service.indexOf('async discardDraft('));
+  assert.match(open, /assertDraftScope\(companyId, dto\.warehouseId, dto\.locationId, dto\.opnameId\)/);
+  assert.match(submit, /assertDraftScope\(companyId, draft\.warehouseId, draft\.locationId \?\? undefined, opnameId\)/);
   for (const call of ['const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } })', 'const binding = await this.prisma.telegramIdentityBinding.findFirst({ where: { id: bindingId, companyId } })']) {
     assert.ok(service.includes(call), `tenant scope missing: ${call.slice(0, 60)}`);
   }
+});
+
+test('canonical StockOpname completion atomically closes linked mobile drafts as POSTED', () => {
+  const inventory = read('apps/api/src/advanced-inventory/advanced-inventory.service.ts');
+  const complete = inventory.slice(inventory.indexOf('async completeOpname('));
+  assert.match(complete, /mobileOpnameDraft\.updateMany\(\{[\s\S]*where: \{ companyId: scope\.companyId, opnameId: id, status: 'SUBMITTED' \},[\s\S]*data: \{ status: 'POSTED' \}/,
+    'a completed canonical opname must terminalize linked submitted mobile drafts in the same transaction');
+  assert.match(complete, /postedMobileDrafts: postedMobileDrafts\.count/, 'the canonical audit evidence must record how many drafts were closed');
+});
+
+test('Admin consumes cursor pages without hiding permission or server failures', () => {
+  const ui = read('apps/admin/app/modules/mobile-ops.tsx');
+  assert.match(ui, /type BindingPage = \{ items: Binding\[]; pageInfo\?: PageInfo \}/);
+  assert.match(ui, /canManageUsers[\s\S]*req<BindingPage>\(token, '\/mobile-ops\/telegram\/bindings\?limit=50'\)/,
+    'binding reads must only run for operators holding user.manage');
+  assert.match(ui, /loadMoreBindings/);
+  assert.match(ui, /Promise\.allSettled\(tasks\)/, 'independent authorized panels may load independently');
+  assert.doesNotMatch(ui, /catch\(\(\) => setBindings\(\[\]\)\)|catch\(\(\) => setDrafts\(null\)\)/,
+    'authorization/server failures must not be disguised as empty data');
 });
 
 test('a resolved binding records that it was used', () => {

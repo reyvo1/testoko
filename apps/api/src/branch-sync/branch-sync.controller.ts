@@ -8,8 +8,8 @@ import { BranchSyncAuthGuard } from './branch-sync-auth.guard';
 import { BranchSyncAuthService } from './branch-sync-auth.service';
 import { BranchSyncService } from './branch-sync.service';
 import {
-  BootstrapBranchDto, EnqueueSyncEventDto, NodeHeartbeatDto, PublishSyncEventsDto, PullSyncEventsDto,
-  RegisterPeerDto, RegisterSyncNodeDto, SetPeerActiveDto,
+  AdvanceAggregateVersionDto, BootstrapBranchDto, EnqueueSyncEventDto, NodeHeartbeatDto, PublishSyncEventsDto, PullSyncEventsDto,
+  ReceiveSyncEventsDto, RecordSyncConflictDto, RecordSyncFailureDto, RegisterPeerDto, RegisterSyncNodeDto, ResolveSyncConflictDto, SetPeerActiveDto,
 } from './dto/branch-sync.dto';
 
 // POST-1A — edge topology and sync foundation.
@@ -94,7 +94,7 @@ export class BranchSyncController {
   @Public()
   @UseGuards(BranchSyncAuthGuard)
   receiveEvents(
-    @Param('nodeId') nodeId: string, @Body() dto: { peerNodeId: string; events: EnqueueSyncEventDto[] },
+    @Param('nodeId') nodeId: string, @Body() dto: ReceiveSyncEventsDto,
     @CurrentUser() user: AuthUser, @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
     return this.service.receiveEvents(user, nodeId, dto.peerNodeId, dto.events ?? [], this.auth, headers);
@@ -120,13 +120,13 @@ export class BranchSyncController {
 
   @Post('nodes/:nodeId/failures')
   @Permissions('integration.manage')
-  recordFailure(@Param('nodeId') nodeId: string, @Body() dto: { eventId: string; error: string }, @CurrentUser() user: AuthUser) {
+  recordFailure(@Param('nodeId') nodeId: string, @Body() dto: RecordSyncFailureDto, @CurrentUser() user: AuthUser) {
     return this.service.recordFailure(user, nodeId, dto.eventId, dto.error);
   }
 
   @Post('nodes/:nodeId/aggregates/:aggregateType/:aggregateId/version')
   @Permissions('integration.manage')
-  advanceVersion(@Param('nodeId') nodeId: string, @Param('aggregateType') aggregateType: string, @Param('aggregateId') aggregateId: string, @Body() dto: { version: number }, @CurrentUser() user: AuthUser) {
+  advanceVersion(@Param('nodeId') nodeId: string, @Param('aggregateType') aggregateType: string, @Param('aggregateId') aggregateId: string, @Body() dto: AdvanceAggregateVersionDto, @CurrentUser() user: AuthUser) {
     return this.service.advanceVersion(user, nodeId, aggregateType, aggregateId, dto.version);
   }
 
@@ -138,13 +138,13 @@ export class BranchSyncController {
 
   @Post('nodes/:nodeId/conflicts/:eventId')
   @Permissions('integration.manage')
-  recordConflict(@Param('nodeId') nodeId: string, @Param('eventId') eventId: string, @Body() dto: { remoteVersion?: number }, @CurrentUser() user: AuthUser) {
+  recordConflict(@Param('nodeId') nodeId: string, @Param('eventId') eventId: string, @Body() dto: RecordSyncConflictDto, @CurrentUser() user: AuthUser) {
     return this.service.recordConflict(user, nodeId, eventId, dto.remoteVersion ?? null);
   }
 
   @Post('nodes/:nodeId/conflicts/:eventId/resolve')
   @Permissions('integration.manage')
-  resolveConflict(@Param('nodeId') nodeId: string, @Param('eventId') eventId: string, @Body() dto: { strategy: 'KEEP_LOCAL' | 'KEEP_REMOTE' | 'MANUAL_REVIEW'; note?: string }, @CurrentUser() user: AuthUser) {
+  resolveConflict(@Param('nodeId') nodeId: string, @Param('eventId') eventId: string, @Body() dto: ResolveSyncConflictDto, @CurrentUser() user: AuthUser) {
     return this.service.resolveConflict(user, nodeId, eventId, dto.strategy, dto.note);
   }
 

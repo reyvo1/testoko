@@ -67,11 +67,12 @@ test('only a shipped transfer may have a departure', () => {
   assert.match(service, /if \(transfer\.status !== 'SHIPPED' && transfer\.status !== 'PARTIALLY_RECEIVED'\) \{[\s\S]*throw new BadRequestException\(`Transfer berstatus \$\{transfer\.status\}; baru SHIPPED atau PARTIALLY_RECEIVED yang punya catatan keberangkatan\.`\)/);
 });
 
-test('the departure event id is derived from the transfer, so a retry replays', () => {
+test('the departure event id is derived from the transfer, so only a duplicate retry is suppressed', () => {
   assert.match(service, /const shippedEventId = `stock-transfer-shipped:\$\{transferId\}`;/);
-  // The outbox insert swallows the duplicate because the id is stable; a caller retrying after a
-  // network hiccup must not create a second departure.
-  assert.match(service, /\}\)\.catch\(\(\) => undefined\); \/\/ an existing eventId means this departure was already recorded/);
+  // Stable event identity makes replay safe, but only P2002 is a replay. Database/network failures
+  // must still fail the departure registration instead of silently dropping its sync outbox event.
+  const departure = service.slice(service.indexOf('async registerDeparture('), service.indexOf('async acknowledgeArrival('));
+  assert.match(departure, /syncOutbox\.create\([\s\S]*P2002[\s\S]*return undefined[\s\S]*throw error/);
 });
 
 test('departure refuses a transfer from another tenant or branch', () => {

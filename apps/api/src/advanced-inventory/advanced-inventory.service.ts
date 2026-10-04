@@ -122,10 +122,12 @@ export class AdvancedInventoryService {
   async listReorderVisibility(user: AuthUser) {
     const scope = this.requireTenantScope(user);
     const warehouseIds = await this.branchWarehouseIds(this.prisma, scope);
-    const [inventories, transit] = await Promise.all([
+    const [inventories, transit, company] = await Promise.all([
       this.prisma.inventory.findMany({ where: { warehouseId: { in: warehouseIds } }, include: { warehouse: { select: { id: true, code: true, name: true } }, product: { select: { id: true, sku: true, name: true, minStock: true, isActive: true } } }, orderBy: [{ warehouseId: 'asc' }, { productId: 'asc' }], take: 5000 }),
       this.listTransitBalances(user),
+      this.prisma.company.findUnique({ where: { id: scope.companyId }, select: { timezone: true } }),
     ]);
+    if (!company) throw new ForbiddenException({ code: 'TENANT_CONTEXT_REQUIRED', message: 'Company pengguna tidak ditemukan.' });
     // Demand history and observed lead time, gathered ONCE for the whole page rather than per row.
     // The previous version of this method answered only "below minStock?"; an owner then has to
     // guess how long the stock lasts and how much to order. These two queries are what let the
@@ -180,6 +182,7 @@ export class AdvancedInventoryService {
         inboundInTransit,
         demand: demandByProduct.get(row.productId) ?? [],
         observedLeadTimeDays,
+        timeZone: company.timezone,
         packSize: packSizeByProduct.get(row.productId) ?? null,
       });
       return { warehouseId: row.warehouseId, warehouse: row.warehouse, productId: row.productId, product: row.product, available: row.available, minStock: row.product.minStock, inboundInTransit, outboundInTransit, projectedAvailable, shortage: Math.max(0, row.product.minStock - projectedAvailable), lowStock: row.available <= row.product.minStock, forecast };
@@ -583,8 +586,12 @@ export class AdvancedInventoryService {
         idempotencyKey: `stock-opname:${id}`, amounts: { inventoryGain: gainValue, gain: gainValue, loss: lossValue, inventoryLoss: lossValue },
         accountCodes: { inventoryGain: '1301', gain: '4201', loss: '5102', inventoryLoss: '1301' }, context: { warehouseId: warehouse.id, approvedById: user.sub },
       });
+      const postedMobileDrafts = await tx.mobileOpnameDraft.updateMany({
+        where: { companyId: scope.companyId, opnameId: id, status: 'SUBMITTED' },
+        data: { status: 'POSTED' },
+      });
       await tx.eventOutbox.create({ data: { companyId: scope.companyId, eventType: 'inventory.opname.completed', aggregateType: 'StockOpname', aggregateId: id, payload: { companyId: scope.companyId, branchId: scope.branchId, warehouseId: warehouse.id, opnameId: id } } });
-      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'COMPLETE_STOCK_OPNAME', entityType: 'StockOpname', entityId: id, payload: { branchId: scope.branchId, warehouseId: warehouse.id } } });
+      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'COMPLETE_STOCK_OPNAME', entityType: 'StockOpname', entityId: id, payload: { branchId: scope.branchId, warehouseId: warehouse.id, postedMobileDrafts: postedMobileDrafts.count } } });
       return tx.stockOpname.update({ where: { id }, data: { status: 'COMPLETED', approvedById: user.sub, completedAt: new Date() }, include: { items: true } });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }

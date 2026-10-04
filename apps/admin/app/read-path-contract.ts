@@ -16,8 +16,11 @@ import type { AdminIdentity } from './navigation';
  * treating a forbidden optional panel as a fatal error for the whole page.
  */
 const ROUTE_PERMISSION: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/hr\/leave-/, 'leave.view'],
+  [/^\/hr\/overtime-/, 'overtime.view'],
   [/^\/hr\//, 'employee.view'],
   [/^\/attendance\//, 'attendance.view'],
+  [/^\/payroll\/tax-rule-sets/, 'tax.view'],
   [/^\/payroll\//, 'payroll.view'],
   [/^\/platform\/business-rules/, 'automation.manage'],
   [/^\/platform\/automation-jobs/, 'automation.manage'],
@@ -73,7 +76,7 @@ const ROUTE_ROLES: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/^\/advanced-inventory\/stock-opnames/, ['WAREHOUSE', 'AUDITOR']],
   [/^\/operations-control\/policies/, ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER']],
   [/^\/fleet\//, ['WAREHOUSE', 'AUDITOR']],
-  [/^\/accounting-core\//, ['FINANCE', 'AUDITOR', 'MANAGER', 'PAYROLL']],
+  [/^\/accounting-core\//, ['SUPER_ADMIN', 'OWNER', 'FINANCE', 'AUDITOR']],
   [/^\/reports\/schedules/, ['FINANCE', 'MANAGER', 'AUDITOR', 'HR', 'PAYROLL']],
 ];
 

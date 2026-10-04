@@ -4,6 +4,7 @@ import { join, resolve } from 'path';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { businessDateKey, businessDayBounds, businessHour, businessMonthStart, parseBusinessDateBoundary, startOfBusinessDaysAgo, zonedDateParts, zonedLocalToUtc } from '../common/business-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReportJobDto } from './dto/create-report-job.dto';
 import { CreateReportScheduleDto, UpdateReportScheduleDto } from './dto/report-schedule.dto';
@@ -11,43 +12,12 @@ import { CreateReportScheduleDto, UpdateReportScheduleDto } from './dto/report-s
 type DbClient = Prisma.TransactionClient | PrismaService;
 type TenantScope = { companyId: string; branchId: string };
 
-function parseDate(value: string | undefined, fallback: Date, endOfDay = false): Date {
-  if (!value) return fallback;
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const parsed = dateOnly
-    ? new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`)
-    : new Date(value);
-  if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Format tanggal tidak valid.');
-  return parsed;
-}
-
 function accountNormalBalance(type: string, debit: Prisma.Decimal, credit: Prisma.Decimal): Prisma.Decimal {
   return ['ASSET', 'EXPENSE'].includes(type) ? debit.sub(credit) : credit.sub(debit);
 }
 
 
 type ReportFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
-
-function zonedParts(date: Date, timeZone: string): { year: number; month: number; day: number; hour: number; minute: number } {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  });
-  const parts = Object.fromEntries(formatter.formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-  return { year: Number(parts.year), month: Number(parts.month), day: Number(parts.day), hour: Number(parts.hour), minute: Number(parts.minute) };
-}
-
-function zonedLocalToUtc(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date {
-  const localEpoch = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-  let guess = new Date(localEpoch);
-  for (let i = 0; i < 3; i += 1) {
-    const actual = zonedParts(guess, timeZone);
-    const actualEpoch = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute, 0, 0);
-    const delta = actualEpoch - localEpoch;
-    if (delta === 0) return guess;
-    guess = new Date(guess.getTime() - delta);
-  }
-  return guess;
-}
 
 function nextScheduledReportRun(
   after: Date,
@@ -59,7 +29,7 @@ function nextScheduledReportRun(
 ): Date {
   try { new Intl.DateTimeFormat('en-US', { timeZone }).format(after); } catch { throw new BadRequestException('Timezone company tidak valid.'); }
   const [hour, minute] = localTime.split(':').map(Number);
-  const current = zonedParts(after, timeZone);
+  const current = zonedDateParts(after, timeZone);
   let localDate = new Date(Date.UTC(current.year, current.month - 1, current.day, hour, minute, 0, 0));
   if (frequency === 'WEEKLY') {
     if (dayOfWeek === undefined || dayOfWeek === null) throw new BadRequestException('dayOfWeek wajib untuk schedule WEEKLY.');
@@ -152,6 +122,13 @@ export class ReportsService {
     return warehouses.map((warehouse) => warehouse.id);
   }
 
+  private async companyTimeZone(companyId: string): Promise<string> {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new ForbiddenException('Tenant tidak ditemukan.');
+    // Validated by business-time helpers as well; returning the persisted value keeps one authority.
+    return company.timezone;
+  }
+
   private async accountActivity(scope: TenantScope, from?: Date, to?: Date) {
     const grouped = await this.prisma.journalLine.groupBy({
       by: ['accountId'],
@@ -176,21 +153,21 @@ export class ReportsService {
     });
   }
 
-  private reportRange(fromValue?: string, toValue?: string) {
+  private async reportRange(scope: TenantScope, fromValue?: string, toValue?: string) {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const from = parseDate(fromValue, monthStart, false);
-    const to = parseDate(toValue, now, true);
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const from = parseBusinessDateBoundary(fromValue, businessMonthStart(now, timeZone), timeZone, false);
+    const to = parseBusinessDateBoundary(toValue, now, timeZone, true);
     if (from > to) throw new BadRequestException('Tanggal awal tidak boleh melebihi tanggal akhir.');
-    return { from, to };
+    return { from, to, timeZone };
   }
 
   async dashboard(user: AuthUser) {
     const scope = this.requireTenantScope(user);
     const warehouseIds = await this.branchWarehouseIds(this.prisma, user, scope);
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
     const now = new Date();
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const { start } = businessDayBounds(now, timeZone);
     const [financialActivity, recognizedTransactions, inventorySummary, inventoryTotals, pendingOrders, recentReceipts] = await Promise.all([
       this.accountActivity(scope, start, now),
       this.prisma.accountingEvent.count({
@@ -199,7 +176,7 @@ export class ReportsService {
           branchId: scope.branchId,
           status: 'POSTED',
           businessDate: { gte: start, lte: now },
-          eventType: { in: ['SALE_CASH', 'SALE_BANK', 'ONLINE_ORDER_PREPAID_FULFILLED', 'ONLINE_ORDER_CREDIT_FULFILLED'] },
+          eventType: { in: ['SALE_CASH', 'SALE_BANK', 'SALE_SPLIT', 'ONLINE_ORDER_PREPAID_FULFILLED', 'ONLINE_ORDER_CREDIT_FULFILLED'] },
         },
       }),
       this.prisma.dailyInventorySummary.findFirst({
@@ -262,9 +239,8 @@ export class ReportsService {
 
   async analytics(user: AuthUser) {
     const scope = this.requireTenantScope(user);
-    const start = new Date();
-    start.setDate(start.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const start = startOfBusinessDaysAgo(new Date(), timeZone, 29);
 
     // Gunakan jurnal POSTED sebagai sumber kebenaran analitik keuangan. Daily summary boleh kosong
     // pada instalasi yang belum menjalankan materializer, jadi dashboard tidak boleh bergantung padanya.
@@ -275,7 +251,7 @@ export class ReportsService {
           branchId: scope.branchId,
           status: 'POSTED',
           businessDate: { gte: start },
-          eventType: { in: ['SALE_CASH', 'SALE_BANK', 'ONLINE_ORDER_PREPAID_FULFILLED', 'ONLINE_ORDER_CREDIT_FULFILLED', 'SALE_RETURN', 'ORDER_RETURN'] },
+          eventType: { in: ['SALE_CASH', 'SALE_BANK', 'SALE_SPLIT', 'ONLINE_ORDER_PREPAID_FULFILLED', 'ONLINE_ORDER_CREDIT_FULFILLED', 'SALE_RETURN', 'ORDER_RETURN'] },
         },
         select: { businessDate: true, eventType: true, netAmount: true },
         orderBy: { businessDate: 'asc' },
@@ -298,7 +274,7 @@ export class ReportsService {
     const salesByDay = new Map<string, { revenue: number; cogs: number; transactions: number }>();
     const channelRevenue = new Map<string, number>();
     for (const event of recognizedEvents) {
-      const key = new Date(event.businessDate).toISOString().slice(0, 10);
+      const key = businessDateKey(new Date(event.businessDate), timeZone);
       const bucket = salesByDay.get(key) ?? { revenue: 0, cogs: 0, transactions: 0 };
       const signedRevenue = ['SALE_RETURN','ORDER_RETURN'].includes(event.eventType) ? -Number(event.netAmount) : Number(event.netAmount);
       bucket.revenue += signedRevenue;
@@ -308,7 +284,7 @@ export class ReportsService {
       channelRevenue.set(channel, (channelRevenue.get(channel) ?? 0) + signedRevenue);
     }
     for (const line of cogsLines) {
-      const key = new Date(line.journalEntry.date).toISOString().slice(0, 10);
+      const key = businessDateKey(new Date(line.journalEntry.date), timeZone);
       const bucket = salesByDay.get(key) ?? { revenue: 0, cogs: 0, transactions: 0 };
       bucket.cogs += Number(line.debit) - Number(line.credit);
       salesByDay.set(key, bucket);
@@ -317,7 +293,7 @@ export class ReportsService {
     for (const line of cashLines) {
       // Transfer internal Kas <-> Bank bukan arus kas perusahaan dan sengaja dikeluarkan.
       if (line.journalEntry.description.startsWith('BALANCE_TRANSFER ')) continue;
-      const key = new Date(line.journalEntry.date).toISOString().slice(0, 10);
+      const key = businessDateKey(new Date(line.journalEntry.date), timeZone);
       const bucket = cashByDay.get(key) ?? { cashIn: 0, cashOut: 0 };
       bucket.cashIn += Number(line.debit);
       bucket.cashOut += Number(line.credit);
@@ -325,7 +301,7 @@ export class ReportsService {
     }
     const topItems = await this.prisma.saleItem.groupBy({
       by: ['productId'],
-      where: { sale: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED' } },
+      where: { sale: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', createdAt: { gte: start } } },
       _sum: { quantity: true, grossSubtotal: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: 5,
@@ -372,7 +348,7 @@ export class ReportsService {
   ) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId, 'ProfitLossReport');
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const activity = await this.accountActivity(scope, from, to);
     const revenueAccounts = activity.filter((row) => row.type === 'REVENUE');
     const expenseAccounts = activity.filter((row) => row.type === 'EXPENSE');
@@ -401,7 +377,7 @@ export class ReportsService {
   ) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId, 'TrialBalanceReport');
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const rows = await this.accountActivity(scope, from, to);
     const totalDebit = rows.reduce((sum, row) => sum.add(row.debit), new Prisma.Decimal(0));
     const totalCredit = rows.reduce((sum, row) => sum.add(row.credit), new Prisma.Decimal(0));
@@ -434,7 +410,8 @@ export class ReportsService {
   ) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId, 'BalanceSheetReport');
-    const asOf = parseDate(asOfValue, new Date(), true);
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const asOf = parseBusinessDateBoundary(asOfValue, new Date(), timeZone, true);
     const rows = await this.accountActivity(scope, undefined, asOf);
     const assets = rows.filter((row) => row.type === 'ASSET');
     const liabilities = rows.filter((row) => row.type === 'LIABILITY');
@@ -474,7 +451,7 @@ export class ReportsService {
     limitValue?: string,
   ) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const limit = Math.min(parsePageLimit(limitValue), 200);
     if (accountCode) {
       const account = await this.prisma.account.findFirst({
@@ -531,7 +508,7 @@ export class ReportsService {
   ) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId, 'TaxSummaryReport');
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const transactions = await this.prisma.taxTransaction.findMany({
       where: {
         companyId: scope.companyId,
@@ -602,7 +579,8 @@ export class ReportsService {
 
   async financialIntegrity(user: AuthUser, asOfValue?: string) {
     const scope = this.requireTenantScope(user);
-    const asOf = parseDate(asOfValue, new Date(), true);
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const asOf = parseBusinessDateBoundary(asOfValue, new Date(), timeZone, true);
     const activity = await this.accountActivity(scope, undefined, asOf);
     const totalDebit = activity.reduce((sum, row) => sum.add(row.debit), new Prisma.Decimal(0));
     const totalCredit = activity.reduce((sum, row) => sum.add(row.credit), new Prisma.Decimal(0));
@@ -719,7 +697,7 @@ export class ReportsService {
 
   async cashFlowReport(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const lines = await this.prisma.journalLine.findMany({
       where: {
         journalEntry: { date: { gte: from, lte: to } },
@@ -761,7 +739,7 @@ export class ReportsService {
 
   async marginReport(user: AuthUser, fromValue?: string, toValue?: string, limitValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const limit = Math.min(parsePageLimit(limitValue), 200);
     const sales = await this.prisma.sale.findMany({
       where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', createdAt: { gte: from, lte: to } },
@@ -804,7 +782,7 @@ export class ReportsService {
 
   async periodComparison(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const durationMs = to.getTime() - from.getTime() + 1;
     const previousTo = new Date(from.getTime() - 1);
     const previousFrom = new Date(previousTo.getTime() - durationMs + 1);
@@ -827,7 +805,7 @@ export class ReportsService {
 
   async dimensionComparison(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const canCompareCompanyBranches = user.roles.includes('SUPER_ADMIN') || user.roles.includes('OWNER');
     const branches = await this.prisma.branch.findMany({
       where: { companyId: scope.companyId, ...(canCompareCompanyBranches ? {} : { id: scope.branchId }) },
@@ -889,7 +867,7 @@ export class ReportsService {
   async reportDrillDown(user: AuthUser, accountCode: string, fromValue?: string, toValue?: string, limitValue?: string) {
     const scope = this.requireTenantScope(user);
     if (!accountCode?.trim()) throw new BadRequestException('accountCode wajib untuk drill-down laporan.');
-    const { from, to } = this.reportRange(fromValue, toValue);
+    const { from, to } = await this.reportRange(scope, fromValue, toValue);
     const limit = Math.min(parsePageLimit(limitValue), 200);
     const account = await this.prisma.account.findFirst({
       where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, code: accountCode.trim() },
@@ -932,11 +910,12 @@ export class ReportsService {
   private async validateReportFilters(scope: TenantScope, reportType: string, filters: Record<string, unknown> | undefined) {
     const safe: Record<string, unknown> = {};
     if (!filters) return safe;
+    const timeZone = await this.companyTimeZone(scope.companyId);
     for (const key of ['from', 'to', 'asOf']) {
       const value = filters[key];
       if (value !== undefined) {
         if (typeof value !== 'string') throw new BadRequestException(`Filter ${key} harus berupa tanggal.`);
-        parseDate(value, new Date(), key !== 'from');
+        parseBusinessDateBoundary(value, new Date(), timeZone, key !== 'from');
         safe[key] = value;
       }
     }
@@ -1111,16 +1090,15 @@ export class ReportsService {
   async peakHours(user: AuthUser, daysValue?: string) {
     const scope = this.requireTenantScope(user);
     const days = Math.min(Math.max(Number(daysValue ?? 30) || 30, 1), 90);
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    start.setHours(0, 0, 0, 0);
+    const timeZone = await this.companyTimeZone(scope.companyId);
+    const start = startOfBusinessDaysAgo(new Date(), timeZone, days - 1);
     const sales = await this.prisma.sale.findMany({
       where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', createdAt: { gte: start } },
       select: { createdAt: true, total: true },
     });
     const buckets = Array.from({ length: 24 }, (_, hour) => ({ hour, transactions: 0, revenue: 0 }));
     for (const sale of sales) {
-      const bucket = buckets[new Date(sale.createdAt).getHours()];
+      const bucket = buckets[businessHour(new Date(sale.createdAt), timeZone)];
       bucket.transactions += 1;
       bucket.revenue += Number(sale.total);
     }

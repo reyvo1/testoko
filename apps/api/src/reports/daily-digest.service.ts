@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/auth.types';
+import { businessDateKey, businessDayBounds } from '../common/business-time';
+import { ReportsService } from './reports.service';
 
 /**
  * T360-20260825 OWNER VALUE PACK
@@ -15,7 +17,7 @@ export type DigestConfig = { enabled: boolean; hour: number; recipientBindingIds
 
 @Injectable()
 export class DailyDigestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly reports: ReportsService) {}
 
   private requireCompanyId(user: AuthUser): string {
     if (!user.companyId) throw new ForbiddenException('Tenant scope tidak lengkap.');
@@ -110,18 +112,21 @@ export class DailyDigestService {
     const companyId = this.requireCompanyId(user);
     const targetBranch: string | undefined = branchId ?? (user.branchId ?? undefined);
     if (!targetBranch) throw new BadRequestException('Branch tidak ditemukan pada konteks token.');
-    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const branch = await this.prisma.branch.findFirst({ where: { id: targetBranch, companyId }, select: { id: true } });
+    if (!branch) throw new ForbiddenException('Branch digest tidak tersedia pada tenant aktif.');
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new ForbiddenException('Tenant digest tidak ditemukan.');
+    const now = new Date();
+    const { start } = businessDayBounds(now, company.timezone);
+    const scopedUser: AuthUser = { ...user, companyId, branchId: targetBranch };
+    const dashboard = await this.reports.dashboard(scopedUser);
 
-    const [sales, lowStockItems, pendingOrders, topProducts] = await Promise.all([
-      this.prisma.sale.aggregate({
-        where: { branchId: targetBranch, branch: { companyId }, status: 'COMPLETED', createdAt: { gte: start } },
-        _sum: { total: true, costTotal: true }, _count: true,
-      }),
-      this.findLowStock(companyId, targetBranch as string),
+    const [lowStockItems, pendingOrders, topProducts] = await Promise.all([
+      this.findLowStock(companyId, targetBranch),
       this.prisma.order.count({ where: { branchId: targetBranch, branch: { companyId }, status: { in: ['PAID', 'PROCESSING'] } } }),
       this.prisma.saleItem.groupBy({
         by: ['productId'],
-        where: { sale: { branchId: targetBranch, status: 'COMPLETED', createdAt: { gte: start } } },
+        where: { sale: { branchId: targetBranch, branch: { companyId }, status: 'COMPLETED', createdAt: { gte: start } } },
         _sum: { quantity: true, netSubtotal: true },
         orderBy: { _sum: { quantity: 'desc' } },
         take: 5,
@@ -130,18 +135,18 @@ export class DailyDigestService {
 
     const productIds = topProducts.map((t) => t.productId).filter(Boolean);
     const productNames = productIds.length
-      ? await this.prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, name: true } })
+      ? await this.prisma.product.findMany({ where: { id: { in: productIds }, companyId }, select: { id: true, name: true } })
       : [];
     const nameOf = (id: string) => productNames.find((p) => p.id === id)?.name ?? id;
 
-    const revenue = Number(sales._sum.total ?? 0);
-    const cogs = Number(sales._sum.costTotal ?? 0);
+    const revenue = Number(dashboard.today.revenue ?? 0);
+    const grossProfit = Number(dashboard.today.grossProfit ?? 0);
     const lines = [
-      `📊 LAPORAN HARIAN TOKO360 — ${start.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      `📊 LAPORAN HARIAN TOKO360 — ${now.toLocaleDateString('id-ID', { timeZone: company.timezone, day: 'numeric', month: 'long', year: 'numeric' })}`,
       ``,
       `💰 Omzet: Rp ${revenue.toLocaleString('id-ID')}`,
-      `📈 Laba kotor: Rp ${(revenue - cogs).toLocaleString('id-ID')}`,
-      `🧾 Transaksi: ${sales._count}`,
+      `📈 Laba kotor: Rp ${grossProfit.toLocaleString('id-ID')}`,
+      `🧾 Transaksi: ${dashboard.today.transactions}`,
       `⏳ Pesanan online diproses: ${pendingOrders}`,
       ``,
       lowStockItems.length ? `⚠️ Stok menipis (${lowStockItems.length}):` : `✅ Stok aman, tidak ada yang menipis.`,
@@ -151,7 +156,7 @@ export class DailyDigestService {
       ...topProducts.map((t, i) => `   ${i + 1}. ${nameOf(t.productId)} — ${t._sum.quantity ?? 0} pcs`),
     ].filter((l) => l !== '');
 
-    return { text: lines.join('\n'), summary: { revenue, grossProfit: revenue - cogs, transactions: sales._count, pendingOrders, lowStockCount: lowStockItems.length } };
+    return { text: lines.join('\n'), summary: { revenue, grossProfit, transactions: dashboard.today.transactions, pendingOrders, lowStockCount: lowStockItems.length } };
   }
 
   /** Buat notifikasi TELEGRAM untuk semua penerima terdaftar. Idempotent per hari+branch. */
@@ -165,7 +170,9 @@ export class DailyDigestService {
       select: { id: true, externalUserId: true },
     });
     if (bindings.length !== config.recipientBindingIds.length) throw new BadRequestException('Penerima owner digest sudah tidak valid atau tidak lagi terverifikasi.');
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new ForbiddenException('Tenant digest tidak ditemukan.');
+    const todayKey = businessDateKey(new Date(), company.timezone);
     const targetBranch = branchId ?? (user.branchId ?? 'unknown');
     const digest = await this.buildDigest(user, branchId);
     const created: string[] = [];
@@ -189,8 +196,4 @@ export class DailyDigestService {
     const digest = await this.buildDigest(user, branchId);
     return digest;
   }
-}
-
-function targetBranchId(requested: string | undefined, fallback: string | undefined): string {
-  return requested ?? fallback ?? 'unknown';
 }

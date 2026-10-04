@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { AuthUser } from '../auth/auth.types';
+import { businessDateKey, zonedDateParts } from '../common/business-time';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceMethodDto, CreateAttendanceCorrectionDto, CreateAttendanceDeviceDto, CreateAttendanceEventDto, CreateAttendancePolicyDto, CreateGeofenceDto, CreateWorkShiftDto, EnrollBiometricDto, FingerprintEventDto, ReviewAttendanceCorrectionDto, UpdateAttendanceDeviceDto, UpdateAttendancePolicyDto, UpdateBiometricCredentialDto, UpdateGeofenceDto, UpdateWorkShiftDto, UploadAttendancePhotoDto, UpsertEmployeeScheduleDto } from './dto/attendance.dto';
@@ -16,9 +17,26 @@ function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) 
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(dLon / 2) ** 2;
   return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
-function normalizeWorkDate(input: string | undefined, occurredAt: Date) {
-  if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) return new Date(`${input}T00:00:00.000Z`);
-  return new Date(Date.UTC(occurredAt.getUTCFullYear(), occurredAt.getUTCMonth(), occurredAt.getUTCDate()));
+const ATTENDANCE_CORRECTION_STATUSES = new Set(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED']);
+function validatedCorrectionStatus(status?: string): string | undefined {
+  if (!status) return undefined;
+  if (!ATTENDANCE_CORRECTION_STATUSES.has(status)) throw new BadRequestException('Status koreksi absensi tidak valid.');
+  return status;
+}
+function logicalWorkDate(dateKey: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) throw new BadRequestException('Tanggal kerja harus berformat YYYY-MM-DD.');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  if (value.getUTCFullYear() !== year || value.getUTCMonth() + 1 !== month || value.getUTCDate() !== day) {
+    throw new BadRequestException('Tanggal kerja tidak valid.');
+  }
+  return value;
+}
+function normalizeWorkDate(input: string | undefined, occurredAt: Date, timeZone: string) {
+  return logicalWorkDate(input ?? businessDateKey(occurredAt, timeZone));
 }
 
 type DbClient = Prisma.TransactionClient | PrismaService;
@@ -36,6 +54,14 @@ export class AttendanceService {
       });
     }
     return { companyId: user.companyId, branchId: user.branchId };
+  }
+
+  private async companyTimeZone(scope: TenantScope): Promise<string> {
+    const company = await this.prisma.company.findUnique({ where: { id: scope.companyId }, select: { timezone: true } });
+    if (!company) {
+      throw new ForbiddenException({ code: 'TENANT_CONTEXT_REQUIRED', message: 'Company pengguna tidak ditemukan.' });
+    }
+    return company.timezone;
   }
 
   private async denyTenantAccess(
@@ -324,7 +350,8 @@ export class AttendanceService {
 
     const occurredAt = new Date(dto.occurredAt);
     if (Number.isNaN(occurredAt.getTime())) throw new BadRequestException('Waktu absensi tidak valid.');
-    const workDate = normalizeWorkDate(dto.workDate, occurredAt);
+    const timeZone = await this.companyTimeZone(scope);
+    const workDate = normalizeWorkDate(dto.workDate, occurredAt, timeZone);
 
     return this.prisma.$transaction(async (tx) => {
       let photoEvidenceId: string | undefined;
@@ -555,8 +582,13 @@ export class AttendanceService {
   async listSchedules(user: AuthUser, from?: string, to?: string, employeeId?: string) {
     const scope = this.requireTenantScope(user);
     if (employeeId) await this.scopedEmployee(this.prisma, user, scope, employeeId);
-    const fromDate = from ? normalizeWorkDate(from, new Date(from)) : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-    const toDate = to ? normalizeWorkDate(to, new Date(to)) : new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth() + 1, 0));
+    const timeZone = await this.companyTimeZone(scope);
+    const nowParts = zonedDateParts(new Date(), timeZone);
+    const defaultFrom = logicalWorkDate(`${nowParts.year.toString().padStart(4, '0')}-${nowParts.month.toString().padStart(2, '0')}-01`);
+    const defaultTo = new Date(Date.UTC(nowParts.year, nowParts.month, 0));
+    const fromDate = from ? logicalWorkDate(from) : defaultFrom;
+    const toDate = to ? logicalWorkDate(to) : defaultTo;
+    if (toDate < fromDate) throw new BadRequestException('Tanggal akhir roster tidak boleh sebelum tanggal awal.');
     return this.prisma.employeeSchedule.findMany({
       where: { companyId: scope.companyId, branchId: scope.branchId, workDate: { gte: fromDate, lte: toDate }, ...(employeeId ? { employeeId } : {}) },
       orderBy: [{ workDate: 'asc' }, { employeeId: 'asc' }], take: 1000,
@@ -566,7 +598,7 @@ export class AttendanceService {
   async upsertSchedule(user: AuthUser, dto: UpsertEmployeeScheduleDto) {
     const scope = this.requireTenantScope(user);
     const employee = await this.scopedEmployee(this.prisma, user, scope, dto.employeeId);
-    const workDate = normalizeWorkDate(dto.workDate, new Date(dto.workDate));
+    const workDate = logicalWorkDate(dto.workDate.slice(0, 10));
     if (dto.isDayOff && dto.shiftId) throw new BadRequestException('Hari libur tidak boleh sekaligus memiliki shift.');
     if (!dto.isDayOff && !dto.shiftId) throw new BadRequestException('Roster hari kerja wajib memilih WorkShift.');
     if (dto.shiftId) {
@@ -623,9 +655,10 @@ export class AttendanceService {
 
   async listCorrections(user: AuthUser, status?: string, employeeId?: string) {
     const scope = this.requireTenantScope(user);
+    const validatedStatus = validatedCorrectionStatus(status);
     if (employeeId) await this.scopedEmployee(this.prisma, user, scope, employeeId);
     const employees = await this.prisma.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId }, select: { id: true } });
-    return this.prisma.attendanceCorrection.findMany({ where: { companyId: scope.companyId, employeeId: { in: employees.map((e) => e.id) }, ...(employeeId ? { employeeId } : {}), ...(status ? { status: status as never } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
+    return this.prisma.attendanceCorrection.findMany({ where: { companyId: scope.companyId, employeeId: { in: employees.map((e) => e.id) }, ...(employeeId ? { employeeId } : {}), ...(validatedStatus ? { status: validatedStatus as never } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
   }
 
   async submitCorrection(user: AuthUser, dto: CreateAttendanceCorrectionDto) {

@@ -4,6 +4,7 @@ import { AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { CashierTargetService } from './cashier-target.service';
+import { SaveCashierTargetsDto } from './dto/cashier-target.dto';
 
 @ApiTags('sales') @ApiBearerAuth() @Controller()
 export class CashierTargetController {
@@ -17,7 +18,7 @@ export class CashierTargetController {
 
   @Roles('SUPER_ADMIN', 'OWNER', 'ADMIN')
   @Post('sales/cashier-targets')
-  save(@Body() dto: { targets: Record<string, number> }, @CurrentUser() user: AuthUser) {
+  save(@Body() dto: SaveCashierTargetsDto, @CurrentUser() user: AuthUser) {
     return this.service.saveTargets(user, dto?.targets ?? {});
   }
 }

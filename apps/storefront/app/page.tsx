@@ -207,8 +207,14 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
   async function logoutCustomer() {
     const token = accountToken;
     localStorage.removeItem('toko360.customer.session'); setAccountToken(''); setAccount(null); setAccountOrders([]); setAccountReturns([]); setFavoriteIds([]); setAddresses([]); setSelectedAddressId(''); setVerificationForm({ type: '', code: '' });
-    if (token) await fetch(`${API}/storefront/account/logout`, { method: 'POST', headers: customerHeaders(token) }).catch(() => undefined);
-    notify('Sesi pelanggan ditutup.', 'success');
+    if (!token) { notify('Sesi pelanggan ditutup.', 'success'); return; }
+    try {
+      const response = await fetch(`${API}/storefront/account/logout`, { method: 'POST', headers: customerHeaders(token) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      notify('Sesi pelanggan ditutup.', 'success');
+    } catch {
+      notify('Sesi lokal ditutup, tetapi pencabutan sesi server tidak dapat dipastikan. Masuk ulang sebelum memakai perangkat bersama.', 'error');
+    }
   }
 
   async function requestCustomerVerification(type: 'EMAIL' | 'PHONE') {

@@ -100,7 +100,10 @@ export class BranchTransferService {
         aggregateType: 'StockTransfer', aggregateId: transferId, eventType: 'STOCK_TRANSFER_SHIPPED_OFFLINE',
         payload: { transferId, number: transfer.number, sourceWarehouseId: source.id, destinationWarehouseId: destination.id, destinationBranchId: destination.branchId, sourceQuantity, shippedAt: transfer.shippedAt?.toISOString() ?? null },
       },
-    }).catch(() => undefined); // an existing eventId means this departure was already recorded
+    }).catch((error: unknown) => {
+      if (typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002') return undefined;
+      throw error;
+    }); // duplicate eventId is a safe replay; every other persistence failure stays fatal
 
     await this.prisma.auditLog.create({
       data: {

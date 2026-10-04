@@ -1,8 +1,13 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 let ts;
-try { ts = (await import('typescript')).default; }
-catch { ts = (await import('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js')).default; }
+try {
+  const module = await import('typescript');
+  ts = module.default ?? module;
+} catch (error) {
+  console.error('Repository validation requires the project-local TypeScript dependency. Run `npm ci` from the repository root before `npm run validate:repo`.');
+  throw error;
+}
 
 const root = process.cwd();
 const failures = [];

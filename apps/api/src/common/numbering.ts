@@ -1,5 +1,6 @@
 // Atomic document numbering service (w0-atomic-number-sequence).
 import { Prisma, PrismaClient } from '@prisma/client';
+import { zonedDateParts } from './business-time';
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
@@ -58,7 +59,13 @@ export async function nextDocumentNumber(
     resetPolicy?: 'MONTHLY' | 'YEARLY' | 'NEVER';
   },
 ): Promise<string> {
-  const now = new Date();
+  const observedAt = new Date();
+  const company = await tx.company.findUnique({ where: { id: opts.companyId }, select: { timezone: true } });
+  if (!company) throw new Error('Company nomor dokumen tidak ditemukan.');
+  const local = zonedDateParts(observedAt, company.timezone);
+  // `now` intentionally represents the company wall-clock encoded as UTC so the existing
+  // formatter stays deterministic while the persisted reset timestamp remains a real instant.
+  const now = new Date(Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute));
   const period = opts.resetPolicy === 'NEVER'
     ? 'ALL'
     : opts.resetPolicy === 'YEARLY'
@@ -72,15 +79,16 @@ export async function nextDocumentNumber(
   });
   if (!row) {
     row = await tx.numberSequence.create({
-      data: { companyId: opts.companyId, branchId: opts.branchId ?? null, documentType: opts.documentType, prefix: opts.prefix, nextNumber: 1, resetPolicy: opts.resetPolicy ?? 'MONTHLY', lastResetAt: now },
+      data: { companyId: opts.companyId, branchId: opts.branchId ?? null, documentType: opts.documentType, prefix: opts.prefix, nextNumber: 1, resetPolicy: opts.resetPolicy ?? 'MONTHLY', lastResetAt: observedAt },
     });
   }
 
   let current = row.nextNumber;
   if (period !== 'ALL' && row.lastResetAt) {
+    const last = zonedDateParts(row.lastResetAt, company.timezone);
     const rowPeriod = opts.resetPolicy === 'YEARLY'
-      ? String(row.lastResetAt.getUTCFullYear())
-      : `${row.lastResetAt.getUTCFullYear()}${String(row.lastResetAt.getUTCMonth() + 1).padStart(2, '0')}`;
+      ? String(last.year)
+      : `${last.year}${String(last.month).padStart(2, '0')}`;
     if (rowPeriod !== period) current = 1;
   }
 
@@ -97,7 +105,7 @@ export async function nextDocumentNumber(
   // yang benar. Nomoran yang dialokasikan tetap `current`, jadi reset periode tetap bekerja.
   const bumped = await tx.numberSequence.updateMany({
     where: { id: row.id, nextNumber: row.nextNumber },
-    data: { nextNumber: current + 1, lastResetAt: now },
+    data: { nextNumber: current + 1, lastResetAt: observedAt },
   });
   if (bumped.count !== 1) throw new Error(`Konflik sequence ${opts.documentType}; ulangi transaksi.`);
 

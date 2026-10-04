@@ -12,9 +12,10 @@ type User={id:string;name:string;email:string;branchId?:string|null;isActive:boo
 async function call<T>(token:string,path:string,init?:RequestInit):Promise<T>{
   const response=await authFetch(`${API}${path}`,token,{...init,headers:{'Content-Type':'application/json',...(init?.headers??{})}});
   const data=await response.json();
-  if(!response.ok)throw new Error(Array.isArray(data.message)?data.message.join(', '):data.message??'Request gagal');
+  if(!response.ok)throw new Error(`HTTP ${response.status}: ${Array.isArray(data.message)?data.message.join(', '):data.message??'Request gagal'}`);
   return data as T;
 }
+async function optionalAuthorization<T>(promise:Promise<T>,fallback:T):Promise<T>{try{return await promise;}catch(error){if(error instanceof Error&&/\b(401|403)\b/.test(error.message))return fallback;throw error;}}
 export default function AccessControlView({token,canManageRoles,actorId}:{token:string;canManageRoles:boolean;actorId?:string}){
   // users.controller.ts memisahkan dua permission: POST /users, PATCH /users/:id/roles dan
   // PATCH /users/:id/status butuh user.manage, sedangkan POST /users/roles dan
@@ -44,9 +45,9 @@ export default function AccessControlView({token,canManageRoles,actorId}:{token:
     const [nextUsers,nextRoles,nextPermissions,nextSupervisorStatus]=await Promise.all([
       call<User[]>(token,'/users'),call<Role[]>(token,'/users/roles'),call<Permission[]>(token,'/users/permissions'),
       // Read alongside the users so the supervisor panel and the roster cannot disagree. A failure
-      // here is not fatal to the page: an administrator still needs the user list even when the
-      // approval module is unreachable.
-      call<{configured:boolean;approverName:string|null}>(token,'/supervisor-approval/status').catch(()=>null),
+      // Authorization denial is optional for operators without approval visibility; transport/server
+      // failures remain fatal so an outage cannot masquerade as an unconfigured supervisor module.
+      optionalAuthorization(call<{configured:boolean;approverName:string|null}>(token,'/supervisor-approval/status'),null),
     ]);
     setUsers(nextUsers);setRoles(nextRoles);setPermissions(nextPermissions);
     setSupervisorStatus(nextSupervisorStatus);

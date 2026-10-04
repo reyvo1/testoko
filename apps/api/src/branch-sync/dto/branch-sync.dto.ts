@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -14,7 +14,7 @@ import { Type } from 'class-transformer';
 export class RegisterSyncNodeDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(60) code!: string;
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(120) name!: string;
-  @ApiProperty({ enum: ['CENTRAL', 'BRANCH'] }) @IsEnum(['CENTRAL', 'BRANCH']) @IsString() role!: 'CENTRAL' | 'BRANCH';
+  @ApiProperty({ enum: ['CENTRAL', 'BRANCH'] }) @IsIn(['CENTRAL', 'BRANCH']) @IsString() role!: 'CENTRAL' | 'BRANCH';
   @ApiPropertyOptional() @IsOptional() @IsUUID() branchId?: string;
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsInt() @Min(1) protocolVersion?: number;
   @ApiPropertyOptional() @IsOptional() @IsObject() metadata?: Record<string, unknown>;
@@ -23,7 +23,7 @@ export class RegisterSyncNodeDto {
 export class RegisterPeerDto {
   @ApiProperty() @IsUUID() peerNodeId!: string;
   @ApiPropertyOptional({ enum: ['PUSH', 'PULL', 'BIDIRECTIONAL'], default: 'BIDIRECTIONAL' })
-  @IsOptional() @IsEnum(['PUSH', 'PULL', 'BIDIRECTIONAL']) @IsString() direction?: 'PUSH' | 'PULL' | 'BIDIRECTIONAL';
+  @IsOptional() @IsIn(['PUSH', 'PULL', 'BIDIRECTIONAL']) @IsString() direction?: 'PUSH' | 'PULL' | 'BIDIRECTIONAL';
   @ApiProperty() @IsString() @MinLength(8) @MaxLength(200) sharedSecretRef!: string;
 }
 
@@ -78,4 +78,29 @@ export class NodeHeartbeatDto {
 export class SetPeerActiveDto {
   @ApiProperty() @IsBoolean() isActive!: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(400) reason?: string;
+}
+
+export class ReceiveSyncEventsDto {
+  @ApiProperty() @IsUUID() peerNodeId!: string;
+  @ApiProperty({ type: [EnqueueSyncEventDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(500)
+  @ValidateNested({ each: true }) @Type(() => EnqueueSyncEventDto) events!: EnqueueSyncEventDto[];
+}
+
+export class RecordSyncFailureDto {
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(120) eventId!: string;
+  @ApiProperty() @IsString() @MinLength(1) @MaxLength(2000) error!: string;
+}
+
+export class AdvanceAggregateVersionDto {
+  @ApiProperty() @IsInt() @Min(0) version!: number;
+}
+
+export class RecordSyncConflictDto {
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) remoteVersion?: number;
+}
+
+export class ResolveSyncConflictDto {
+  @ApiProperty({ enum: ['KEEP_LOCAL', 'KEEP_REMOTE', 'MANUAL_REVIEW'] })
+  @IsIn(['KEEP_LOCAL', 'KEEP_REMOTE', 'MANUAL_REVIEW']) strategy!: 'KEEP_LOCAL' | 'KEEP_REMOTE' | 'MANUAL_REVIEW';
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) note?: string;
 }

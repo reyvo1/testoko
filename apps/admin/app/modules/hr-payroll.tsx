@@ -4,6 +4,7 @@ import { authFetch } from '../auth-fetch';
 import { useEffect, useMemo, useState } from 'react';
 import { usePermissions } from '../permissions';
 import { canReadHrPath, shiftStatusPayload, payrollRulePayload } from '../hr-api-contract';
+import { readOptional } from '../read-path-contract';
 import { Panel, Table, StatusChip, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -95,32 +96,24 @@ function R2HrConfiguration({ token, employees, mode }: { token: string; employee
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Permintaan HR gagal.');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Permintaan HR gagal.'}`);
     return data as T;
   }
 
-  async function read<T>(path: string, fallback: T): Promise<T> {
-    if (!canReadHrPath(identity, path)) return fallback;
-    try { return await api<T>(path); }
-    catch (error) {
-      setMessage(current => `${current ? `${current} · ` : ''}${path.split('?')[0]}: ${error instanceof Error ? error.message : 'Gagal memuat data'}`);
-      return fallback;
-    }
-  }
 
   async function refreshAttendance() {
     const from = new Date(); from.setDate(1);
     const to = new Date(from.getFullYear(), from.getMonth() + 1, 0);
     const [shiftRows, scheduleRows, policyRows, correctionRows, deviceRows, geofenceRows, biometricRows, departmentRows, positionRows] = await Promise.all([
-      read<WorkShift[]>('/attendance/work-shifts', []),
-      read<EmployeeSchedule[]>(`/attendance/schedules?from=${from.toLocaleDateString('en-CA')}&to=${to.toLocaleDateString('en-CA')}`, []),
-      read<AttendancePolicy[]>('/attendance/policies', []),
-      read<AttendanceCorrection[]>('/attendance/corrections', []),
-      read<AttendanceDevice[]>('/attendance/devices', []),
-      read<AttendanceGeofence[]>('/attendance/geofences', []),
-      read<BiometricCredential[]>('/attendance/biometrics', []),
-      read<Department[]>('/hr/departments', []),
-      read<Position[]>('/hr/positions', []),
+      readOptional(identity, '/attendance/work-shifts', [] as WorkShift[], (path) => api<WorkShift[]>(path)),
+      readOptional(identity, `/attendance/schedules?from=${from.toLocaleDateString('en-CA')}&to=${to.toLocaleDateString('en-CA')}`, [] as EmployeeSchedule[], (path) => api<EmployeeSchedule[]>(path)),
+      readOptional(identity, '/attendance/policies', [] as AttendancePolicy[], (path) => api<AttendancePolicy[]>(path)),
+      readOptional(identity, '/attendance/corrections', [] as AttendanceCorrection[], (path) => api<AttendanceCorrection[]>(path)),
+      readOptional(identity, '/attendance/devices', [] as AttendanceDevice[], (path) => api<AttendanceDevice[]>(path)),
+      readOptional(identity, '/attendance/geofences', [] as AttendanceGeofence[], (path) => api<AttendanceGeofence[]>(path)),
+      readOptional(identity, '/attendance/biometrics', [] as BiometricCredential[], (path) => api<BiometricCredential[]>(path)),
+      readOptional(identity, '/hr/departments', [] as Department[], (path) => api<Department[]>(path)),
+      readOptional(identity, '/hr/positions', [] as Position[], (path) => api<Position[]>(path)),
     ]);
     setShifts(shiftRows); setSchedules(scheduleRows); setPolicies(policyRows); setCorrections(correctionRows);
     setDevices(deviceRows); setGeofences(geofenceRows); setBiometrics(biometricRows); setDepartments(departmentRows); setPositions(positionRows);
@@ -128,11 +121,11 @@ function R2HrConfiguration({ token, employees, mode }: { token: string; employee
 
   async function refreshPayrollConfig(employeeId = profileEmployeeId || employees[0]?.id || '') {
     const [mappingRows, accountRows] = await Promise.all([
-      read<PayrollAccountingMapping[]>('/payroll/accounting-mappings', []),
-      read<Account[]>('/accounting-core/accounts', []),
+      readOptional(identity, '/payroll/accounting-mappings', [] as PayrollAccountingMapping[], (path) => api<PayrollAccountingMapping[]>(path)),
+      readOptional(identity, '/accounting-core/accounts', [] as Account[], (path) => api<Account[]>(path)),
     ]);
     setMappings(mappingRows); setAccounts(accountRows);
-    if (employeeId && canAll('payroll.view')) { setProfileEmployeeId(employeeId); setProfiles(await read<EmployeeProfiles | null>(`/payroll/employee-profiles/${employeeId}`, null)); } else { setProfiles(null); }
+    if (employeeId && canAll('payroll.view')) { setProfileEmployeeId(employeeId); setProfiles(await readOptional(identity, `/payroll/employee-profiles/${employeeId}`, null as EmployeeProfiles | null, (path) => api<EmployeeProfiles>(path))); } else { setProfiles(null); }
   }
 
   useEffect(() => {
@@ -323,36 +316,28 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Permintaan gagal.');
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${Array.isArray(data.message) ? data.message.join(', ') : data.message ?? 'Permintaan gagal.'}`);
     return data as T;
   }
 
-  async function read<T>(path: string, fallback: T): Promise<T> {
-    if (!canReadHrPath(identity, path)) return fallback;
-    try { return await api<T>(path); }
-    catch (error) {
-      setMessage(current => `${current ? `${current} · ` : ''}${path.split('?')[0]}: ${error instanceof Error ? error.message : 'Gagal memuat data'}`);
-      return fallback;
-    }
-  }
 
   async function refreshCore() {
     const now = monthParts();
     const [emp, periodData, runData, taxData, socialData, componentData, employeeComponentData, liabilityData, leaveTypeData, leaveData, overtimeData, accountData] = await Promise.all([
-      read<CursorRows<Employee>>('/hr/employees?limit=50', { items: [], pageInfo: {} }),
-      read<PayrollPeriod[]>(`/payroll/periods?year=${now.year}`, []),
-      read<PayrollRun[]>('/payroll/runs', []),
-      read<RuleSet[]>('/payroll/tax-rule-sets', []),
-      read<RuleSet[]>('/payroll/social-security-rule-sets', []),
-      read<CursorRows<PayrollComponent>>('/payroll/components?limit=50', { items: [], pageInfo: {} }),
-      read<CursorRows<EmployeeComponent>>('/payroll/employee-components?limit=50', { items: [], pageInfo: {} }),
-      read<PayrollLiability[]>('/payroll/liabilities', []),
-      read<LeaveType[]>('/hr/leave-types', []),
-      read<LeaveRequest[]>('/hr/leave-requests', []),
-      read<OvertimeRequest[]>('/hr/overtime-requests', []),
-      // Chart of accounts untuk choosing rekening pelunasan. `read` with a fallback means a finance
-      // account permission failure degrades this select to empty rather than breaking payroll.
-      read<Account[]>('/accounting-core/accounts', []),
+      readOptional(identity, '/hr/employees?limit=50', { items: [], pageInfo: {} } as CursorRows<Employee>, (path) => api<CursorRows<Employee>>(path)),
+      readOptional(identity, `/payroll/periods?year=${now.year}`, [] as PayrollPeriod[], (path) => api<PayrollPeriod[]>(path)),
+      readOptional(identity, '/payroll/runs', [] as PayrollRun[], (path) => api<PayrollRun[]>(path)),
+      readOptional(identity, '/payroll/tax-rule-sets', [] as RuleSet[], (path) => api<RuleSet[]>(path)),
+      readOptional(identity, '/payroll/social-security-rule-sets', [] as RuleSet[], (path) => api<RuleSet[]>(path)),
+      readOptional(identity, '/payroll/components?limit=50', { items: [], pageInfo: {} } as CursorRows<PayrollComponent>, (path) => api<CursorRows<PayrollComponent>>(path)),
+      readOptional(identity, '/payroll/employee-components?limit=50', { items: [], pageInfo: {} } as CursorRows<EmployeeComponent>, (path) => api<CursorRows<EmployeeComponent>>(path)),
+      readOptional(identity, '/payroll/liabilities', [] as PayrollLiability[], (path) => api<PayrollLiability[]>(path)),
+      readOptional(identity, '/hr/leave-types', [] as LeaveType[], (path) => api<LeaveType[]>(path)),
+      readOptional(identity, '/hr/leave-requests', [] as LeaveRequest[], (path) => api<LeaveRequest[]>(path)),
+      readOptional(identity, '/hr/overtime-requests', [] as OvertimeRequest[], (path) => api<OvertimeRequest[]>(path)),
+      // Chart of accounts untuk choosing rekening pelunasan. Permission-aware optional read only
+      // degrades authorization gaps; transport/server failures still fail the workspace load.
+      readOptional(identity, '/accounting-core/accounts', [] as Account[], (path) => api<Account[]>(path)),
     ]);
     setEmployees(emp.items);
     setEmployeePageInfo(emp.pageInfo ?? {});
@@ -383,7 +368,7 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
     const cursor = employeePageInfo.nextCursor;
     if (!cursor || busy) return;
     await action(async () => {
-      const page = await read<CursorRows<Employee>>(`/hr/employees?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      const page = await readOptional(identity, `/hr/employees?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} } as CursorRows<Employee>, (path) => api<CursorRows<Employee>>(path));
       setEmployees((current) => appendUniqueById(current, page.items));
       setEmployeePageInfo(page.pageInfo ?? {});
     });
@@ -393,7 +378,7 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
     const cursor = componentPageInfo.nextCursor;
     if (!cursor || busy) return;
     await action(async () => {
-      const page = await read<CursorRows<PayrollComponent>>(`/payroll/components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      const page = await readOptional(identity, `/payroll/components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} } as CursorRows<PayrollComponent>, (path) => api<CursorRows<PayrollComponent>>(path));
       setComponents((current) => appendUniqueById(current, page.items));
       setComponentPageInfo(page.pageInfo ?? {});
     });
@@ -403,7 +388,7 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
     const cursor = employeeComponentPageInfo.nextCursor;
     if (!cursor || busy) return;
     await action(async () => {
-      const page = await read<CursorRows<EmployeeComponent>>(`/payroll/employee-components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} });
+      const page = await readOptional(identity, `/payroll/employee-components?limit=50&cursor=${encodeURIComponent(cursor)}`, { items: [], pageInfo: {} } as CursorRows<EmployeeComponent>, (path) => api<CursorRows<EmployeeComponent>>(path));
       setEmployeeComponents((current) => appendUniqueById(current, page.items));
       setEmployeeComponentPageInfo(page.pageInfo ?? {});
     });
@@ -412,8 +397,8 @@ export default function HrPayrollView({ token, mode = 'payroll' }: { token: stri
   async function refreshRun(runId: string) {
     if (!runId) { setResults([]); setPayments([]); return; }
     const [resultData, paymentData] = await Promise.all([
-      read<PayrollResult[]>(`/payroll/runs/${runId}/results`, []),
-      read<PayrollPayment[]>(`/payroll/runs/${runId}/payments`, []),
+      readOptional(identity, `/payroll/runs/${runId}/results`, [] as PayrollResult[], (path) => api<PayrollResult[]>(path)),
+      readOptional(identity, `/payroll/runs/${runId}/payments`, [] as PayrollPayment[], (path) => api<PayrollPayment[]>(path)),
     ]);
     setResults(resultData);
     setPayments(paymentData);

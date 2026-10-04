@@ -32,10 +32,12 @@ test('analytics nets sale returns and derives cash movement from cash-bank journ
   assert.match(reports, /netCashFlow: amount\.cashIn - amount\.cashOut/);
 });
 
-test('date-only report ranges include the complete final business day', () => {
-  assert.match(reports, /endOfDay \? '23:59:59\.999' : '00:00:00\.000'/);
-  assert.match(reports, /parseDate\(toValue, now, true\)/);
+test('date-only report ranges include the complete final business day in company timezone', () => {
+  assert.match(reports, /const timeZone = await this\.companyTimeZone\(scope\.companyId\)/);
+  assert.match(reports, /parseBusinessDateBoundary\(fromValue, businessMonthStart\(now, timeZone\), timeZone, false\)/);
+  assert.match(reports, /parseBusinessDateBoundary\(toValue, now, timeZone, true\)/);
   assert.match(reports, /Tanggal awal tidak boleh melebihi tanggal akhir/);
+  assert.doesNotMatch(reports, /T23:59:59\.999Z/);
 });
 
 test('core finance reports expose trial balance, balance sheet, ledger, tax summary and integrity controls', () => {
@@ -129,8 +131,11 @@ test('tax payment has a dedicated liability-to-settlement posting rule instead o
     'dan dikredit ke rekening kas/bank yang dipilih');
 });
 
-test('fiscal periods use end-of-day boundaries, reject overlap and refuse unsafe close', () => {
-  assert.match(extensions, /boundaryDate\(dto\.endDate, true\)/);
+test('fiscal periods use company-timezone day boundaries, reject overlap and refuse unsafe close', () => {
+  assert.match(extensions, /companyTimeZone\(this\.prisma, scope\.companyId\)/);
+  assert.match(extensions, /parseBusinessDateBoundary\(dto\.startDate, now, timeZone, false\)/);
+  assert.match(extensions, /parseBusinessDateBoundary\(dto\.endDate, now, timeZone, true\)/);
+  assert.doesNotMatch(extensions, /function boundaryDate\(/);
   assert.match(extensions, /startDate: \{ lte: endDate \}/);
   assert.match(extensions, /endDate: \{ gte: startDate \}/);
   assert.match(extensions, /FISCAL_PERIOD_CLOSE_BLOCKED/);

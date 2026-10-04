@@ -10,12 +10,12 @@
     "posViews": 4,
     "storefrontViews": 5,
     "employeeViews": 7,
-    "interactiveControls": 462
+    "interactiveControls": 464
   },
   "presentation": {
     "admin": {
       "fileCount": 44,
-      "lineCount": 9910,
+      "lineCount": 9946,
       "requiredSemanticClassCount": 34,
       "missingSemanticClasses": []
     },
@@ -27,7 +27,7 @@
     },
     "storefront": {
       "fileCount": 7,
-      "lineCount": 961,
+      "lineCount": 967,
       "requiredSemanticClassCount": 30,
       "missingSemanticClasses": []
     },
@@ -40,7 +40,7 @@
   },
   "controls": {
     "admin": {
-      "buttons": 360,
+      "buttons": 362,
       "links": 1,
       "inertButtons": 0,
       "implicitSubmitButtons": 32,

@@ -70,8 +70,14 @@ test('inherited DTO properties count as allowed, not as unknown keys', () => {
   for (const inherited of ['code', 'name', 'allowedMethods', 'requirePhoto', 'requireLocation', 'requireLiveness']) {
     assert.ok(policy.has(inherited), `${inherited} must resolve through the parent DTO`);
   }
-  // POST-1A added EnqueueSyncEventDto extends SyncEventDto, so the resolved-heritage count is 5.
-  assert.equal(analysis.heritage.size, 5, 'every `extends <Dto>` in the codebase must be resolved');
+  // Every inherited DTO must resolve to its parent fields. POST-1C adds ListMobileDraftsQueryDto
+  // on top of the shared pagination query; lock the actual inherited contract rather than a brittle
+  // repository-wide count that changes whenever a legitimate DTO inheritance is added.
+  const mobileDrafts = propsOf('ListMobileDraftsQueryDto');
+  for (const inherited of ['limit', 'cursor']) {
+    assert.ok(mobileDrafts.has(inherited), `${inherited} must resolve through ListMobileBindingsQueryDto`);
+  }
+  assert.ok(analysis.heritage.size >= 6, 'DTO heritage resolution unexpectedly shrank');
 });
 
 test('the maintenance completion payload matches CompleteMaintenanceDto exactly', () => {

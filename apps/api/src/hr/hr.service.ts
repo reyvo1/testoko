@@ -7,6 +7,13 @@ import { CreateDepartmentDto, CreateEmployeeAssignmentDto, CreateEmployeeDto, Cr
 
 type DbClient = Prisma.TransactionClient | PrismaService;
 type TenantScope = { companyId: string; branchId: string };
+const HR_REQUEST_STATUSES = new Set(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED']);
+
+function validatedHrRequestStatus(status?: string): string | undefined {
+  if (!status) return undefined;
+  if (!HR_REQUEST_STATUSES.has(status)) throw new BadRequestException('Status pengajuan HR tidak valid.');
+  return status;
+}
 
 @Injectable()
 export class HrService {
@@ -142,6 +149,8 @@ export class HrService {
       await this.assertDepartment(tx, user, scope, dto.departmentId);
       await this.assertPosition(tx, user, scope, dto.positionId);
       await this.assertUserBranch(tx, user, scope, dto.userId);
+      const company = await tx.company.findUnique({ where: { id: scope.companyId }, select: { timezone: true } });
+      if (!company) return this.denyTenantAccess(tx, user, scope, 'Company', scope.companyId);
       const employee = await tx.employee.create({
         data: {
           companyId: scope.companyId,
@@ -156,7 +165,7 @@ export class HrService {
           employmentStatus: dto.employmentStatus as never,
           hireDate: new Date(dto.hireDate),
           contractEnd: dto.contractEnd ? new Date(dto.contractEnd) : undefined,
-          timezone: dto.timezone ?? 'Asia/Makassar',
+          timezone: dto.timezone?.trim() || company.timezone,
         },
       });
       await tx.auditLog.create({
@@ -363,9 +372,10 @@ export class HrService {
 
   async listLeaveRequests(user: AuthUser, status?: string) {
     const scope = this.requireTenantScope(user);
+    const validatedStatus = validatedHrRequestStatus(status);
     const employeeIds = await this.branchEmployeeIds(this.prisma, scope);
     return this.prisma.leaveRequest.findMany({ where: {
-      companyId: scope.companyId, employeeId: { in: employeeIds }, ...(status ? { status: status as never } : {}),
+      companyId: scope.companyId, employeeId: { in: employeeIds }, ...(validatedStatus ? { status: validatedStatus as never } : {}),
     }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
   }
 
@@ -419,9 +429,10 @@ export class HrService {
 
   async listOvertimeRequests(user: AuthUser, status?: string) {
     const scope = this.requireTenantScope(user);
+    const validatedStatus = validatedHrRequestStatus(status);
     const employeeIds = await this.branchEmployeeIds(this.prisma, scope);
     return this.prisma.overtimeRequest.findMany({ where: {
-      companyId: scope.companyId, branchId: scope.branchId, employeeId: { in: employeeIds }, ...(status ? { status: status as never } : {}),
+      companyId: scope.companyId, branchId: scope.branchId, employeeId: { in: employeeIds }, ...(validatedStatus ? { status: validatedStatus as never } : {}),
     }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
   }
 

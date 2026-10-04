@@ -17,6 +17,8 @@ import { Panel, StatusChip, Table } from '../ui';
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 type Binding = { id: string; employeeId: string; displayName?: string | null; isActive: boolean; revokedAt?: string | null; revokedReason?: string | null; lastUsedAt?: string | null; createdAt: string };
+type PageInfo = { hasMore?: boolean; nextCursor?: string | null };
+type BindingPage = { items: Binding[]; pageInfo?: PageInfo };
 type DraftRow = {
   id: string; deviceId: string; warehouseId: string; warehouseName?: string | null; warehouseCode?: string | null;
   locationId?: string | null; opnameId?: string | null; status: string; lineCount: number;
@@ -28,17 +30,19 @@ type DraftList = {
   rows: DraftRow[];
   counts: { total: number; open: number; submitted: number; discarded: number; awaitingFiling: number };
   note: string;
+  pageInfo?: PageInfo;
 };
 
 async function req<T>(token: string, path: string, init?: RequestInit) {
   const r = await authFetch(`${API}${path}`, token, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(Array.isArray(d.message) ? d.message.join(', ') : (d.message ?? 'Request gagal'));
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${Array.isArray(d.message) ? d.message.join(', ') : (d.message ?? 'Request gagal')}`);
   return d as T;
 }
 
 export default function MobileOpsView({ token }: { token: string }) {
   const [bindings, setBindings] = useState<Binding[]>([]);
+  const [bindingPageInfo, setBindingPageInfo] = useState<PageInfo>({});
   const [drafts, setDrafts] = useState<DraftList | null>(null);
   const [employeeId, setEmployeeId] = useState('');
   const [platformUserId, setPlatformUserId] = useState('');
@@ -55,13 +59,54 @@ export default function MobileOpsView({ token }: { token: string }) {
   const canCountStock = canAll('inventory.manage');
 
   async function load() {
-    // Both panels load together, and each one fails on its own: a binding read needs user.manage and a
-    // draft read needs inventory.manage, and an operator can legitimately hold one without the other.
-    const tasks: Promise<void>[] = [req<Binding[]>(token, '/mobile-ops/telegram/bindings').then(setBindings).catch(() => setBindings([]))];
-    if (canCountStock) tasks.push(req<DraftList>(token, '/mobile-ops/drafts').then(setDrafts).catch(() => setDrafts(null)));
-    await Promise.all(tasks);
+    const tasks: Promise<void>[] = [];
+    if (canManageUsers) {
+      tasks.push(req<BindingPage>(token, '/mobile-ops/telegram/bindings?limit=50').then((page) => {
+        setBindings(page.items);
+        setBindingPageInfo(page.pageInfo ?? {});
+      }));
+    } else {
+      setBindings([]);
+      setBindingPageInfo({});
+    }
+    if (canCountStock) {
+      tasks.push(req<DraftList>(token, '/mobile-ops/drafts?limit=50').then(setDrafts));
+    } else {
+      setDrafts(null);
+    }
+    const results = await Promise.allSettled(tasks);
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length) {
+      throw new Error(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(' · '));
+    }
   }
-  useEffect(() => { void load().catch((e) => setMsg(e instanceof Error ? e.message : 'Gagal memuat data mobile ops')); }, [token, canCountStock]);
+  useEffect(() => { void load().catch((e) => setMsg(e instanceof Error ? e.message : 'Gagal memuat data mobile ops')); }, [token, canManageUsers, canCountStock]);
+
+  async function loadMoreBindings() {
+    const cursor = bindingPageInfo.nextCursor;
+    if (!cursor || busy || !canManageUsers) return;
+    setBusy(true);
+    try {
+      const page = await req<BindingPage>(token, `/mobile-ops/telegram/bindings?limit=50&cursor=${encodeURIComponent(cursor)}`);
+      setBindings((current) => [...current, ...page.items.filter((row) => !current.some((existing) => existing.id === row.id))]);
+      setBindingPageInfo(page.pageInfo ?? {});
+    } catch (err) { setMsg(err instanceof Error ? err.message : 'Gagal memuat binding berikutnya'); }
+    finally { setBusy(false); }
+  }
+
+  async function loadMoreDrafts() {
+    const cursor = drafts?.pageInfo?.nextCursor;
+    if (!cursor || busy || !canCountStock || !drafts) return;
+    setBusy(true);
+    try {
+      const page = await req<DraftList>(token, `/mobile-ops/drafts?limit=50&cursor=${encodeURIComponent(cursor)}`);
+      setDrafts((current) => current ? {
+        ...page,
+        rows: [...current.rows, ...page.rows.filter((row) => !current.rows.some((existing) => existing.id === row.id))],
+      } : page);
+    } catch (err) { setMsg(err instanceof Error ? err.message : 'Gagal memuat draft berikutnya'); }
+    finally { setBusy(false); }
+  }
 
   async function bind(e: FormEvent) {
     e.preventDefault(); setBusy(true);
@@ -92,7 +137,7 @@ export default function MobileOpsView({ token }: { token: string }) {
   }
 
   return <section className="stack">
-    <Panel eyebrow="POST-1C TELEGRAM IDENTITY" title="Binding identitas Telegram" badge={`${bindings.filter((b) => b.isActive).length} aktif`}>
+    {canManageUsers && <Panel eyebrow="POST-1C TELEGRAM IDENTITY" title="Binding identitas Telegram" badge={`${bindings.filter((b) => b.isActive).length} aktif`}>
       <p className="sectionHelp">
         sebuah platform identity hanya menghasilkan izin lewat employee yang terikat: tenant, branch, role,
         dan permission selalu dibaca dari employee, tidak pernah dari obrolan dan tidak pernah dari payload.
@@ -117,9 +162,10 @@ export default function MobileOpsView({ token }: { token: string }) {
         <label>Employee ID<input required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="UUID employee" /></label>
         <label>Platform user ID<input required value={platformUserId} onChange={(e) => setPlatformUserId(e.target.value)} placeholder="id dari platform" /></label>
         <label>Nama tampilan (opsional)<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></label>
-        <button disabled={busy}>Ikan binding</button>
+        <button disabled={busy}>Ikat binding</button>
       </form>}
-    </Panel>
+      {bindingPageInfo.hasMore && <button type="button" className="secondary" disabled={busy} onClick={() => void loadMoreBindings()}>Muat binding berikutnya</button>}
+    </Panel>}
 
     {canCountStock && drafts && <Panel eyebrow="POST-1C MOBILE COUNT" title="Draft hitung stok" badge={`${drafts.counts.open} terbuka`}>
       <p className="sectionHelp">
@@ -141,6 +187,7 @@ export default function MobileOpsView({ token }: { token: string }) {
         ])}
         empty="Belum ada draft hitung stok"
       />
+      {drafts.pageInfo?.hasMore && <button type="button" className="secondary" disabled={busy} onClick={() => void loadMoreDrafts()}>Muat draft berikutnya</button>}
       <p className="sectionHelp">{drafts.note}</p>
     </Panel>}
 

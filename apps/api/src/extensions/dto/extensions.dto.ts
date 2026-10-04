@@ -175,7 +175,7 @@ export class OperatorAssistantQueryDto {
 }
 
 export class MaterializeDailySummariesDto {
-  @ApiPropertyOptional({ description: 'Tanggal bisnis YYYY-MM-DD. Default hari ini UTC.' }) @IsOptional() @IsDateString() businessDate?: string;
+  @ApiPropertyOptional({ description: 'Tanggal bisnis YYYY-MM-DD menurut timezone company. Default hari bisnis company saat ini.' }) @IsOptional() @IsDateString() businessDate?: string;
 }
 
 export class UpsertDataRetentionPolicyDto {

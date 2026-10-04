@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable 
 import { FinanceTransactionType, Prisma, TaxTransactionDirection } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
 import { AuthUser } from '../auth/auth.types';
+import { parseBusinessDateBoundary } from '../common/business-time';
 import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
@@ -11,6 +12,13 @@ import { ApproveFinanceTransactionDto, CreateFinanceTransactionDto } from './dto
 
 type DbClient = Prisma.TransactionClient | PrismaService;
 type TenantScope = { companyId: string; branchId: string };
+const FINANCE_TRANSACTION_STATUSES = new Set(['DRAFT', 'WAITING_APPROVAL', 'APPROVED', 'POSTED', 'PAID', 'CANCELLED']);
+
+function validatedFinanceStatus(status?: string): string | undefined {
+  if (!status) return undefined;
+  if (!FINANCE_TRANSACTION_STATUSES.has(status)) throw new BadRequestException('Status transaksi keuangan tidak valid.');
+  return status;
+}
 
 @Injectable()
 export class FinanceOperationsService {
@@ -403,10 +411,10 @@ export class FinanceOperationsService {
     return { run, rootRunId, chainRunIds, recognized, paid, pending, outstanding, available };
   }
 
-  private parseAsOf(value?: string) {
-    const date = value ? new Date(`${value}T23:59:59.999Z`) : new Date();
-    if (Number.isNaN(date.getTime())) throw new BadRequestException('Tanggal asOf tidak valid.');
-    return date;
+  private async parseAsOf(companyId: string, value?: string) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new BadRequestException('Company tidak ditemukan.');
+    return parseBusinessDateBoundary(value, new Date(), company.timezone, true);
   }
 
   private agingDays(documentDate: Date, asOf: Date) {
@@ -622,7 +630,8 @@ export class FinanceOperationsService {
   }
 
   async customerReceivableAging(user: AuthUser, asOfValue?: string) {
-    const asOf = this.parseAsOf(asOfValue);
+    const scope = this.requireTenantScope(user);
+    const asOf = await this.parseAsOf(scope.companyId, asOfValue);
     const rows = (await this.listCustomerReceivables(user))
       .filter((row) => new Prisma.Decimal(row.outstandingAmount).greaterThan(0))
       .map((row) => {
@@ -634,7 +643,8 @@ export class FinanceOperationsService {
   }
 
   async supplierPayableAging(user: AuthUser, asOfValue?: string, supplierId?: string) {
-    const asOf = this.parseAsOf(asOfValue);
+    const scope = this.requireTenantScope(user);
+    const asOf = await this.parseAsOf(scope.companyId, asOfValue);
     const rows = (await this.listSupplierPayables(user, supplierId))
       .filter((row) => new Prisma.Decimal(String(row.outstandingAmount ?? 0)).greaterThan(0))
       .map((row) => {
@@ -698,12 +708,13 @@ export class FinanceOperationsService {
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId);
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<{ transactionDate: string; id: string }>(cursorValue);
+    const validatedStatus = validatedFinanceStatus(status);
     const rows = await this.prisma.operationalFinanceTransaction.findMany({
       where: {
         companyId: scope.companyId,
         branchId: scope.branchId,
         ...(type ? { type } : {}),
-        ...(status ? { status: status as never } : {}),
+        ...(validatedStatus ? { status: validatedStatus as never } : {}),
         ...(cursor ? { OR: [
           { transactionDate: { lt: new Date(cursor.transactionDate) } },
           { transactionDate: new Date(cursor.transactionDate), id: { lt: cursor.id } },

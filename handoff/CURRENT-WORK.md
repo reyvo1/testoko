@@ -1,5 +1,55 @@
 # CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
 
+## Ubuntu full-audit local closure — 2026-10-04
+
+- Full-audit source ran on Ubuntu with local Prisma generation before the runtime-backed suite.
+- Initial full preflight reached **1661 tests: 1660 PASS / 1 FAIL**. The only failure was the Telegram stock-count runtime fixture using `rak-A` without materializing a matching active `WarehouseLocation` owned by `wh-1`.
+- Root fix is fixture fidelity only: the runtime seed now creates `WarehouseLocation rak-A` for `wh-1`, resets it between cases, and binds `so-1.locationId` to that same rack.
+- Production MobileOps warehouse/location/tenant/operator guards remain unchanged and fail-closed; no assertion, test, permission guard, UAT threshold, Stage gate, or GitHub workflow was skipped or relaxed.
+- After the fixture correction, the exact Ubuntu `ci:preflight:local` completed **1661/1661 PASS**, followed by `audit:full:repo`, `audit:recovery`, and `ci:ui:audit` PASS before commit/push.
+- Next authority is GitHub exact-artifact UAT for the pushed commit. `productReady=false`; Human Stage-20 remains PENDING until its real acceptance step.
+
+
+## Full deep backend/frontend audit root fix — 2026-10-04
+
+- Authority for this round is the rootfix2-equivalent local state plus the uploaded Ubuntu preflight evidence; the failed full-deep patch was never applied on the operator repo and is not treated as state.
+- Full repository/source audits re-scanned **1082 files, 509 API handlers, 464 UI controls, 65/65 Admin contextual destinations, 48/48 recovery findings**, canonical ownership, and P5 surface/depth contracts.
+- Pre-GitHub prerequisite root remains fail-closed: local preflight generates the SQLite Prisma Client before the runtime-backed regression suite; it does not push/seed/reset the database and no test is skipped.
+- Business-time authority is centralized and applied to numbering, reports/digest, finance/tax ranges, extensions, cashier targets, Attendance logical workDate/roster month, reorder demand-day bucketing, balance-sheet/integrity `asOf`, and report-job filter validation. The final scan removed a dangling `parseDate()` reference introduced during the timezone hardening.
+- Employee creation no longer hardcodes `Asia/Makassar`: omitted employee timezone inherits the authenticated company timezone; Admin no longer sends a fixed region.
+- Sync/offline persistence is fail-closed: sync pull no longer converts OfflineTransaction DB failure into zero processed rows; branch-transfer outbox, conflict/inbox duplicate handling suppresses **P2002 only**; self sync cursor uses atomic upsert. Unrelated persistence failures propagate.
+- Branch-sync DTO literal choices use `IsIn`; cashier targets are branch-scoped active CASHIER only; low-stock uses configured `Product.minStock` and verified notification bindings.
+- Mobile stock count remains tenant/operator/device scoped, cursor bounded, alternate-UOM aware, tracked-batch fail-closed, and submits through canonical StockOpname. POS stock-count uses an explicit dialog and surfaces authoritative load failures.
+- Admin optional reads degrade authorization failures only; server/network failures remain visible. Storefront logout clears local state without falsely claiming remote revocation success.
+- Four stale source tests were reconciled to the stricter implementation rather than weakened: company-timezone finance/fiscal boundaries, DTO inheritance, supervisor optional-auth semantics, and Telegram binding DTO ownership. Two sync tests now explicitly require P2002-only duplicate suppression.
+- Focused cross-domain regression after final fixes: **151/151 PASS**. Per-file sweep executed all **247** test files: **221 files PASS**; remaining **26 are runtime/environment-dependent only** in the assistant container (missing `reflect-metadata`, Next package, `esbuild`, generated `@prisma/client`, Nest runtime, or prebuilt worker/API dist). No remaining static/source assertion failure was observed.
+- Official source gates PASS after final fixes: workflow 39 items/8 waves; full repo 1082 files/509 handlers/464 controls; product completeness; Admin contextual 65/65; canonical ownership; P5 visual/domain-depth; recovery 48/48; UI source audit. TypeScript/TSX syntax transpile scan: **277 files / 0 syntax errors**; `git diff --check` PASS.
+- Exact Ubuntu `npm ci` + `ci:preflight:local` and GitHub exact-source UAT remain mandatory before runtime-ready claims. F9 live-provider readiness remains external; `apps/customer-mobile` remains POST-1 starter/planning; `productReady=false`; Human Stage-20=PENDING.
+
+---
+
+## Local/GitHub preflight portability root fix — 2026-10-03
+
+- Root cause confirmed after Ubuntu source replacement: `scripts/validate-repo.mjs` imported TypeScript without a root dependency and fell back to a machine-specific `/opt/nvm/...` path.
+- Root `devDependencies` now explicitly owns `typescript@^5.9.0`; package-lock root metadata mirrors it.
+- `validate-repo.mjs` accepts only the project-local dependency installed by `npm ci`; no global/NVM fallback remains.
+- Added dependency-free regression coverage preventing a machine-specific TypeScript fallback from returning.
+- UAT/gates remain fail-closed; no test, assertion, Stage-18/19/20 step, or GitHub workflow was skipped or relaxed.
+- Correct local order after replacing source is `npm ci` before `npm run validate:repo`.
+
+
+## GitHub UAT regression root fix — 2026-10-03
+
+- Evidence from both uploaded GitHub log bundles isolates the first real blocker to `tests/workspace-bootstrap-permission-parity.test.mjs`: full regression reached **1640 tests / 1639 PASS / 1 FAIL**. The failing People workspace bootstrap classified `hr-payroll`'s `/hr/employees` read as unsafe for AUDITOR/EMPLOYEE/FINANCE/WAREHOUSE.
+- Root cause in source was broader than the assertion: `apps/admin/app/modules/hr-payroll.tsx` used a private `read()` helper that returned fallback for **every** thrown error, so 500/network failures could be hidden as empty panels. It also duplicated permission resolution instead of using the canonical permission-aware reader.
+- Root fix: all HR/payroll optional bootstrap reads now use `readOptional()` directly. Unauthorized slices can degrade, but server/transport failures propagate and keep UAT fail-closed. HTTP errors now include status codes so 401/403 are distinguishable.
+- `apps/admin/app/read-path-contract.ts` now mirrors real controller permission granularity for HR leave/overtime and payroll tax rules, and its accounting-core role allowlist matches the controller (`SUPER_ADMIN|OWNER|FINANCE|AUDITOR`).
+- **No test/UAT assertion was removed, skipped, relaxed, or changed.** The exact failing test now passes 5/5. Broader focused regression passes **50/50**; workflow/repo/full audits PASS.
+- The PostgreSQL errors later in the failed GitHub run (`URL must start with file:`) were downstream state from the build gate aborting during regression after `db:local:prepare`; `run-build-gate.mjs` already regenerates the PostgreSQL Prisma Client after successful regression/SQLite smoke. Do not weaken the later gates or add a fake bypass. Re-run exact-source GitHub UAT after this source fix.
+- Runtime/build closure is still pending a fresh GitHub run; `productReady=false`, Human Stage-20 remains PENDING.
+
+---
+
 ## Pre-GitHub full source-hardening round — 2026-10-03
 
 - Source authority sesi ini: ZIP Ubuntu-clean `testoko-main-ubuntu-clean-20261003.zip`; copy ini tidak memiliki `.git`, sehingga commit/fingerprint tidak diklaim terverifikasi.

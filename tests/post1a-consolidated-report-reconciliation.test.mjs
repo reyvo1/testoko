@@ -94,6 +94,9 @@ const RULES = [
 async function seed() {
   await prisma.user.create({ data: { id: USER, name: 'Operator', email: 'op@test', passwordHash: 'x', isActive: true } });
   await prisma.company.create({ data: { id: COMPANY, name: 'Acme', slug: 'acme', timezone: 'Asia/Makassar', currency: 'IDR' } });
+  await prisma.masterReference.create({
+    data: { companyId: COMPANY, branchId: null, type: 'UNIT', code: 'PCS', name: 'Pieces', isActive: true },
+  });
   for (const [id, code] of BRANCHES) {
     await prisma.branch.create({ data: { id, companyId: COMPANY, code, name: `Cabang ${code}`, isActive: true } });
     for (const [accountCode, name, type] of ACCOUNTS) {

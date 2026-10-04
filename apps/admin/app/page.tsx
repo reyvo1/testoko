@@ -14,6 +14,10 @@ import R3OperationsView from './modules/r3-operations';
 import OperationsControlView from './modules/operations-control';
 import DeliveryLifecycle from './modules/delivery-lifecycle';
 import MasterDataView from './modules/master-data';
+import ProductBulkLabelsView from './modules/product-bulk-labels';
+import ManufacturingView from './modules/manufacturing';
+import DigitalServicesView from './modules/digital-services';
+import SetupReadinessView from './modules/setup-readiness';
 import ApiKeysView from './modules/api-keys';
 import BranchSyncView from './modules/branch-sync';
 import MobileOpsView from './modules/mobile-ops';
@@ -31,6 +35,7 @@ import { canReadAdminFeed, settleAdminFeed } from './bootstrap-data';
 import { usePermissions } from './permissions';
 import { T360ThemeToggle } from './theme-client';
 import { authFetch, clearLoginTokens, storeLoginTokens } from './auth-fetch';
+import StaffMemoWidget from './staff-memo';
 import {
   ADMIN_WORKSPACES, type AdminRuntimeManifest, identityFromAccessToken, resolveAdminNavigation, workspaceFromPath,
 } from './navigation';
@@ -472,6 +477,7 @@ export default function AdminPage() {
       onLogout={() => void logout()}
       headerAction={activeWorkspace.key === 'dashboard' ? <button type="button" className="btnGhost" onClick={() => window.print()}>Cetak ringkasan</button> : undefined}
     >
+          <StaffMemoWidget token={token} />
           {loadErrors.length > 0 && <section className="notice" role="alert"><strong>Sebagian data belum tersedia</strong><p>Gagal memuat: {loadErrors.join(', ')}. Data ini tidak boleh dianggap sebagai saldo nol.</p><button type="button" className="secondary" onClick={() => void loadAll(token)}>Coba lagi</button></section>}
           {!canAccessWorkspace && <section className="emptyState"><h2>Ruang kerja tidak tersedia</h2><p>Pilih menu yang tersedia untuk hak akses akun Anda.</p></section>}
           {canAccessWorkspace && <>
@@ -537,7 +543,8 @@ export default function AdminPage() {
 
           {activeWorkspace.key === 'inventory-control' && <><OperationsView token={token} mode={(activeDomainView?.key ?? 'overview') as 'overview'|'traceability'|'transfers'|'stocktake'|'returns'} />{(!activeDomainView || activeDomainView.key === 'overview') && <section className="panel"><div className="panelTitle"><div><span className="eyebrow">INVENTORY LEDGER</span><h2>Canonical inventory movements</h2></div><span>{inventoryMovements.length} movement</span></div><div className="table"><div className="tr th"><span>Waktu / Referensi</span><span>Produk / Gudang</span><span>Movement / Saldo</span></div>{inventoryMovements.slice(0,50).map((movement) => <div className="tr" key={movement.id}><span><strong>{new Date(movement.createdAt).toLocaleString('id-ID')}</strong><small>{movement.referenceType ?? '-'}:{movement.referenceId ?? '-'}</small></span><span><strong>{movement.product.name}</strong><small>{movement.warehouse.name}</small></span><span><strong>{movement.type} · {movement.quantity > 0 ? '+' : ''}{movement.quantity}</strong><small>balance {movement.balanceAfter}</small></span></div>)}</div></section>} </>}
           {activeWorkspace.key === 'operations-control' && (activeDomainView?.key === 'delivery' ? <DeliveryLifecycle token={token} /> : <OperationsControlView token={token} mode={(activeDomainView?.key ?? 'inspections') as 'inspections'|'evidence'|'gate-pass'} />)}
-          {activeWorkspace.key === 'master-data' && <MasterDataView token={token} mode={activeDomainView?.key ?? 'products'} />}
+          {activeWorkspace.key === 'master-data' && (activeDomainView?.key === 'bulk-labels' ? <ProductBulkLabelsView token={token} /> : <MasterDataView token={token} mode={activeDomainView?.key ?? 'products'} />)}
+          {activeWorkspace.key === 'manufacturing' && <ManufacturingView token={token} />}
           {activeWorkspace.key === 'organization' && (activeDomainView?.key === 'organization' || !activeDomainView ? <OrganizationAdminView token={token} /> : <MasterDataView token={token} mode={activeDomainView.key} />)}
           {activeWorkspace.key === 'finance' && <AccountingView token={token} mode={activeDomainView?.key ?? 'ledger'} />}
           {activeWorkspace.key === 'reports' && <>
@@ -560,6 +567,7 @@ export default function AdminPage() {
             {activeDomainView?.key === 'connections' && <><ExtensionsView token={token} mode="connections" /><R3OperationsView token={token} mode="connections" /></>}
             {activeDomainView?.key === 'devices' && <><ExtensionsView token={token} mode="devices" /><R3OperationsView token={token} mode="devices" /></>}
             {activeDomainView?.key === 'loyalty' && <ExtensionsView token={token} mode="loyalty" />}
+            {activeDomainView?.key === 'ppob' && <DigitalServicesView token={token} />}
           </>}
           {activeWorkspace.key === 'settings' && <>
 
@@ -568,6 +576,7 @@ export default function AdminPage() {
               <p className="sectionHelp">Flag runtime bukan bukti product-completeness. Maturity dan ownership di bawah menjelaskan capability sebenarnya; FOUNDATION/ADAPTER_REQUIRED tidak boleh dibaca sebagai modul produksi selesai.</p>
               <div className="table">{manifest?.modules.map((module) => { const feature = module.featureKey ? manifest.features[module.featureKey] : undefined; const enabled = module.isCore || !module.featureKey || feature?.enabled; const maturity = feature?.config?.maturityClass ?? (module.isCore ? 'OPERATIONAL' : 'UNKNOWN'); const help = feature?.config?.helpText ?? module.description ?? 'Capability core runtime.'; const configurable = feature?.config?.configurable !== false; return <div className="receipt" key={module.code}><div><strong>{module.name}</strong><small>{module.category} · {module.code}</small><small>Maturity: {maturity} · Ownership: {feature?.config?.ownership ?? (module.isCore ? 'TOKO360_RUNTIME' : 'UNDECLARED')}</small><small>{help}</small></div>{module.featureKey ? <div className="actionRow"><span className={enabled?'okText':''}>{enabled?'ENABLED':'DISABLED'}</span><button type="button" className="secondary" disabled={!configurable || !canRootAction('platform.configure', ['SUPER_ADMIN', 'OWNER', 'ADMIN'])} onClick={() => setFeatureChange({ key: module.featureKey!, enabled: !enabled })}>{enabled ? 'Nonaktifkan' : 'Aktifkan'}</button></div> : <span className="okText">CORE</span>}</div>; })}</div>
             </section>}
+            {activeDomainView?.key === 'setup' && <SetupReadinessView token={token} />}
             {activeDomainView?.key === 'users' && <AccessControlView token={token} canManageRoles={Boolean(identity?.roles.includes('SUPER_ADMIN'))} actorId={identity?.sub} />}
             {(['platform','custom-fields','approvals','webhooks','ui-config','audit-ops'] as const).includes(activeDomainView?.key as never) && activeDomainView && <PlatformControlView token={token} mode={activeDomainView.key as 'platform'|'custom-fields'|'approvals'|'webhooks'|'ui-config'|'audit-ops'} />}
             {activeDomainView?.key === 'security' && <SecurityView token={token} />}

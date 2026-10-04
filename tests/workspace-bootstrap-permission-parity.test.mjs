@@ -95,6 +95,27 @@ function parseWorkspaces() {
   return out;
 }
 
+function parseDomainViewGates() {
+  const out = new Map();
+  let workspace = null;
+  for (const line of read('apps/admin/app/domain-workspaces.ts').split('\n')) {
+    const workspaceMatch = line.match(/\{\s*workspaceKey:\s*'([^']+)'\s*,\s*views:\s*\[/);
+    if (workspaceMatch) { workspace = workspaceMatch[1]; continue; }
+    if (!workspace) continue;
+    const viewMatch = line.match(/\{\s*key:\s*'([^']+)'/);
+    if (viewMatch) {
+      const rolesMatch = line.match(/roles:\s*\[([^\]]*)\]/);
+      const prefixesMatch = line.match(/permissionPrefixes:\s*\[([^\]]*)\]/);
+      out.set(`${workspace}:${viewMatch[1]}`, {
+        roles: rolesMatch ? rolesOf(rolesMatch[1]) : [],
+        prefixes: prefixesMatch ? [...prefixesMatch[1].matchAll(/'([^']+)'/g)].map(x => x[1]) : [],
+      });
+    }
+    if (/^\s*\]\},?\s*$/.test(line)) workspace = null;
+  }
+  return out;
+}
+
 const modulesDir = new URL('apps/admin/app/modules/', ROOT);
 const modules = fs.readdirSync(modulesDir).filter(f => f.endsWith('.tsx')).map(f => ({
   name: f.replace('.tsx', ''),
@@ -121,9 +142,10 @@ for (const mod of modules) {
   if (m) byExport.set(m[1], mod.name);
 }
 const mapRaw = JSON.parse(read('config/admin-contextual-workflow-map.json'));
-const modulesFor = (ws) => [...new Set(
-  mapRaw.rows.filter(r => r.workspace === ws).map(r => byExport.get(r.renderer.split(':')[0])).filter(Boolean),
+const modulesForRow = (row) => [...new Set(
+  String(row.renderer).split('+').map((renderer) => byExport.get(renderer.split(':')[0])).filter(Boolean),
 )];
+const domainViewGates = parseDomainViewGates();
 
 const routes = parseRoutes();
 const roles = parseRoles();
@@ -135,35 +157,51 @@ const passes = (role, r) => {
   return true;
 };
 const covered = (perms, prefixes) => prefixes.some(pre => [...perms].some(p => p === pre || p.startsWith(pre + '.')));
+const passesViewGate = (role, gate) => {
+  if (!gate) return true;
+  if (role.name === 'SUPER_ADMIN') return true;
+  if (gate.roles.length && !gate.prefixes.length) return gate.roles.includes(role.name);
+  if (gate.roles.includes(role.name)) return true;
+  if (!gate.prefixes.length) return true;
+  return covered(role.perms, gate.prefixes);
+};
 
-test('every unguarded read a gated workspace performs is allowed for every role that passes the gate', () => {
+test('every unguarded read a permission-visible contextual view performs is allowed for every role that can open that view', () => {
   const offenders = [];
   let checked = 0;
+  let checkedViews = 0;
   for (const ws of workspaces) {
     if (!ws.prefixes.length) continue;
-    const mods = modulesFor(ws.key);
-    if (!mods.length) continue;
+    const rows = mapRaw.rows.filter((row) => row.workspace === ws.key);
+    if (!rows.length) continue;
     for (const role of roles) {
       if (!covered(role.perms, ws.prefixes)) continue;
-      for (const modName of mods) {
-        const mod = modules.find(m => m.name === modName);
-        for (const path of unguardedReads(mod)) {
-          const r = routes.find(rr => rr.method === 'GET' && match(rr.path, path));
-          if (!r) continue;
-          checked++;
-          if (passes(role, r)) continue;
-          const why = [
-            r.roles?.length ? `roles@${r.roles.join('|')}` : null,
-            r.perm ? `perm@${r.perm}` : null,
-          ].filter(Boolean).join(' ');
-          offenders.push(`${ws.key} / ${role.name}: ${modName} reads ${path} (${why})`);
+      for (const row of rows) {
+        const gate = domainViewGates.get(`${ws.key}:${row.view}`);
+        assert.ok(gate, `missing domain-view gate for ${ws.key}/${row.view}; permission audit cannot safely infer reachability`);
+        if (!passesViewGate(role, gate)) continue;
+        checkedViews++;
+        for (const modName of modulesForRow(row)) {
+          const mod = modules.find(m => m.name === modName);
+          for (const path of unguardedReads(mod)) {
+            const r = routes.find(rr => rr.method === 'GET' && match(rr.path, path));
+            if (!r) continue;
+            checked++;
+            if (passes(role, r)) continue;
+            const why = [
+              r.roles?.length ? `roles@${r.roles.join('|')}` : null,
+              r.perm ? `perm@${r.perm}` : null,
+            ].filter(Boolean).join(' ');
+            offenders.push(`${ws.key}/${row.view} / ${role.name}: ${modName} reads ${path} (${why})`);
+          }
         }
       }
     }
   }
-  assert.ok(checked > 40, `the scan must inspect the real bootstrap reads; it inspected only ${checked}, so it would pass vacuously`);
+  assert.ok(checkedViews > 40, `the scan must inspect contextual view reachability; it inspected only ${checkedViews} visible role/view pairs`);
+  assert.ok(checked > 40, `the scan must inspect the real contextual bootstrap reads; it inspected only ${checked}, so it would pass vacuously`);
   assert.deepEqual([...new Set(offenders)], [],
-    `these reads 403 for a role that passed the workspace gate:\n${[...new Set(offenders)].sort().join('\n')}`);
+    `these reads 403 for a role that can open the contextual view:\n${[...new Set(offenders)].sort().join('\n')}`);
 });
 
 test('the route parser reads the real controllers, not a hand-written permission table', () => {

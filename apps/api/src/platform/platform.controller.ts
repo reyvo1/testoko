@@ -33,6 +33,9 @@ import { PlatformService } from './platform.service';
   @Get('modules') modules() { return this.platform.listModules(); }
   @Get('plugins') plugins() { return this.platform.pluginCatalog(); }
 
+  @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('platform.configure') @Get('setup-readiness')
+  setupReadiness(@CurrentUser() user: AuthUser) { return this.platform.setupReadiness(user); }
+
   @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('platform.configure') @Get('tenant')
   tenant(@CurrentUser() user: AuthUser) { return this.platform.tenantProfile(user); }
   @Roles('SUPER_ADMIN','OWNER','ADMIN') @Permissions('platform.configure') @Patch('tenant')

@@ -47,7 +47,13 @@ export async function resolveSellingUnitLine(
   segmentCode?: string | null,
   occurredAt?: Date,
 ): Promise<TransactionUomSnapshot> {
-  const baseUnit = (product.unit || 'PCS').trim().toUpperCase();
+  const baseUnit = product.unit.trim().toUpperCase();
+  if (!baseUnit) throw new BadRequestException('Base unit produk belum dikonfigurasi dari master UNIT.');
+  const activeBaseUnit = await client.masterReference.findFirst({
+    where: { companyId: scope.companyId, branchId: null, type: 'UNIT', code: baseUnit, isActive: true },
+    select: { id: true },
+  });
+  if (!activeBaseUnit) throw new BadRequestException(`Base unit ${baseUnit} tidak aktif pada master UNIT perusahaan.`);
   let unitCode = baseUnit;
   let quantityFactor = 1;
   let sourceBarcode: string | null = null;
@@ -119,6 +125,14 @@ export async function resolveSellingUnitLine(
     });
     if (!variant) throw new BadRequestException('Variant tidak valid/aktif untuk produk yang dipilih.');
     if (variant.salePrice) variantSalePrice = new Prisma.Decimal(variant.salePrice);
+  }
+
+  if (unitCode !== baseUnit) {
+    const activeSellingUnit = await client.masterReference.findFirst({
+      where: { companyId: scope.companyId, branchId: null, type: 'UNIT', code: unitCode, isActive: true },
+      select: { id: true },
+    });
+    if (!activeSellingUnit) throw new BadRequestException(`Unit jual ${unitCode} tidak aktif pada master UNIT perusahaan.`);
   }
 
   if (!Number.isSafeInteger(quantityFactor) || quantityFactor < 1) {

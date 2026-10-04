@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { clearEmployeeTokens, employeeAuthFetch, storeEmployeeTokens } from './auth-fetch';
 import { EmployeePortalShell, type EmployeePortalView } from './employee-portal-shell';
 import { T360ThemeToggle } from './theme-client';
+import StaffMemoWidget from './staff-memo';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -761,6 +762,7 @@ export function EmployeePortalApp({ initialView = 'home' }: { initialView?: Empl
       loading={loading}
       onLogout={() => void logout()}
     >
+      <StaffMemoWidget token={token} />
       {content}
     </EmployeePortalShell>
   );

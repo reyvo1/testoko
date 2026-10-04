@@ -31,16 +31,18 @@ test('schema applies', () => {
 
 function seed() {
   const c = conn();
-  c.exec('DELETE FROM StockOpnameItem; DELETE FROM StockOpname; DELETE FROM MobileOpnameDraft; DELETE FROM Product; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
+  c.exec('DELETE FROM StockOpnameItem; DELETE FROM StockOpname; DELETE FROM MobileOpnameDraft; DELETE FROM Product; DELETE FROM MasterReference; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
   c.prepare('INSERT INTO Company (id, name, timezone, currency, createdAt, updatedAt) VALUES (?,?,?,?,?,?)')
     .run('acme', 'Acme', 'Asia/Makassar', 'IDR', now(), now());
   c.prepare('INSERT INTO Branch (id, companyId, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
     .run('br-1', 'acme', 'BR1', 'Cabang 1', 1, now(), now());
+  c.prepare('INSERT INTO MasterReference (id, companyId, branchId, type, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('unit-pcs', 'acme', null, 'UNIT', 'PCS', 'Pieces', 1, now(), now());
   c.prepare('INSERT INTO Warehouse (id, code, name, branchId, isActive, isDefault, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')
     .run('wh-1', 'W1', 'Gudang 1', 'br-1', 1, 1, now(), now());
   const p = (id, sku, barcode, name, trackBatch) => c.prepare(
-    'INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, trackBatch, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-  ).run(id, 'acme', sku, barcode, name, 1000, 1500, trackBatch, 1, now(), now());
+    'INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, unit, trackBatch, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+  ).run(id, 'acme', sku, barcode, name, 1000, 1500, 'PCS', trackBatch, 1, now(), now());
   p('p-1', 'SKU-1', 'BC-1', 'Kopi 250g', 0);
   p('p-2', 'SKU-2', 'BC-2', 'Teh 250g', 0);
   // Batch-tracked: one product occupying two StockOpnameItem rows.

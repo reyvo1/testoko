@@ -129,13 +129,20 @@ try {
   const warehouse = (warehouses || []).find((row) => row.isActive !== false);
   assert(warehouse?.id, 'Gudang aktif untuk fixture P2A runtime probe tidak tersedia.');
 
+  const baseUnit = await prisma.masterReference.findFirst({
+    where: { companyId, branchId: null, type: 'UNIT', isActive: true },
+    orderBy: [{ code: 'asc' }, { id: 'asc' }],
+    select: { code: true },
+  });
+  assert(baseUnit?.code, 'Master UNIT aktif tingkat perusahaan tidak tersedia untuk fixture P2A.');
+
   const fixtureQuantity = 8;
   const product = await prisma.product.create({
     data: {
       companyId,
       sku: `P2ASKU${suffix}`.toUpperCase(),
       name: `P2A Runtime Product ${suffix}`,
-      unit: 'pcs',
+      unit: baseUnit.code,
       productType: 'PHYSICAL',
       trackBatch: false,
       trackExpiry: false,

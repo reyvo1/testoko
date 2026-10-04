@@ -255,6 +255,35 @@ export class PlatformService {
     };
   }
 
+  async setupReadiness(user: AuthUser) {
+    const scope = this.requireTenantScope(user);
+    const [company, branch, defaultWarehouse, activeUsers, activeProducts, accounts, paymentMethods, inventorySetting, connectedIntegrations] = await Promise.all([
+      this.prisma.company.findUnique({ where: { id: scope.companyId }, select: { id: true, name: true, timezone: true, currency: true } }),
+      this.prisma.branch.findFirst({ where: { id: scope.branchId, companyId: scope.companyId, isActive: true }, select: { id: true, code: true, name: true, address: true } }),
+      this.prisma.warehouse.findFirst({ where: { branchId: scope.branchId, isActive: true, isDefault: true }, select: { id: true, code: true, name: true } }),
+      this.prisma.user.count({ where: { branchId: scope.branchId, isActive: true } }),
+      this.prisma.product.count({ where: { companyId: scope.companyId, isActive: true } }),
+      this.prisma.account.count({ where: { branchId: scope.branchId, isActive: true } }),
+      this.prisma.masterReference.count({ where: { companyId: scope.companyId, type: 'PAYMENT_METHOD', isActive: true } }),
+      this.prisma.systemSetting.findFirst({ where: { companyId: scope.companyId, branchId: null, namespace: 'inventory', key: 'costing_method' } }),
+      this.prisma.integrationConnection.count({ where: { companyId: scope.companyId, status: 'CONNECTED', OR: [{ branchId: scope.branchId }, { branchId: null }] } }),
+    ]);
+    const steps = [
+      { key: 'company', label: 'Profil perusahaan', complete: Boolean(company?.name && company.timezone && company.currency), detail: company ? `${company.name} · ${company.currency} · ${company.timezone}` : 'Company belum tersedia.', route: '/settings/platform' },
+      { key: 'branch', label: 'Cabang aktif', complete: Boolean(branch), detail: branch ? `${branch.code} · ${branch.name}${branch.address ? ` · ${branch.address}` : ''}` : 'Branch aktif belum tersedia.', route: '/organization/organization' },
+      { key: 'warehouse', label: 'Gudang default', complete: Boolean(defaultWarehouse), detail: defaultWarehouse ? `${defaultWarehouse.code} · ${defaultWarehouse.name}` : 'Gudang default aktif belum ditentukan.', route: '/organization/organization' },
+      { key: 'users', label: 'User operasional', complete: activeUsers > 0, detail: `${activeUsers} user aktif pada branch.`, route: '/settings/users' },
+      { key: 'products', label: 'Master produk', complete: activeProducts > 0, detail: `${activeProducts} produk aktif.`, route: '/master-data/products' },
+      { key: 'accounting', label: 'Chart of accounts', complete: accounts > 0, detail: `${accounts} account aktif.`, route: '/finance/ledger' },
+      { key: 'payments', label: 'Metode pembayaran', complete: paymentMethods > 0, detail: `${paymentMethods} payment method aktif.`, route: '/master-data/references' },
+      { key: 'inventory', label: 'Metode costing inventory', complete: Boolean(inventorySetting), detail: inventorySetting ? `Costing: ${String(inventorySetting.value)}` : 'Setting inventory.costing_method belum tersedia.', route: '/settings/platform' },
+      { key: 'integrations', label: 'Integrasi eksternal', complete: connectedIntegrations > 0, required: false, detail: `${connectedIntegrations} integration connection CONNECTED. Langkah ini opsional untuk operasi inti.`, route: '/integrations/connections' },
+    ];
+    const required = steps.filter((step) => step.required !== false);
+    const completed = required.filter((step) => step.complete).length;
+    return { readyForOperations: completed === required.length, score: Math.round((completed / required.length) * 100), completed, required: required.length, optionalConnectedIntegrations: connectedIntegrations, steps };
+  }
+
   async tenantProfile(user: AuthUser) {
     const scope = this.requireTenantScope(user);
     const [company, branches] = await Promise.all([

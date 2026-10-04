@@ -47,16 +47,18 @@ function seed() {
   const c = conn();
   c.exec('DELETE FROM AuditLog; DELETE FROM TelegramIdentityBinding; DELETE FROM Employee;'
     + ' DELETE FROM UserRole; DELETE FROM RolePermission; DELETE FROM Role; DELETE FROM Permission;'
-    + ' DELETE FROM User; DELETE FROM Product; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
+    + ' DELETE FROM User; DELETE FROM Product; DELETE FROM MasterReference; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
 
   c.prepare('INSERT INTO Company (id, name, timezone, currency, createdAt, updatedAt) VALUES (?,?,?,?,?,?)')
     .run('acme', 'Acme', 'Asia/Makassar', 'IDR', now(), now());
   c.prepare('INSERT INTO Branch (id, companyId, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
     .run('br-1', 'acme', 'BR1', 'Cabang 1', 1, now(), now());
+  c.prepare('INSERT INTO MasterReference (id, companyId, branchId, type, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('unit-pcs', 'acme', null, 'UNIT', 'PCS', 'Pieces', 1, now(), now());
   c.prepare('INSERT INTO Warehouse (id, code, name, branchId, isActive, isDefault, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')
     .run('wh-1', 'W1', 'Gudang 1', 'br-1', 1, 1, now(), now());
-  c.prepare('INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run('p-1', 'acme', 'SKU-1', 'BC-1', 'Kopi 250g', 1000, 15000, 1, now(), now());
+  c.prepare('INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, unit, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run('p-1', 'acme', 'SKU-1', 'BC-1', 'Kopi 250g', 1000, 15000, 'PCS', 1, now(), now());
 
   // An employee whose role actually carries inventory.opname.
   c.prepare('INSERT INTO User (id, branchId, email, name, passwordHash, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)')

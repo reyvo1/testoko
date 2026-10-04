@@ -49,8 +49,8 @@ export class SetCustomFieldValueDto {
 export class CreateIntegrationDto {
   @ApiPropertyOptional({ description: 'Kompatibilitas lama; company tetap berasal dari token.' }) @IsOptional() @IsString() companyId?: string;
   @ApiPropertyOptional({ description: 'Opsional untuk integrasi branch token; branch lain ditolak.' }) @IsOptional() @IsString() branchId?: string;
-  @ApiProperty({ enum: ['PAYMENT','SHIPPING','MARKETPLACE','NOTIFICATION','ACCOUNTING','STORAGE','ANALYTICS','IDENTITY','DEVICE','CUSTOM'] })
-  @IsIn(['PAYMENT','SHIPPING','MARKETPLACE','NOTIFICATION','ACCOUNTING','STORAGE','ANALYTICS','IDENTITY','DEVICE','CUSTOM']) type!: string;
+  @ApiProperty({ enum: ['PAYMENT','SHIPPING','MARKETPLACE','NOTIFICATION','ACCOUNTING','STORAGE','ANALYTICS','IDENTITY','DEVICE','PPOB','CUSTOM'] })
+  @IsIn(['PAYMENT','SHIPPING','MARKETPLACE','NOTIFICATION','ACCOUNTING','STORAGE','ANALYTICS','IDENTITY','DEVICE','PPOB','CUSTOM']) type!: string;
   @ApiProperty() @IsString() provider!: string;
   @ApiProperty() @IsString() name!: string;
   @ApiPropertyOptional() @IsOptional() @Allow() config?: unknown;

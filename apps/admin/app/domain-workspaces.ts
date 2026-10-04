@@ -20,6 +20,7 @@ export const ADMIN_DOMAIN_WORKSPACES: AdminDomainWorkspace[] = [
     { key: 'products', label: 'Produk & Multi-UOM', title: 'Produk, variant, barcode & multi-UOM', description: 'Produk, variant, base unit, kemasan, barcode alternatif, batch/expiry/serial.', Icon:Boxes },
     { key: 'pricing', label: 'Pricing', title: 'Harga retail, grosir & unit', description: 'Harga per cabang, segmen, kemasan, dan minimum quantity.', Icon:BadgeDollarSign },
     { key: 'references', label: 'Reference Master', title: 'Brand, unit, bank, courier & payment', description: 'Reference master yang dipakai lintas modul.', Icon:Settings2 },
+    { key: 'bulk-labels', moduleCodes: ['catalog'], permissionPrefixes: ['product'], label: 'Import & Label', title: 'Bulk master & label barcode', description: 'Dry-run import CSV Excel-compatible, export master, dan label Code128 A4/thermal.', Icon:ScanLine },
   ]},
   { workspaceKey: 'organization', views:[
     { key: 'organization', label: 'Cabang & Gudang', title: 'Cabang dan gudang tenant', description: 'Konteks tenant aktif, branch, warehouse, default warehouse, dan lifecycle gudang.', Icon:Building2 },
@@ -37,6 +38,10 @@ export const ADMIN_DOMAIN_WORKSPACES: AdminDomainWorkspace[] = [
     { key: 'fulfillment', label: 'Fulfillment', title: 'Packing, shipment & delivery', description: 'Packing, outbound inspection, shipment, delivery, dan status lifecycle.', Icon:Truck },
     { key: 'returns', label: 'Retur Customer', title: 'Customer returns', description: 'Return request, inspection, refund, inventory reversal, dan audit.', Icon:RefreshCcw },
     { key: 'channels', label: 'Channel', title: 'Sales channels', description: 'Storefront, marketplace, integration mapping, dan payment provider flow.', Icon:Activity },
+  ]},
+  { workspaceKey: 'manufacturing', views:[
+    { key: 'recipes', moduleCodes: ['manufacturing'], permissionPrefixes: ['manufacturing'], label: 'Resep / BOM', title: 'Versioned production recipes', description: 'Produk hasil, bahan baku, waste allowance, dan versioned BOM.', Icon:ClipboardList },
+    { key: 'orders', moduleCodes: ['manufacturing'], permissionPrefixes: ['manufacturing'], label: 'Production Order', title: 'Production lifecycle', description: 'Draft, release, start, consume components, output stock, WIP/HPP, dan completion.', Icon:Wrench },
   ]},
   { workspaceKey: 'inventory-control', views:[
     { key: 'overview', label: 'Saldo Stok', title: 'Inventory overview', description: 'Saldo gudang, available stock, minimum stock, dan exception utama.', Icon:Boxes },
@@ -89,10 +94,12 @@ export const ADMIN_DOMAIN_WORKSPACES: AdminDomainWorkspace[] = [
     { key: 'connections', label: 'Integrasi Eksternal', title: 'Integration connections', description: 'Provider connection, capability, external mapping, dan status adapter.', Icon:RefreshCcw },
     { key: 'devices', label: 'Devices & Sync', title: 'Devices, edge & offline sync', description: 'Device registration, credential, health, sync receipts, dan dead-letter.', Icon:Gauge },
     { key: 'loyalty', label: 'Loyalty', title: 'Customer loyalty', description: 'Program loyalty, points, expiry, tier, dan engagement.', Icon:BadgeDollarSign },
+    { key: 'ppob', moduleCodes: ['digital-services'], permissionPrefixes: ['digital_service'], label: 'PPOB', title: 'Produk digital & PPOB', description: 'Digiflazz connection, cached catalog, prepaid transaction, idempotency, dan recheck.', Icon:CreditCard },
   ]},
   { workspaceKey: 'settings', views:[
     { key: 'features', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['platform'], label: 'Fitur Runtime', title: 'Runtime features', description: 'Module catalog dan feature flags untuk company aktif.', Icon:Settings2 },
     { key: 'users', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['user','role'], label: 'User & Role', title: 'Users, roles & permissions', description: 'User lifecycle, role assignment, permission matrix, status akun, dan branch access.', Icon:UserCog },
+    { key: 'setup', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['platform'], label: 'Setup Readiness', title: 'Business setup readiness', description: 'Checklist company, branch, warehouse, users, products, finance, payment reference, dan integration readiness.', Icon:ClipboardCheck },
     { key: 'platform', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['platform'], label: 'System Settings', title: 'System settings', description: 'Konfigurasi runtime company/branch yang diaudit dan tenant-safe.', Icon:Settings2 },
     { key: 'custom-fields', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['custom_field'], label: 'Custom Fields', title: 'Custom field definitions', description: 'Definisi field tambahan untuk entity bisnis tanpa perubahan schema ad-hoc.', Icon:FileCheck2 },
     { key: 'approvals', roles: ['SUPER_ADMIN','OWNER','ADMIN'], permissionPrefixes: ['approval'], label: 'Approval Control', title: 'Approval policies & queue', description: 'Policy approval, queue keputusan, delegation context, dan separation of duties.', Icon:ClipboardCheck },

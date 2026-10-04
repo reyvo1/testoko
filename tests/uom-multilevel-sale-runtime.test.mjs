@@ -9,7 +9,7 @@
 //   2. satuan berjenjang tersimpan sebagai ProductUnit dengan factor integer, DAN bisa ditulis lewat
 //      service ASLI (`MasterDataService.createUnit`) — bukan kolom yang tidak pernah diisi.
 //   3. `SalesService.create` benar-benar menjual per slop: harga, pajak, dan HPP mengikuti factor,
-//      stok berkurang 24 pcs untuk 2 slop (bungkus isi 12, slop isi 2 bungkus).
+//      stok berkurang 48 BATANG untuk 2 slop (bungkus isi 12 batang, slop isi 2 bungkus).
 //   4. Baris sale menyimpan SNAPSHOT unitCode/factor/baseQuantity, jadi laporan lama tidak berubah
 //      ketika master data nanti diedit.
 //
@@ -19,9 +19,9 @@
 //     terjadi tapi tidak bisa dibuktikan; ia hanya bisa dibuktikan dari DB.
 //   - **Stok dibaca dari Inventory, bukan dari response API.** Response bisa Seen success tanpa satu
 //     pun baris yang ditulis.
-//   - **Harga unit harus dihitung dari harga per bungkus, bukan hardcode.** Kalau test mengetik
+//   - **Harga unit harus dihitung dari harga per base unit terkecil, bukan hardcode.** Kalau test mengetik
 //     angka 36.000 secara harfiah, ia menguji test-nya sendiri. Harga harus datang dari
-//     `salePrice` base x factor, dan itu yang di-assert.
+//     `salePrice` BATANG x factor, dan itu yang di-assert.
 //
 // Kalau test ini hijau sementara POS tidak punya pemilih satuan di layarnya, itu bukti surface
 // UI belum di-mount — kelas yang sama seperti "panel ada tapi tidak ada yang me-mount-nya".
@@ -50,9 +50,12 @@ const { AccountingCoreService } = await load('apps/api/src/accounting-core/accou
 const { StockAlertService } = await load('apps/api/src/sales/stock-alert.service.ts', opts);
 const { PromotionsService } = await load('apps/api/src/promotions/promotions.service.ts', opts);
 const { SupervisorApprovalService } = await load('apps/api/src/supervisor-approval/supervisor-approval.service.ts', opts);
+const { MasterDataService } = await load('apps/api/src/master-data/master-data.service.ts',
+  { platform: 'node', external: ['@prisma/client', '@nestjs/microservices', '@nestjs/websockets', '@nestjs/websockets/socket-module'] });
 
 const sales = new SalesService(prisma, new AccountingCoreService(prisma), new StockAlertService(prisma),
   new PromotionsService(prisma), new SupervisorApprovalService(prisma));
+const masterData = new MasterDataService(prisma);
 
 const COMPANY = 'acme';
 const USER = 'u-1';
@@ -75,27 +78,47 @@ const RULES = [{
 
 const user = { sub: USER, companyId: COMPANY, branchId: BRANCH, roles: ['ADMIN'], permissions: [] };
 
-// Bungkus = 15.000 (harga dasar). Semua angka lain harus TURUN dari angka ini lewat factor.
-const SALE_PRICE_PER_BANGKOS = 15000;
-const BANGKOS_ISI = 12;   // 1 bungkus isi 12 batang
-const SLOP_ISI = 2;       // 1 slop isi 2 bungkus  -> 24 batang
+// Base stock harus unit fisik terkecil. Untuk contoh rokok ini:
+// BATANG = base unit; BUNGKUS/SLOP/KARTON adalah unit jual dinamis yang factor-nya
+// selalu langsung terhadap BATANG, bukan berantai terhadap kemasan sebelumnya.
+const SALE_PRICE_PER_BATANG = 1250;
+const BUNGKUS_ISI_BATANG = 12;
+const SLOP_ISI_BUNGKUS = 2;
+const KARTON_ISI_SLOP = 5;
+const SLOP_FACTOR = BUNGKUS_ISI_BATANG * SLOP_ISI_BUNGKUS;
+const KARTON_FACTOR = SLOP_FACTOR * KARTON_ISI_SLOP;
+
+async function ensureUnitMaster(code, name = code) {
+  const existing = await prisma.masterReference.findUnique({
+    where: { companyId_type_code: { companyId: COMPANY, type: 'UNIT', code } },
+  });
+  if (!existing) return masterData.createReference({ type: 'UNIT', code, name }, user);
+  if (!existing.isActive) return masterData.updateReference(existing.id, { isActive: true }, user);
+  return existing;
+}
 
 // Idempoten: dipanggil lebih dari satu test. Dulu `create` telanjang, jadi test kedua gagal
 // dengan "Unique constraint failed on (email)" — itu cacat test, bukan cacat aplikasi.
 async function seed() {
-  await prisma.user.upsert({ where: { email: 'k@test' }, update: {}, create: { id: USER, name: 'Kasir', email: 'k@test', passwordHash: 'x', isActive: true } });
   await prisma.company.upsert({ where: { id: COMPANY }, update: {}, create: { id: COMPANY, name: 'Acme', slug: 'acme', timezone: 'Asia/Makassar', currency: 'IDR' } });
+  await prisma.user.upsert({ where: { email: 'k@test' }, update: {}, create: { id: USER, name: 'Kasir', email: 'k@test', passwordHash: 'x', isActive: true } });
   await prisma.branch.upsert({ where: { id: BRANCH }, update: {}, create: { id: BRANCH, companyId: COMPANY, code: 'BR1', name: 'Cabang 1', isActive: true } });
   for (const [code, name, type] of ACCOUNTS) {
     await prisma.account.upsert({ where: { branchId_code: { branchId: BRANCH, code } }, update: { name, type }, create: { branchId: BRANCH, code, name, type } });
   }
   await prisma.warehouse.upsert({ where: { id: 'wh-1' }, update: {}, create: { id: 'wh-1', code: 'W1', name: 'Gudang', branchId: BRANCH, isActive: true, isDefault: true } });
-  // BASE unit = BANGKOS, karena itu satuan yang dikerjakan kasir dan yang harganya disimpan.
-  await prisma.product.upsert({ where: { id: PRODUCT }, update: {}, create: { id: PRODUCT, companyId: COMPANY, sku: 'ROKOK-DJI', name: 'Rokok Kretek 12', unit: 'BANGKOS', costPrice: 12000, salePrice: SALE_PRICE_PER_BANGKOS } });
-  // Stok dalam BASE unit (bungkus): 100 bungkus = 1200 batang.
+  for (const [code, name] of [['BATANG', 'Batang'], ['BUNGKUS', 'Bungkus'], ['SLOP', 'Slop'], ['KARTON', 'Karton'], ['PECAAN', 'Pecahan']]) {
+    await ensureUnitMaster(code, name);
+  }
+  await prisma.product.upsert({
+    where: { id: PRODUCT },
+    update: { unit: 'BATANG', costPrice: 1000, salePrice: SALE_PRICE_PER_BATANG },
+    create: { id: PRODUCT, companyId: COMPANY, sku: 'ROKOK-DJI', name: 'Rokok Kretek 12', unit: 'BATANG', costPrice: 1000, salePrice: SALE_PRICE_PER_BATANG },
+  });
+  // Stok selalu dalam base unit terkecil: 1200 BATANG.
   const stock = await prisma.inventory.findFirst({ where: { warehouseId: 'wh-1', productId: PRODUCT } });
-  if (stock) await prisma.inventory.update({ where: { id: stock.id }, data: { quantity: 100, available: 100 } });
-  else await prisma.inventory.create({ data: { warehouseId: 'wh-1', productId: PRODUCT, quantity: 100, available: 100 } });
+  if (stock) await prisma.inventory.update({ where: { id: stock.id }, data: { quantity: 1200, available: 1200 } });
+  else await prisma.inventory.create({ data: { warehouseId: 'wh-1', productId: PRODUCT, quantity: 1200, available: 1200 } });
   for (const rule of RULES) {
     await prisma.accountingPostingRule.upsert({ where: { companyId_code_version: { companyId: COMPANY, code: rule.code, version: 1 } }, update: {}, create: { companyId: COMPANY, code: rule.code, version: 1, name: rule.code, eventType: rule.eventType, status: 'ACTIVE', journalLines: rule.lines } });
   }
@@ -118,17 +141,17 @@ async function addUnit(unitCode, quantityFactor, variantId = null, isDefaultSale
 
 test('a product carries several variants, each with its own price', async () => {
   await seed();
-  for (const [code, name, price] of [['DJI-12', 'Dji Samso 12', 15000], ['KREK-MENTHOL', 'Kretek Menthol', 17500]]) {
+  for (const [code, name, price] of [['DJI-12', 'Dji Samso 12', 1250], ['KREK-MENTHOL', 'Kretek Menthol', 1450]]) {
     await prisma.productVariant.create({ data: { productId: PRODUCT, code, name, salePrice: price } });
   }
   const variants = await prisma.productVariant.findMany({ where: { productId: PRODUCT, isActive: true }, orderBy: { code: 'asc' } });
   assert.equal(variants.length, 2, 'satu produk harus bisa punya lebih dari satu jenis');
   const menthol = variants.find((v) => v.code === 'KREK-MENTHOL');
-  assert.equal(Number(menthol.salePrice), 17500, 'setiap jenis punya harga sendiri, bukan harga produk');
+  assert.equal(Number(menthol.salePrice), 1450, 'setiap jenis punya harga sendiri, bukan harga produk');
 
-  // Second variant harus bisa punya satuan sendiri (slop isi 10 untuk menthol, misalnya) — satuan
+  // Second variant harus bisa punya satuan sendiri dengan factor terhadap BATANG — satuan
   // terikat variant lewat `variantId`, jadi dua jenis satu produk memang boleh punya kemasan berbeda.
-  await addUnit('SLOP', 2, menthol.id);
+  await addUnit('SLOP', SLOP_FACTOR, menthol.id);
   const mentholSlop = await prisma.productUnit.findFirst({ where: { productId: PRODUCT, variantId: menthol.id, unitCode: 'SLOP' } });
   assert.ok(mentholSlop, 'satuan boleh terikat ke variant tertentu');
 });
@@ -139,16 +162,13 @@ test('unit conversion is writable through the real service, not only by direct D
   // `@nestjs/microservices` dan `@nestjs/websockets` tidak terpasang di repo ini; Nest meng-import-nya
   // lewat @nestjs/core. Wajib external, kalau tidak esbuild gagal "Could not resolve" dan test
   // gagal karena lingkungan, bukan karena service.
-  const { MasterDataService } = await load('apps/api/src/master-data/master-data.service.ts',
-    { platform: 'node', external: ['@prisma/client', '@nestjs/microservices', '@nestjs/websockets', '@nestjs/websockets/socket-module'] });
-  const masterData = new MasterDataService(prisma);
   const carton = await masterData.createUnit(
     PRODUCT,
-    { unitCode: 'KARTON', quantityFactor: BANGKOS_ISI * SLOP_ISI * 5, isDefaultSale: false, isDefaultPurchase: true },
+    { unitCode: 'KARTON', quantityFactor: KARTON_FACTOR, isDefaultSale: false, isDefaultPurchase: true },
     user,
   );
   assert.equal(carton.unitCode, 'KARTON');
-  assert.equal(carton.quantityFactor, BANGKOS_ISI * SLOP_ISI * 5, '1 karton = 120 bungkus = 1200 batang');
+  assert.equal(carton.quantityFactor, KARTON_FACTOR, '1 karton = 5 slop = 10 bungkus = 120 batang');
 
   // Dan service harus MENOLAK factor yang tidak masuk akal, bukan diam-diam menerimanya:
   // bought 2.5 pack tidak bisa jadi stok integer.
@@ -165,11 +185,11 @@ test('unit conversion is writable through the real service, not only by direct D
 });
 
 test('the till really sells per slop: price, tax and stock all follow the factor', async () => {
-  const slop = await addUnit('SLOP', SLOP_ISI, null, true);
+  const slop = await addUnit('SLOP', SLOP_FACTOR, null, true);
 
-  // 2 slop = 24 batang = 24 BANGKOS base. Harga harus 2 x (2 x 15.000) = 60.000 — diturunkan dari
-  // harga base, bukan diketik di sini.
-  const expectedGross = 2 * (SLOP_ISI * SALE_PRICE_PER_BANGKOS);
+  // 2 slop = 48 BATANG. Harga harus 2 x 24 x 1.250 = 60.000 — diturunkan dari
+  // harga base BATANG dan factor unit, bukan diketik di sini.
+  const expectedGross = 2 * (SLOP_FACTOR * SALE_PRICE_PER_BATANG);
   const created = await sales.create({
     warehouseId: 'wh-1',
     items: [{ productId: PRODUCT, quantity: 2, productUnitId: slop.id }],
@@ -177,7 +197,7 @@ test('the till really sells per slop: price, tax and stock all follow the factor
   }, user);
 
   assert.equal(Number(created.total), expectedGross,
-    `2 slop harus dihargai 2 x ${SLOP_ISI} x ${SALE_PRICE_PER_BANGKOS}, bukan harga per pcs`);
+    `2 slop harus dihargai 2 x ${SLOP_FACTOR} x ${SALE_PRICE_PER_BATANG}, bukan harga per unit statis`);
 
   // Bukti ke-DB: snapshot satuan harus tersimpan, karena inilah yang membuat "per slop" bisa dibuktikan.
   //
@@ -187,14 +207,14 @@ test('the till really sells per slop: price, tax and stock all follow the factor
   // adalah representation PERSISTEN — dan stok dibaca dari Inventory, bukan dari response.
   const item = created.items[0];
   assert.equal(item.unitCode, 'SLOP');
-  assert.equal(item.quantityFactor, SLOP_ISI);
+  assert.equal(item.quantityFactor, SLOP_FACTOR);
   assert.equal(item.unitQuantity, 2, '2 SLOP');
-  assert.equal(item.quantity, 2 * SLOP_ISI,
-    'kolom quantity menyimpan base unit (2 bungkus), karena seluruh stok dan HPP dihitung dalam base unit');
+  assert.equal(item.quantity, 2 * SLOP_FACTOR,
+    'kolom quantity menyimpan base unit terkecil (48 BATANG), karena seluruh stok dan HPP dihitung dalam base unit');
 
   const stock = await prisma.inventory.findFirst({ where: { warehouseId: 'wh-1', productId: PRODUCT } });
-  assert.equal(stock.available, 100 - 2 * SLOP_ISI,
-    `stok harus berkurang ${2 * SLOP_ISI} BANGKOS, bukan 2 — kalau berkurang 2, "per slop" hanya kosmetik`);
+  assert.equal(stock.available, 1200 - 2 * SLOP_FACTOR,
+    `stok harus berkurang ${2 * SLOP_FACTOR} BATANG, bukan 2 — kalau berkurang 2, "per slop" hanya kosmetik`);
 });
 
 test('the journal carries the package revenue, and the amount equals what the till charged', async () => {
@@ -206,7 +226,7 @@ test('the journal carries the package revenue, and the amount equals what the ti
     where: { account: { code: '5101' } },
     _sum: { debit: true, credit: true },
   });
-  const expected = 2 * SLOP_ISI * SALE_PRICE_PER_BANGKOS;
+  const expected = 2 * SLOP_FACTOR * SALE_PRICE_PER_BATANG;
   assert.equal(Number(revenue._sum.credit) - Number(revenue._sum.debit), expected,
     'revenue di jurnal harus sama dengan yang ditagih kasir — kalau tidak, laporan_vs kas akan menyimpang diam-diam');
   assert.ok(Number(cogs._sum.debit) > 0, 'HPP harus ikut ter-posting, kalau tidak laba kotor selalu 100%');
@@ -220,8 +240,8 @@ test('a sale line keeps a SNAPSHOT, so editing master data later cannot rewrite 
   const item = await prisma.saleItem.findFirst({ where: { saleId: sale.id } });
   await prisma.productUnit.updateMany({ where: { productId: PRODUCT, unitCode: 'SLOP' }, data: { quantityFactor: 99 } });
   const after = await prisma.saleItem.findFirst({ where: { saleId: sale.id } });
-  assert.equal(after.quantityFactor, SLOP_ISI, 'faktor yang tersimpan harus tetap yang dipakai saat transaksi');
-  assert.equal(after.quantity, 2 * SLOP_ISI, 'dan base quantity yang terposting tetap yang saat itu');
+  assert.equal(after.quantityFactor, SLOP_FACTOR, 'faktor yang tersimpan harus tetap yang dipakai saat transaksi');
+  assert.equal(after.quantity, 2 * SLOP_FACTOR, 'dan base quantity yang terposting tetap yang saat itu');
 });
 
 test('the POS client actually offers a unit selector — the server support alone is not a POS', async () => {
@@ -238,7 +258,7 @@ test('the POS client actually offers a unit selector — the server support alon
   assert.match(pos, /unitCode:unit\.unitCode,quantityFactor:unit\.quantityFactor,productUnitId:unit\.id/,
     'tombol satuan harus mengirim productUnitId + factor, bukan hanya kode teks');
   assert.match(pos, /\{unit\.unitCode\} × \{unit\.quantityFactor\}/,
-    'dan kasir harus MELIHAT isi kemasan ("SLOP × 2"), kalau tidak dia tidak tahu sedang menjual apa');
+    'dan kasir harus MELIHAT unit + factor dinamis (contoh "SLOP × 24"), kalau tidak dia tidak tahu sedang menjual apa');
   assert.match(pos, /productUnitId: item\.productUnitId/,
     'pilihan itu harus dikirim ke server saat checkout');
   // Barcode per satuan adalah jalan kedua (scan slop langsung jadi slop).

@@ -1,4 +1,4 @@
-import { createDecipheriv, createHmac } from 'node:crypto';
+import { createDecipheriv, createHash, createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -238,6 +238,137 @@ async function emitAutomationSourceEvents(): Promise<void> {
   }
 }
 
+function digiflazzBaseUrl(): string {
+  const fallback = 'https://api.digiflazz.com/v1';
+  const override = process.env.T360_CI_DIGIFLAZZ_API_BASE_URL?.trim();
+  if (!override) return fallback;
+  if (process.env.CI !== 'true' || !process.env.T360_UAT_ENVIRONMENT) throw new Error('T360_CI_DIGIFLAZZ_API_BASE_URL hanya boleh dipakai pada CI UAT non-production.');
+  const url = new URL(override);
+  if (!['127.0.0.1', 'localhost'].includes(url.hostname)) throw new Error('Digiflazz CI base URL wajib localhost.');
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Digiflazz CI base URL protocol tidak didukung.');
+  return override.replace(/\/$/, '');
+}
+
+function md5(value: string): string { return createHash('md5').update(value).digest('hex'); }
+
+function digiflazzCredentials(encryptedSecrets?: string | null): { username: string; apiKey: string } {
+  if (!encryptedSecrets) throw new Error('Credential Digiflazz belum dikonfigurasi pada IntegrationConnection.');
+  const decrypted = decryptSecretText(encryptedSecrets).trim();
+  let parsed: unknown;
+  try { parsed = JSON.parse(decrypted); } catch { throw new Error('Secret Digiflazz harus JSON {username,apiKey}.'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Secret Digiflazz harus object JSON.');
+  const record = parsed as Record<string, unknown>;
+  const username = typeof record.username === 'string' ? record.username.trim() : '';
+  const apiKey = typeof record.apiKey === 'string' ? record.apiKey.trim() : '';
+  if (!username || !apiKey) throw new Error('Secret Digiflazz membutuhkan username dan apiKey.');
+  return { username, apiKey };
+}
+
+function digiflazzSalePrice(cost: number, config: Prisma.JsonValue | null): number {
+  const settings = jsonObject(config);
+  const markupPercent = Math.max(0, Number(settings.markupPercent ?? 0) || 0);
+  const markupAmount = Math.max(0, Number(settings.markupAmount ?? 0) || 0);
+  return Math.ceil(cost * (1 + markupPercent / 100) + markupAmount);
+}
+
+async function digiflazzPost(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await fetch(`${digiflazzBaseUrl()}${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'Toko360-Worker/0.5.3' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
+  });
+  const text = await response.text();
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { throw new Error(`Digiflazz HTTP ${response.status}: response bukan JSON.`); }
+  if (!response.ok) throw new Error(`Digiflazz HTTP ${response.status}: ${text.slice(0, 500)}`);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Response Digiflazz bukan object.');
+  return parsed as Record<string, unknown>;
+}
+
+async function syncDigiflazzCatalog(integrationId: string): Promise<void> {
+  const integration = await prisma.integrationConnection.findFirst({ where: { id: integrationId, type: 'PPOB', provider: 'DIGIFLAZZ', status: 'CONNECTED' } });
+  if (!integration) throw new Error('IntegrationConnection DIGIFLAZZ CONNECTED tidak ditemukan.');
+  const { username, apiKey } = digiflazzCredentials(integration.encryptedSecrets);
+  const response = await digiflazzPost('/price-list', { cmd: 'prepaid', username, sign: md5(`${username}${apiKey}pricelist`) });
+  const data = response.data;
+  if (!Array.isArray(data)) throw new Error('Price list Digiflazz tidak mengembalikan data array.');
+  await prisma.$transaction(async (tx) => {
+    await tx.digitalServiceProduct.updateMany({ where: { integrationId: integration.id }, data: { active: false } });
+    for (const item of data) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const row = item as Record<string, unknown>;
+      const providerSku = typeof row.buyer_sku_code === 'string' ? row.buyer_sku_code.trim() : '';
+      const name = typeof row.product_name === 'string' ? row.product_name.trim() : '';
+      const category = typeof row.category === 'string' ? row.category.trim() : 'LAINNYA';
+      const cost = Number(row.price);
+      if (!providerSku || !name || !Number.isFinite(cost) || cost < 0) continue;
+      const buyerProductStatus = row.buyer_product_status !== false;
+      const sellerProductStatus = row.seller_product_status !== false;
+      const active = buyerProductStatus && sellerProductStatus;
+      await tx.digitalServiceProduct.upsert({
+        where: { integrationId_providerSku: { integrationId: integration.id, providerSku } },
+        create: {
+          companyId: integration.companyId, integrationId: integration.id, providerSku, name, category,
+          brand: typeof row.brand === 'string' ? row.brand : null, type: typeof row.type === 'string' ? row.type : null,
+          sellerName: typeof row.seller_name === 'string' ? row.seller_name : null, costPrice: new Prisma.Decimal(cost),
+          salePrice: new Prisma.Decimal(digiflazzSalePrice(cost, integration.config)), buyerProductStatus, sellerProductStatus,
+          unlimitedStock: row.unlimited_stock === true, stock: Number.isInteger(Number(row.stock)) ? Number(row.stock) : null, active,
+          metadata: row as Prisma.InputJsonObject, syncedAt: new Date(),
+        },
+        update: {
+          name, category, brand: typeof row.brand === 'string' ? row.brand : null, type: typeof row.type === 'string' ? row.type : null,
+          sellerName: typeof row.seller_name === 'string' ? row.seller_name : null, costPrice: new Prisma.Decimal(cost),
+          salePrice: new Prisma.Decimal(digiflazzSalePrice(cost, integration.config)), buyerProductStatus, sellerProductStatus,
+          unlimitedStock: row.unlimited_stock === true, stock: Number.isInteger(Number(row.stock)) ? Number(row.stock) : null, active,
+          metadata: row as Prisma.InputJsonObject, syncedAt: new Date(),
+        },
+      });
+    }
+    await tx.integrationConnection.update({ where: { id: integration.id }, data: { lastHealthCheckAt: new Date(), lastError: null } });
+  });
+}
+
+function mappedDigiflazzStatus(value: unknown): 'SUCCESS'|'PENDING'|'FAILED' {
+  const status = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (status === 'sukses' || status === 'success') return 'SUCCESS';
+  if (status === 'pending' || status === 'processing') return 'PENDING';
+  return 'FAILED';
+}
+
+async function processDigiflazzTransaction(transactionId: string): Promise<void> {
+  const transaction = await prisma.digitalServiceTransaction.findUnique({ where: { id: transactionId }, include: { integration: true } });
+  if (!transaction) throw new Error('DigitalServiceTransaction tidak ditemukan.');
+  if (!['QUEUED','PROCESSING','PENDING'].includes(transaction.status)) return;
+  if (transaction.integration.type !== 'PPOB' || transaction.integration.provider !== 'DIGIFLAZZ' || transaction.integration.status !== 'CONNECTED') throw new Error('IntegrationConnection transaksi bukan DIGIFLAZZ CONNECTED.');
+  const { username, apiKey } = digiflazzCredentials(transaction.integration.encryptedSecrets);
+  await prisma.digitalServiceTransaction.update({ where: { id: transaction.id }, data: { status: 'PROCESSING', attempts: { increment: 1 } } });
+  const body: Record<string, unknown> = {
+    username, buyer_sku_code: transaction.providerSku, customer_no: transaction.customerNo, ref_id: transaction.number,
+    sign: md5(`${username}${apiKey}${transaction.number}`),
+  };
+  const config = jsonObject(transaction.integration.config);
+  if (config.testing === true) body.testing = true;
+  if (transaction.maxPrice) body.max_price = Number(transaction.maxPrice);
+  const response = await digiflazzPost('/transaction', body);
+  const data = response.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Response transaksi Digiflazz tidak memiliki data object.');
+  const row = data as Record<string, unknown>;
+  const status = mappedDigiflazzStatus(row.status);
+  const price = Number(row.price);
+  await prisma.digitalServiceTransaction.update({
+    where: { id: transaction.id }, data: {
+      status, providerRef: typeof row.ref_id === 'string' ? row.ref_id : transaction.number,
+      providerRc: typeof row.rc === 'string' ? row.rc : null, message: typeof row.message === 'string' ? row.message : null,
+      serialNumber: typeof row.sn === 'string' ? row.sn : null, costAmount: Number.isFinite(price) ? new Prisma.Decimal(price) : undefined,
+      responseData: row as Prisma.InputJsonObject, completedAt: status === 'SUCCESS' || status === 'FAILED' ? new Date() : null,
+    },
+  });
+}
+
+async function handleDigitalServiceOutbox(event: { eventType: string; aggregateId: string; payload: Prisma.JsonValue }): Promise<void> {
+  if (event.eventType === 'digital-service.catalog.sync') { await syncDigiflazzCatalog(event.aggregateId); return; }
+  if (event.eventType === 'digital-service.transaction.requested' || event.eventType === 'digital-service.transaction.recheck') { await processDigiflazzTransaction(event.aggregateId); }
+}
+
 async function dispatchOutbox(): Promise<void> {
   const now = new Date();
   const leaseUntil = new Date(Date.now() + 10 * 60_000);
@@ -255,6 +386,7 @@ async function dispatchOutbox(): Promise<void> {
     if (!claimed.count) continue;
 
     try {
+      await handleDigitalServiceOutbox(event);
       await materializeBusinessRules(event);
       const endpoints = await prisma.webhookEndpoint.findMany({
         where: { isActive: true, ...(event.companyId ? { companyId: event.companyId } : {}) },

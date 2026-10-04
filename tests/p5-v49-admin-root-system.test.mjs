@@ -38,10 +38,17 @@ test('P5 V4.11 Admin uses one searchable hierarchical domain and subdomain navig
   assert.match(shell,/data-admin-route=\{domainRoute\(item, view\)\}/);
   assert.match(shell,/Cari domain atau subdomain/);
   assert.doesNotMatch(shell,/adminModuleDirectory|moduleOpen|className="domainTabs/);
-  assert.equal((navigation.match(/route:\s*'\//g)||[]).length,14);
-  // 65 since POST-1A added settings/branch-sync and POST-1C added settings/mobile-ops.
-  assert.equal(context.rows.length,65);
-  assert.equal(context.expectedContextualViews,65);
+  assert.equal((navigation.match(/route:\s*'\//g)||[]).length,15);
+  assert.match(navigation,/key:\s*'manufacturing'[\s\S]{0,300}?route:\s*'\/manufacturing'/);
+  assert.equal(context.rows.length,70);
+  assert.equal(context.expectedContextualViews,70);
+  for (const route of [
+    ['master-data','bulk-labels'],
+    ['manufacturing','recipes'],
+    ['manufacturing','orders'],
+    ['integrations','ppob'],
+    ['settings','setup'],
+  ]) assert.ok(context.rows.some((row)=>row.workspace===route[0]&&row.view===route[1]), `missing contextual route ${route.join('/')}`);
 });
 
 test('P5 V4.11 Admin removes fixed inline form grids and centralizes responsive form primitives',()=>{

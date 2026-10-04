@@ -12,6 +12,8 @@ import { isOfflineStoreAvailable } from '../lib/offline-store';
 import { createBarcodeListener, fuzzyRank } from '../lib/barcode';
 import { planPickup, pickupVoucherLines, type CrossBranchStock, type PickupQuote } from '../lib/click-collect';
 import { useSupervisorApproval } from '../lib/supervisor';
+import { openRawBtReceipt } from '../lib/printing';
+import StaffMemoWidget from './staff-memo';
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 type ProductVariant = { id: string; code: string; name: string; sku?: string | null; salePrice?: string | number | null; costPrice?: string | number | null; isDefault: boolean; isActive: boolean };
@@ -26,7 +28,7 @@ type CashMovement = { id: string; cashierShiftId: string; type: 'CASH_IN' | 'CAS
 type ShiftRecap = { shift: { id: string; openedAt: string; closedAt?: string | null; status: string; cashier: string }; openingCash: number; closingCash: number | null; expectedCash: number | null; difference: number | null; sales: { count: number; total: number; tax: number; cogs: number }; payments: Record<string, number>; refunds: { count: number; cashTotal: number }; cashMovements: { cashIn: number; cashOut: number } };
 type SaleQuote = { subtotal: string | number; discount: string | number; promoDiscount?: string | number; appliedPromo?: { id: string; code: string; name: string; type: string } | null; loyaltyDiscount: string | number; totalDiscount: string | number; net: string | number; tax: string | number; total: string | number; redeemPoints: number; items?: Array<{ productId: string; barcodeCode?: string | null; variantId?: string | null; unitCode: string; unitQuantity: number; quantityFactor: number; baseQuantity: number; sellingUnitPrice: string | number; baseUnitPrice: string | number; lineSubtotal: string | number }> };
 type SplitPayment = { method: 'CASH' | 'QRIS' | 'TRANSFER' | 'CARD'; amount: number };
-type RecentSale = { id: string; number: string; warehouseId: string; total: string | number; createdAt: string; items: Array<{ id: string; productId: string; quantity: number; product: { name: string; sku?: string } }> };
+type RecentSale = { id: string; number: string; warehouseId: string; subtotal: string | number; discount: string | number; tax: string | number; total: string | number; createdAt: string; items: Array<{ id: string; productId: string; quantity: number; unitPrice: string | number; netSubtotal: string | number; product: { name: string; sku?: string } }> };
 type SaleReturnRow = { id: string; number: string; saleId: string; status: string; refundMethod?: string | null; refundAmount: string | number; inspectionId?: string | null; createdAt: string };
 type HeldSale = { id: string; cashierSub: string; label: string; createdAt: string; warehouseId: string; customerId: string; discount: number; redeemPoints: number; promoCode: string; paymentMethod: string; items: Array<{ productId: string; quantity: number; productUnitId?: string; variantId?: string; barcodeCode?: string }> };
 type OfflineConfig = { serverTime: string; branchId: string; shift: CashierShift | null; taxCodes: OfflineTaxCode[]; policy: { paymentMethods: string[]; loyaltyRedeemAllowed: boolean; maxOfflineAgeMinutes: number; note: string } };
@@ -505,6 +507,29 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     setReceiptBusy(null);
   }
 
+  function rawBtReceipt(saleNumber: string) {
+    const sale = recentSales.find((item) => item.number === saleNumber);
+    if (!sale) { setMessage('Data transaksi belum tersedia untuk RawBT. Refresh riwayat struk lalu coba lagi.'); return; }
+    try {
+      openRawBtReceipt({
+        storeName: manifest?.branch?.name ?? manifest?.company?.name ?? 'Toko360',
+        invoiceNumber: sale.number,
+        dateLabel: new Date(sale.createdAt).toLocaleString('id-ID'),
+        cashierName: 'Kasir POS',
+        paperWidth: 58,
+        columns: sale.items.map((item) => ({ left: `${item.product.name} x${item.quantity}`, right: money(item.netSubtotal) })),
+        summary: [
+          { label: 'Subtotal', value: money(sale.subtotal) },
+          ...(Number(sale.discount) > 0 ? [{ label: 'Diskon', value: `-${money(sale.discount)}` }] : []),
+          ...(Number(sale.tax) > 0 ? [{ label: 'Pajak', value: money(sale.tax) }] : []),
+          { label: 'TOTAL', value: money(sale.total), bold: true },
+        ],
+        footer: ['Terima kasih telah berbelanja.'],
+      });
+      setMessage(`Struk ${sale.number} dikirim ke RawBT. Jika aplikasi belum terpasang, gunakan cetak browser.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'RawBT gagal dibuka.'); }
+  }
+
   function salePayload() {
     return {
       warehouseId,
@@ -657,7 +682,8 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   function add(product: Product, quantity = 1, conversion?: { unitCode?: string | null; quantityFactor?: string | number; productUnitId?: string; variantId?: string; barcodeCode?: string }) {
     const factor = Number(conversion?.quantityFactor ?? 1);
     if (!Number.isSafeInteger(factor) || factor < 1) { setMessage('Konversi unit produk tidak valid.'); return; }
-    const unitCode = (conversion?.unitCode || product.unit || 'PCS').trim().toUpperCase();
+    const unitCode = (conversion?.unitCode || product.unit).trim().toUpperCase();
+    if (!unitCode) { setMessage('Base unit produk belum dikonfigurasi. Perbaiki master UNIT sebelum menjual produk ini.'); return; }
     const barcodeCode = conversion?.barcodeCode;
     const productUnitId = conversion?.productUnitId;
     const variantId = conversion?.variantId;
@@ -750,7 +776,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
       const factor = Number(directUnit?.quantityFactor ?? barcode?.quantityFactor ?? 1);
       if (!Number.isSafeInteger(factor) || factor < 1) return [];
       const safeUnitQuantity = Math.min(line.quantity, Math.floor(safeAvailable / factor));
-      return safeUnitQuantity > 0 ? [{ product, quantity: safeUnitQuantity, unitCode: (directUnit?.unitCode || barcode?.unitCode || product.unit || 'PCS').toUpperCase(), quantityFactor: factor, ...(line.productUnitId ? { productUnitId: line.productUnitId } : {}), ...(line.variantId ? { variantId: line.variantId } : {}), ...(line.barcodeCode ? { barcodeCode: line.barcodeCode } : {}) }] : [];
+      return safeUnitQuantity > 0 ? [{ product, quantity: safeUnitQuantity, unitCode: (directUnit?.unitCode || barcode?.unitCode || product.unit).trim().toUpperCase(), quantityFactor: factor, ...(line.productUnitId ? { productUnitId: line.productUnitId } : {}), ...(line.variantId ? { variantId: line.variantId } : {}), ...(line.barcodeCode ? { barcodeCode: line.barcodeCode } : {}) }] : [];
     }).filter((item) => item.quantity > 0);
     setWarehouseId(targetWarehouseId); setCart(restored); setCustomerId(held.customerId); setDiscount(held.discount); setRedeemPoints(held.redeemPoints); setPromoCode(held.promoCode); setPaymentMethod(held.paymentMethod || 'CASH'); setSplitEnabled(false);
     persistHeldSales(heldSales.filter((item) => item.id !== id));
@@ -980,6 +1006,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     branchName={manifest?.branch?.name ?? manifest?.branch?.code ?? 'Cabang aktif'}
     warehouseControl={<><label>Gudang/toko<select value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setCart([]); }}>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>{ownedOfflineQueue.length > 0 && <button className="syncButton" disabled={!apiOnline || syncBusy} onClick={() => void syncOfflineQueue(token, hasOfflineConflict)}><RefreshCw size={14} className={syncBusy ? 'spin' : ''} /> {syncBusy ? 'SYNC...' : 'SYNC'}</button>}<button className="logout" onClick={() => void logout()}>Keluar</button></>}
   >
+    <StaffMemoWidget token={token} />
     {message && <div className={`notice ${(message.includes('berhasil') || message.includes('tersimpan')) ? 'toastLike success' : 'toastLike error'}`}>{(message.includes('berhasil') || message.includes('tersimpan')) ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {message}</div>}
     {/* Receipt history. Without this, a customer who lost the slip minutes after paying has no way
         to get it again: the only receipt control was for the sale just completed, and it disappears
@@ -993,12 +1020,12 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
             <span><strong>{sale.number}</strong><small>{new Date(sale.createdAt).toLocaleString('id-ID')} · {money(sale.total)}</small></span>
             <button type="button" className="secondary" onClick={() => reprintReceipt(sale.number)} disabled={receiptBusy === sale.number}>
               {receiptBusy === sale.number ? 'MEMBUKA…' : 'Cetak ulang'}
-            </button>
+            </button><button type="button" className="secondary" onClick={() => rawBtReceipt(sale.number)}>RawBT 58mm</button>
           </li>
         ))}
       </ul>
     </section>}
-    {lastReceipt && <section className="receiptReady" aria-label="Struk transaksi terakhir"><div><strong>Struk {lastReceipt.number} siap</strong><small>{money(lastReceipt.total)} · dapat dibuka, dicetak, atau dibagikan dari halaman struk digital.</small></div><div className="rowActions"><button type="button" className="secondary" onClick={() => window.open(`${API}/receipts/${encodeURIComponent(lastReceipt.number)}`, '_blank', 'noopener,noreferrer')}>BUKA STRUK DIGITAL</button><button type="button" className="clear" onClick={() => setLastReceipt(null)}>TUTUP</button></div></section>}
+    {lastReceipt && <section className="receiptReady" aria-label="Struk transaksi terakhir"><div><strong>Struk {lastReceipt.number} siap</strong><small>{money(lastReceipt.total)} · dapat dibuka, dicetak, atau dibagikan dari halaman struk digital.</small></div><div className="rowActions"><button type="button" className="secondary" onClick={() => window.open(`${API}/receipts/${encodeURIComponent(lastReceipt.number)}`, '_blank', 'noopener,noreferrer')}>BUKA STRUK DIGITAL</button><button type="button" className="secondary" onClick={() => rawBtReceipt(lastReceipt.number)}>RAWBT 58MM</button><button type="button" className="clear" onClick={() => setLastReceipt(null)}>TUTUP</button></div></section>}
 
     {workspace === 'SALE' && <>
     {ownedHeldSales.length > 0 && <section className="heldPanel"><strong>Transaksi Hold ({ownedHeldSales.length})</strong><div className="heldList">{ownedHeldSales.map((held) => <div key={held.id} className="heldItem"><div><b>{held.label}</b><small>{new Date(held.createdAt).toLocaleString('id-ID')} · {held.items.reduce((sum, item) => sum + item.quantity, 0)} item</small></div><button onClick={() => recallHeld(held.id)}>PANGGIL</button><button className="clear" onClick={() => deleteHeld(held.id)}>HAPUS</button></div>)}</div></section>}

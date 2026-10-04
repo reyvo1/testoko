@@ -37,6 +37,13 @@
 | employee_portal | on | implemented-foundation | Self-service attendance/payslip |
 | telegram_payslip | off | adapter-ready | Secure payslip notification |
 | whatsapp_payslip | off | adapter-ready | Secure payslip notification |
+| manufacturing | on | implemented-runtime-pending | Versioned BOM, production order, inventory movement dan WIP accounting |
+| digital_services_ppob | off | adapter-ready | PPOB provider-neutral dengan Digiflazz worker adapter |
+| product_bulk_tooling | on | implemented-runtime-pending | HET, dry-run CSV import/export dan Code128 label printing |
+| setup_readiness | on | implemented-runtime-pending | Checklist kesiapan bisnis tanpa deployment mutation dari browser |
+| rawbt_printing | on | implemented-runtime-pending | Transport tambahan RawBT Android untuk ESC/POS 58mm |
+| staff_memo | on | implemented-runtime-pending | Memo pribadi database-backed untuk seluruh role staf pada Admin, POS, dan Employee Portal |
+| dynamic_product_uom | on | implemented-runtime-pending | Base unit dari master UNIT aktif + kemasan ProductUnit dinamis tanpa fallback PCS runtime |
 
 ## Enterprise operations
 

@@ -56,12 +56,14 @@ function seed() {
   const c = conn();
   c.exec('DELETE FROM AuditLog; DELETE FROM StockOpnameItem; DELETE FROM StockOpname; DELETE FROM MobileOpnameDraft;'
     + ' DELETE FROM TelegramIdentityBinding; DELETE FROM Employee; DELETE FROM UserRole; DELETE FROM RolePermission;'
-    + ' DELETE FROM Role; DELETE FROM Permission; DELETE FROM User; DELETE FROM Product;'
+    + ' DELETE FROM Role; DELETE FROM Permission; DELETE FROM User; DELETE FROM Product; DELETE FROM MasterReference;'
     + ' DELETE FROM WarehouseLocation; DELETE FROM Warehouse; DELETE FROM Branch; DELETE FROM Company;');
   c.prepare('INSERT INTO Company (id, name, timezone, currency, createdAt, updatedAt) VALUES (?,?,?,?,?,?)')
     .run('acme', 'Acme', 'Asia/Makassar', 'IDR', now(), now());
   c.prepare('INSERT INTO Branch (id, companyId, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)')
     .run('br-1', 'acme', 'BR1', 'Cabang 1', 1, now(), now());
+  c.prepare('INSERT INTO MasterReference (id, companyId, branchId, type, code, name, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('unit-pcs', 'acme', null, 'UNIT', 'PCS', 'Pieces', 1, now(), now());
   // A second company, so cross-tenant refusal is tested against a real foreign row and not a guess.
   c.prepare('INSERT INTO Company (id, name, timezone, currency, createdAt, updatedAt) VALUES (?,?,?,?,?,?)')
     .run('other', 'Other', 'Asia/Makassar', 'IDR', now(), now());
@@ -78,8 +80,8 @@ function seed() {
     .run('rak-A', 'wh-1', 'RAK-A', 'Rak A', 'BIN', 0, 1, now(), now());
 
   const product = (id, sku, barcode, name, price, isActive = 1) => c.prepare(
-    'INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)',
-  ).run(id, 'acme', sku, barcode, name, 1000, price, isActive, now(), now());
+    'INSERT INTO Product (id, companyId, sku, barcode, name, costPrice, salePrice, unit, isActive, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+  ).run(id, 'acme', sku, barcode, name, 1000, price, 'PCS', isActive, now(), now());
   product('p-1', 'SKU-1', 'BC-1', 'Kopi 250g', 15000);
   product('p-2', 'SKU-2', 'BC-2', 'Teh 250g', 8000);
   product('p-off', 'SKU-OFF', 'BC-OFF', 'Produk lama', 5000, 0);

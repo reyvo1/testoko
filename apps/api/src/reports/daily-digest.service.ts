@@ -95,7 +95,7 @@ export class DailyDigestService {
     const products = await this.prisma.product.findMany({
       where: { companyId, isActive: true, minStock: { gt: 0 }, inventories: { some: { warehouse: { branchId, branch: { companyId } } } } },
       select: {
-        name: true, minStock: true, sku: true,
+        name: true, minStock: true, sku: true, unit: true,
         inventories: { where: { warehouse: { branchId, branch: { companyId } } }, select: { available: true } },
       },
       take: 500,
@@ -135,9 +135,9 @@ export class DailyDigestService {
 
     const productIds = topProducts.map((t) => t.productId).filter(Boolean);
     const productNames = productIds.length
-      ? await this.prisma.product.findMany({ where: { id: { in: productIds }, companyId }, select: { id: true, name: true } })
+      ? await this.prisma.product.findMany({ where: { id: { in: productIds }, companyId }, select: { id: true, name: true, unit: true } })
       : [];
-    const nameOf = (id: string) => productNames.find((p) => p.id === id)?.name ?? id;
+    const productLabel = (id: string) => productNames.find((p) => p.id === id) ?? { id, name: id, unit: '' };
 
     const revenue = Number(dashboard.today.revenue ?? 0);
     const grossProfit = Number(dashboard.today.grossProfit ?? 0);
@@ -150,10 +150,10 @@ export class DailyDigestService {
       `⏳ Pesanan online diproses: ${pendingOrders}`,
       ``,
       lowStockItems.length ? `⚠️ Stok menipis (${lowStockItems.length}):` : `✅ Stok aman, tidak ada yang menipis.`,
-      ...lowStockItems.slice(0, 8).map((item) => `   • ${item.product.name}: sisa ${item.available} (min ${item.product.minStock})`),
+      ...lowStockItems.slice(0, 8).map((item) => `   • ${item.product.name}: sisa ${item.available} ${item.product.unit} (min ${item.product.minStock} ${item.product.unit})`),
       ``,
       topProducts.length ? `🏆 Produk terlaris:` : ``,
-      ...topProducts.map((t, i) => `   ${i + 1}. ${nameOf(t.productId)} — ${t._sum.quantity ?? 0} pcs`),
+      ...topProducts.map((t, i) => { const product = productLabel(t.productId); return `   ${i + 1}. ${product.name} — ${t._sum.quantity ?? 0} ${product.unit}`.trimEnd(); }),
     ].filter((l) => l !== '');
 
     return { text: lines.join('\n'), summary: { revenue, grossProfit, transactions: dashboard.today.transactions, pendingOrders, lowStockCount: lowStockItems.length } };

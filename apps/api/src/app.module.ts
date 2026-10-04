@@ -41,6 +41,9 @@ import { ReturnsModule } from './returns/returns.module';
 import { MasterDataModule } from './master-data/master-data.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StorefrontCustomerModule } from './storefront-customer/storefront-customer.module';
+import { ManufacturingModule } from './manufacturing/manufacturing.module';
+import { DigitalServicesModule } from './digital-services/digital-services.module';
+import { StaffMemosModule } from './staff-memos/staff-memos.module';
 
 @Module({
   imports: [
@@ -69,6 +72,9 @@ import { StorefrontCustomerModule } from './storefront-customer/storefront-custo
     MasterDataModule,
     PaymentsModule,
     StorefrontCustomerModule,
+    ManufacturingModule,
+    DigitalServicesModule,
+    StaffMemosModule,
     ProductsModule,
     SuppliersModule,
     PurchaseOrdersModule,

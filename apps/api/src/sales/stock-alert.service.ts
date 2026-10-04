@@ -30,7 +30,7 @@ export class StockAlertService {
         productId: { in: productIds },
         product: { companyId, isActive: true },
       },
-      select: { available: true, productId: true, product: { select: { name: true, sku: true, minStock: true } } },
+      select: { available: true, productId: true, product: { select: { name: true, sku: true, minStock: true, unit: true } } },
     });
     const breached = inventories.filter((inv) => inv.available <= inv.product.minStock);
     const alerted: string[] = [];
@@ -49,7 +49,7 @@ export class StockAlertService {
             recipient,
             templateCode: dedupeKey,
             subject: `Stok menipis: ${inv.product.name}`,
-            body: `⚠️ STOK MENIPIS — ${inv.product.name} (${inv.product.sku})\nSisa ${inv.available} pcs di gudang (minimum ${inv.product.minStock}).\nSegera restock sebelum kehabisan.`,
+            body: `⚠️ STOK MENIPIS — ${inv.product.name} (${inv.product.sku})\nSisa ${inv.available} ${inv.product.unit} di gudang (minimum ${inv.product.minStock} ${inv.product.unit}).\nSegera restock sebelum kehabisan.`,
           },
         });
       }

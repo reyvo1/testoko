@@ -206,3 +206,24 @@ export async function openCashDrawer(connection?: PrinterConnection, pin: 2 | 5 
     return { ok: false, reason: error instanceof Error ? error.message : 'Gagal membuka laci kasir.' };
   }
 }
+
+/**
+ * Build the Android RawBT deep-link for a complete ESC/POS byte stream.
+ * RawBT accepts the exact printer bytes as base64, so receipt layout/cut commands stay identical
+ * to WebUSB/WebBluetooth. The helper is intentionally transport-only: business receipt data still
+ * comes from the canonical POS sale, and browsers without the RawBT app simply keep their existing
+ * browser/WebUSB fallback.
+ */
+export function buildRawBtUrl(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunk, bytes.length)));
+  }
+  return `rawbt:base64,${btoa(binary)}`;
+}
+
+export function openRawBtReceipt(receipt: Receipt): void {
+  if (typeof window === 'undefined') throw new Error('RawBT hanya dapat dibuka dari browser POS.');
+  window.location.href = buildRawBtUrl(buildReceipt(receipt));
+}

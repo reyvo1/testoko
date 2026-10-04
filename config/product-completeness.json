@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "TOKO360 Canonical Product Completeness Matrix",
-  "updatedAt": "2026-10-03T20:00:00+08:00",
+  "updatedAt": "2026-10-04T21:00:00+08:00",
   "authoritative": true,
   "productReady": false,
   "humanStage20": "PENDING",
@@ -514,6 +514,90 @@
       "operatorSurfaceRequired": true,
       "evidence": [],
       "notes": "Canonical post-audit status; source maturity alone cannot close this capability."
+    },
+    {
+      "id": "feature:manufacturing",
+      "kind": "FEATURE",
+      "key": "manufacturing",
+      "title": "Manufacturing BOM & production",
+      "default": "Versioned BOM, production order, inventory/WIP posting",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Video-parity enhancement source is implemented; runtime/exact-artifact evidence is still required before status can advance."
+    },
+    {
+      "id": "feature:digital_services_ppob",
+      "kind": "FEATURE",
+      "key": "digital_services_ppob",
+      "title": "PPOB / digital services",
+      "default": "Digiflazz adapter via encrypted integration + outbox worker",
+      "sourceMaturity": "adapter-ready",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Video-parity enhancement source is implemented; runtime/exact-artifact evidence is still required before status can advance."
+    },
+    {
+      "id": "feature:product_bulk_tooling",
+      "kind": "FEATURE",
+      "key": "product_bulk_tooling",
+      "title": "Bulk product & barcode labels",
+      "default": "Dry-run CSV import/export, HET and Code128 label printing",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Video-parity enhancement source is implemented; runtime/exact-artifact evidence is still required before status can advance."
+    },
+    {
+      "id": "feature:setup_readiness",
+      "kind": "FEATURE",
+      "key": "setup_readiness",
+      "title": "Business setup readiness",
+      "default": "Server-derived readiness assistant; deployment remains external",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Video-parity enhancement source is implemented; runtime/exact-artifact evidence is still required before status can advance."
+    },
+    {
+      "id": "feature:rawbt_printing",
+      "kind": "FEATURE",
+      "key": "rawbt_printing",
+      "title": "Android RawBT receipt transport",
+      "default": "Additive ESC/POS deep-link transport for Android tills",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Video-parity enhancement source is implemented; runtime/exact-artifact evidence is still required before status can advance."
+    },
+    {
+      "id": "feature:dynamic_product_uom",
+      "kind": "FEATURE",
+      "key": "dynamic_product_uom",
+      "title": "Dynamic Product UOM & base-unit safety",
+      "default": "Active UNIT master + arbitrary ProductUnit packaging conversion",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Explicit base unit, no runtime PCS fallback, and history-safe rebasing require exact-runtime evidence before status can advance."
+    },
+    {
+      "id": "feature:staff_memo",
+      "kind": "FEATURE",
+      "key": "staff_memo",
+      "title": "Personal Staff Memo",
+      "default": "Database-backed personal memo across Admin/POS/Employee Portal",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "JWT user/company/branch scoped memo with idempotent create and audit; exact-runtime evidence required before status can advance."
     }
   ],
   "legacyFunctionalPhases": [

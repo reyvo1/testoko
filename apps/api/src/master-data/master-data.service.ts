@@ -66,6 +66,30 @@ export class MasterDataService {
 
   private normalizedUnit(value?: string | null) { return value?.trim().toUpperCase() || ''; }
 
+  private async requireUnitMaster(client: DbClient, companyId: string | null, value?: string | null) {
+    if (!companyId) throw new BadRequestException('Produk belum memiliki company sehingga master UNIT tidak dapat divalidasi.');
+    const unit = this.normalizedUnit(value);
+    if (!unit) throw new BadRequestException('Unit wajib dipilih dari master UNIT aktif.');
+    const row = await client.masterReference.findFirst({
+      where: { companyId, branchId: null, type: 'UNIT', code: unit, isActive: true },
+      select: { id: true },
+    });
+    if (!row) throw new BadRequestException(`Unit ${unit} belum terdaftar pada master UNIT perusahaan yang aktif.`);
+    return unit;
+  }
+
+  private async assertUnitReferenceCanDeactivate(client: DbClient, companyId: string, code: string) {
+    const [baseProduct, productUnit, barcode, price] = await Promise.all([
+      client.product.findFirst({ where: { companyId, unit: code }, select: { id: true } }),
+      client.productUnit.findFirst({ where: { unitCode: code, product: { companyId } }, select: { id: true } }),
+      client.productBarcode.findFirst({ where: { unitCode: code, product: { companyId } }, select: { id: true } }),
+      client.productPrice.findFirst({ where: { unitCode: code, product: { companyId } }, select: { id: true } }),
+    ]);
+    if (baseProduct || productUnit || barcode || price) {
+      throw new BadRequestException(`Unit ${code} masih dipakai produk/konversi/barcode/harga dan tidak dapat dinonaktifkan.`);
+    }
+  }
+
   private normalizedFactor(value?: number | Prisma.Decimal | null) {
     const factor = Number(value ?? 1);
     if (!Number.isSafeInteger(factor) || factor < 1) throw new BadRequestException('quantityFactor wajib integer minimal 1 karena stok fisik disimpan dalam base unit integer.');
@@ -73,20 +97,16 @@ export class MasterDataService {
   }
 
   private async validateSellingUnit(client: DbClient, product: { id: string; unit: string; companyId: string | null }, unitCode?: string | null, quantityFactor?: number | Prisma.Decimal | null, primary = false) {
-    const baseUnit = this.normalizedUnit(product.unit) || 'PCS';
-    const unit = this.normalizedUnit(unitCode) || baseUnit;
+    const baseUnit = await this.requireUnitMaster(client, product.companyId, product.unit);
+    const unit = unitCode == null || !this.normalizedUnit(unitCode)
+      ? baseUnit
+      : await this.requireUnitMaster(client, product.companyId, unitCode);
     const factor = this.normalizedFactor(quantityFactor);
     if (primary && (factor !== 1 || unit !== baseUnit)) throw new BadRequestException('Barcode utama wajib mewakili 1 base unit produk.');
     if (factor > 1 && unit === baseUnit) throw new BadRequestException('Barcode kemasan dengan quantityFactor > 1 wajib memakai unitCode berbeda dari base unit.');
-    if (unit !== baseUnit && product.companyId) {
-      const [unitMaster, companyHasUnits] = await Promise.all([
-        client.masterReference.findFirst({ where: { companyId: product.companyId, type: 'UNIT', code: unit, isActive: true }, select: { id: true } }),
-        client.masterReference.findFirst({ where: { companyId: product.companyId, type: 'UNIT', isActive: true }, select: { id: true } }),
-      ]);
-      if (companyHasUnits && !unitMaster) throw new BadRequestException(`Unit ${unit} belum terdaftar pada master UNIT aktif.`);
-    }
     return { baseUnit, unitCode: unit, quantityFactor: factor };
   }
+
 
   private slug(value: string) {
     return value.trim().toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 140);
@@ -297,9 +317,55 @@ export class MasterDataService {
   async createLocation(dto: CreateWarehouseLocationDto, user: AuthUser) { await this.warehouse(this.prisma, user, dto.warehouseId); if (dto.parentId) { const parent = await this.prisma.warehouseLocation.findFirst({ where: { id: dto.parentId, warehouseId: dto.warehouseId } }); if (!parent) throw new BadRequestException('Parent lokasi tidak ditemukan pada gudang yang sama.'); } return this.prisma.$transaction(async (tx) => { const count = await tx.warehouseLocation.count({ where: { warehouseId: dto.warehouseId, isActive: true } }); const makeDefault = Boolean(dto.isDefault) || count === 0; if (makeDefault) await tx.warehouseLocation.updateMany({ where: { warehouseId: dto.warehouseId, isDefault: true }, data: { isDefault: false } }); const row = await tx.warehouseLocation.create({ data: { warehouseId: dto.warehouseId, parentId: dto.parentId, code: dto.code.trim().toUpperCase(), name: dto.name.trim(), type: (dto.type || 'BIN').trim().toUpperCase(), barcode: dto.barcode?.trim(), capacity: dto.capacity === undefined ? undefined : new Prisma.Decimal(dto.capacity), isDefault: makeDefault } }); await this.audit(tx, user, 'CREATE_WAREHOUSE_LOCATION', 'WarehouseLocation', row.id, { warehouseId: dto.warehouseId, isDefault: makeDefault }); return row; }); }
   async updateLocation(id: string, dto: UpdateWarehouseLocationDto, user: AuthUser) { const scope = this.scope(user); const row0 = await this.prisma.warehouseLocation.findUnique({ where: { id } }); if (!row0) throw new NotFoundException('Lokasi gudang tidak ditemukan.'); await this.warehouse(this.prisma, user, row0.warehouseId); const targetWarehouse = dto.warehouseId ?? row0.warehouseId; await this.warehouse(this.prisma, user, targetWarehouse); if (dto.parentId) { const parent = await this.prisma.warehouseLocation.findFirst({ where: { id: dto.parentId, warehouseId: targetWarehouse } }); if (!parent || parent.id === id) throw new BadRequestException('Parent lokasi tidak valid.'); } return this.prisma.$transaction(async (tx) => { if (dto.isDefault === true) await tx.warehouseLocation.updateMany({ where: { warehouseId: targetWarehouse, id: { not: id }, isDefault: true }, data: { isDefault: false } }); const row = await tx.warehouseLocation.update({ where: { id }, data: { ...(dto.warehouseId !== undefined ? { warehouseId: targetWarehouse } : {}), ...(dto.parentId !== undefined ? { parentId: dto.parentId || null } : {}), ...(dto.code !== undefined ? { code: dto.code.trim().toUpperCase() } : {}), ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.type !== undefined ? { type: dto.type.trim().toUpperCase() } : {}), ...(dto.barcode !== undefined ? { barcode: dto.barcode?.trim() || null } : {}), ...(dto.capacity !== undefined ? { capacity: new Prisma.Decimal(dto.capacity) } : {}), ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}), ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) } }); await this.audit(tx, user, 'UPDATE_WAREHOUSE_LOCATION', 'WarehouseLocation', id, { companyId: scope.companyId }); return row; }); }
 
-  references(user: AuthUser, type?: string) { const scope = this.scope(user); if (type && !MASTER_REFERENCE_TYPES.includes(type.toUpperCase() as never)) throw new BadRequestException('Tipe master reference tidak didukung.'); return this.prisma.masterReference.findMany({ where: { companyId: scope.companyId, ...(type ? { type: type.toUpperCase() } : {}) }, orderBy: [{ type: 'asc' }, { name: 'asc' }] }); }
-  async createReference(dto: CreateReferenceDto, user: AuthUser) { const scope = this.scope(user); if (dto.branchId) await this.branch(this.prisma, user, dto.branchId); return this.prisma.$transaction(async (tx) => { const row = await tx.masterReference.create({ data: { companyId: scope.companyId, branchId: dto.branchId, type: dto.type, code: dto.code.trim().toUpperCase(), name: dto.name.trim(), metadata: dto.metadata === undefined ? undefined : json(dto.metadata) } }); await this.audit(tx, user, 'CREATE_MASTER_REFERENCE', 'MasterReference', row.id, { type: row.type, code: row.code }); return row; }); }
-  async updateReference(id: string, dto: UpdateReferenceDto, user: AuthUser) { const scope = this.scope(user); const existing = await this.prisma.masterReference.findFirst({ where: { id, companyId: scope.companyId } }); if (!existing) throw new NotFoundException('Master reference tidak ditemukan.'); if (dto.branchId) await this.branch(this.prisma, user, dto.branchId); return this.prisma.$transaction(async (tx) => { const row = await tx.masterReference.update({ where: { id }, data: { ...(dto.name !== undefined ? { name: dto.name.trim() } : {}), ...(dto.branchId !== undefined ? { branchId: dto.branchId || null } : {}), ...(dto.metadata !== undefined ? { metadata: json(dto.metadata) } : {}), ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}) } }); await this.audit(tx, user, 'UPDATE_MASTER_REFERENCE', 'MasterReference', id); return row; }); }
+  references(user: AuthUser, type?: string) {
+    const scope = this.scope(user);
+    if (type && !MASTER_REFERENCE_TYPES.includes(type.toUpperCase() as never)) throw new BadRequestException('Tipe master reference tidak didukung.');
+    return this.prisma.masterReference.findMany({
+      where: { companyId: scope.companyId, ...(type ? { type: type.toUpperCase() } : {}) },
+      orderBy: [{ type: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createReference(dto: CreateReferenceDto, user: AuthUser) {
+    const scope = this.scope(user);
+    const type = dto.type.toUpperCase() as typeof dto.type;
+    const code = dto.code.trim().toUpperCase();
+    if (!code || !dto.name.trim()) throw new BadRequestException('Kode dan nama master reference wajib diisi.');
+    if (type === 'UNIT' && dto.branchId) throw new BadRequestException('Master UNIT berlaku untuk seluruh perusahaan dan tidak boleh dibatasi ke satu cabang.');
+    if (dto.branchId) await this.branch(this.prisma, user, dto.branchId);
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.masterReference.create({
+        data: { companyId: scope.companyId, branchId: type === 'UNIT' ? null : dto.branchId, type, code, name: dto.name.trim(), metadata: dto.metadata === undefined ? undefined : json(dto.metadata) },
+      });
+      await this.audit(tx, user, 'CREATE_MASTER_REFERENCE', 'MasterReference', row.id, { type: row.type, code: row.code });
+      return row;
+    });
+  }
+
+  async updateReference(id: string, dto: UpdateReferenceDto, user: AuthUser) {
+    const scope = this.scope(user);
+    const existing = await this.prisma.masterReference.findFirst({ where: { id, companyId: scope.companyId } });
+    if (!existing) throw new NotFoundException('Master reference tidak ditemukan.');
+    if (existing.type === 'UNIT' && dto.branchId) throw new BadRequestException('Master UNIT berlaku untuk seluruh perusahaan dan tidak boleh dibatasi ke satu cabang.');
+    if (dto.branchId) await this.branch(this.prisma, user, dto.branchId);
+    return this.prisma.$transaction(async (tx) => {
+      if (existing.type === 'UNIT' && dto.isActive === false && existing.isActive) {
+        await this.assertUnitReferenceCanDeactivate(tx, scope.companyId, existing.code);
+      }
+      const row = await tx.masterReference.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.branchId !== undefined ? { branchId: existing.type === 'UNIT' ? null : dto.branchId || null } : {}),
+          ...(dto.metadata !== undefined ? { metadata: json(dto.metadata) } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        },
+      });
+      await this.audit(tx, user, 'UPDATE_MASTER_REFERENCE', 'MasterReference', id, { type: row.type, code: row.code, isActive: row.isActive });
+      return row;
+    });
+  }
+
 
   async variants(productId: string, user: AuthUser) {
     await this.product(this.prisma, user, productId);
@@ -311,7 +377,8 @@ export class MasterDataService {
   }
 
   async createVariant(productId: string, dto: CreateProductVariantDto, user: AuthUser) {
-    await this.product(this.prisma, user, productId);
+    const product = await this.product(this.prisma, user, productId);
+    if (dto.salePrice !== undefined && product.retailCeilingPrice != null && dto.salePrice > Number(product.retailCeilingPrice)) throw new BadRequestException('Harga jual variant tidak boleh melebihi HET produk.');
     const code = dto.code.trim().toUpperCase();
     const name = dto.name.trim();
     if (!code || !name) throw new BadRequestException('Kode dan nama variant wajib diisi.');
@@ -338,7 +405,8 @@ export class MasterDataService {
   }
 
   async updateVariant(productId: string, id: string, dto: UpdateProductVariantDto, user: AuthUser) {
-    await this.product(this.prisma, user, productId);
+    const product = await this.product(this.prisma, user, productId);
+    if (dto.salePrice !== undefined && product.retailCeilingPrice != null && dto.salePrice > Number(product.retailCeilingPrice)) throw new BadRequestException('Harga jual variant tidak boleh melebihi HET produk.');
     const existing = await this.prisma.productVariant.findFirst({ where: { id, productId } });
     if (!existing) throw new NotFoundException('Variant produk tidak ditemukan.');
     const code = dto.code !== undefined ? dto.code.trim().toUpperCase() : existing.code;
@@ -372,7 +440,7 @@ export class MasterDataService {
       include: { variant: true, _count: { select: { barcodes: true, prices: true } } },
       orderBy: [{ variantId: 'asc' }, { isActive: 'desc' }, { quantityFactor: 'asc' }, { unitCode: 'asc' }],
     });
-    return { baseUnit: this.normalizedUnit(product.unit) || 'PCS', rows };
+    return { baseUnit: await this.requireUnitMaster(this.prisma, product.companyId, product.unit), rows };
   }
 
   async createUnit(productId: string, dto: CreateProductUnitDto, user: AuthUser) {
@@ -452,7 +520,7 @@ export class MasterDataService {
     if (requestedUnit && requestedUnit.variantId !== (variant?.id ?? null)) throw new BadRequestException('Unit produk tidak sesuai dengan variant barcode.');
     if (requestedUnit && !requestedUnit.isActive) throw new BadRequestException('Unit produk harus aktif.');
     const conversion = requestedUnit
-      ? { baseUnit: this.normalizedUnit(product.unit) || 'PCS', unitCode: requestedUnit.unitCode, quantityFactor: requestedUnit.quantityFactor }
+      ? { baseUnit: await this.requireUnitMaster(this.prisma, product.companyId, product.unit), unitCode: requestedUnit.unitCode, quantityFactor: requestedUnit.quantityFactor }
       : await this.validateSellingUnit(this.prisma, product, dto.unitCode, dto.quantityFactor, dto.isPrimary ?? false);
     return this.prisma.$transaction(async (tx) => {
       const variantId = variant?.id ?? null;
@@ -485,7 +553,7 @@ export class MasterDataService {
     if (targetUnit && !targetUnit.isActive) throw new BadRequestException('Unit produk harus aktif.');
     const targetPrimary = dto.isPrimary ?? existing.isPrimary;
     const conversion = targetUnit
-      ? { baseUnit: this.normalizedUnit(product.unit) || 'PCS', unitCode: targetUnit.unitCode, quantityFactor: targetUnit.quantityFactor }
+      ? { baseUnit: await this.requireUnitMaster(this.prisma, product.companyId, product.unit), unitCode: targetUnit.unitCode, quantityFactor: targetUnit.quantityFactor }
       : await this.validateSellingUnit(
           this.prisma, product,
           dto.unitCode !== undefined ? dto.unitCode : existing.unitCode,
@@ -522,6 +590,7 @@ export class MasterDataService {
 
   async createPrice(productId: string, dto: CreateProductPriceDto, user: AuthUser) {
     const product = await this.product(this.prisma, user, productId);
+    await this.requireUnitMaster(this.prisma, product.companyId, product.unit);
     const requestedUnit = await this.productUnit(this.prisma, user, productId, dto.productUnitId?.trim() || null);
     const requestedVariantId = dto.variantId?.trim() || requestedUnit?.variantId || null;
     const variant = await this.variant(this.prisma, user, productId, requestedVariantId);
@@ -529,10 +598,14 @@ export class MasterDataService {
     if (requestedUnit && !requestedUnit.isActive) throw new BadRequestException('Unit produk harus aktif.');
     if (dto.branchId) await this.branch(this.prisma, user, dto.branchId);
     const unitCode = requestedUnit?.unitCode ?? dto.unitCode?.trim().toUpperCase() ?? null;
+    if (unitCode) await this.requireUnitMaster(this.prisma, product.companyId, unitCode);
+    let quantityFactor = requestedUnit ? Number(requestedUnit.quantityFactor) : 1;
     if (!requestedUnit && unitCode && unitCode !== this.normalizedUnit(product.unit)) {
-      const conversion = await this.prisma.productBarcode.findFirst({ where: { productId, variantId: variant?.id ?? null, unitCode, quantityFactor: { gt: new Prisma.Decimal(1) } }, select: { id: true } });
+      const conversion = await this.prisma.productBarcode.findFirst({ where: { productId, variantId: variant?.id ?? null, unitCode, quantityFactor: { gt: new Prisma.Decimal(1) } }, select: { id: true, quantityFactor: true } });
       if (!conversion) throw new BadRequestException(`Harga unit ${unitCode} membutuhkan barcode/konversi aktif untuk ${variant ? 'variant ini' : 'produk dasar'}.`);
+      quantityFactor = Number(conversion.quantityFactor);
     }
+    if (product.retailCeilingPrice != null && dto.price > Number(product.retailCeilingPrice) * quantityFactor) throw new BadRequestException('Harga jual tidak boleh melebihi HET produk setelah faktor unit diterapkan.');
     const from = this.parseDate(dto.effectiveFrom), to = this.parseDate(dto.effectiveTo);
     if (from && to && from > to) throw new BadRequestException('effectiveFrom tidak boleh setelah effectiveTo.');
     return this.prisma.$transaction(async (tx) => {
@@ -544,6 +617,7 @@ export class MasterDataService {
 
   async updatePrice(productId: string, id: string, dto: UpdateProductPriceDto, user: AuthUser) {
     const product = await this.product(this.prisma, user, productId);
+    await this.requireUnitMaster(this.prisma, product.companyId, product.unit);
     const existing = await this.prisma.productPrice.findFirst({ where: { id, productId } });
     if (!existing) throw new NotFoundException('Harga produk tidak ditemukan.');
     const targetUnit = dto.productUnitId !== undefined
@@ -555,10 +629,15 @@ export class MasterDataService {
     if (targetUnit && !targetUnit.isActive) throw new BadRequestException('Unit produk harus aktif.');
     if (dto.branchId) await this.branch(this.prisma, user, dto.branchId);
     const unitCode = targetUnit?.unitCode ?? (dto.unitCode !== undefined ? (dto.unitCode?.trim().toUpperCase() || null) : existing.unitCode);
+    if (unitCode) await this.requireUnitMaster(this.prisma, product.companyId, unitCode);
+    let quantityFactor = targetUnit ? Number(targetUnit.quantityFactor) : 1;
     if (!targetUnit && unitCode && unitCode.toUpperCase() !== this.normalizedUnit(product.unit)) {
-      const conversion = await this.prisma.productBarcode.findFirst({ where: { productId, variantId: targetVariantId, unitCode: unitCode.toUpperCase(), quantityFactor: { gt: new Prisma.Decimal(1) } }, select: { id: true } });
+      const conversion = await this.prisma.productBarcode.findFirst({ where: { productId, variantId: targetVariantId, unitCode: unitCode.toUpperCase(), quantityFactor: { gt: new Prisma.Decimal(1) } }, select: { id: true, quantityFactor: true } });
       if (!conversion) throw new BadRequestException(`Harga unit ${unitCode} membutuhkan barcode/konversi aktif untuk ${targetVariantId ? 'variant ini' : 'produk dasar'}.`);
+      quantityFactor = Number(conversion.quantityFactor);
     }
+    const nextPrice = dto.price ?? Number(existing.price);
+    if (product.retailCeilingPrice != null && nextPrice > Number(product.retailCeilingPrice) * quantityFactor) throw new BadRequestException('Harga jual tidak boleh melebihi HET produk setelah faktor unit diterapkan.');
     const from = dto.effectiveFrom !== undefined ? this.parseDate(dto.effectiveFrom) : existing.effectiveFrom ?? undefined;
     const to = dto.effectiveTo !== undefined ? this.parseDate(dto.effectiveTo) : existing.effectiveTo ?? undefined;
     if (from && to && from > to) throw new BadRequestException('effectiveFrom tidak boleh setelah effectiveTo.');

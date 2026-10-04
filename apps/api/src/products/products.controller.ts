@@ -6,6 +6,7 @@ import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { Permissions } from '../auth/permissions.decorator';
 import { CreateProductDto } from './dto/create-product.dto';
+import { BulkImportProductsDto } from './dto/bulk-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
@@ -27,6 +28,22 @@ import { ProductsService } from './products.service';
     @Query('includeInactive') includeInactive?: string,
   ) {
     return this.products.list(user, branchCode, companyId, branchId, search, limit, cursor, includeInactive);
+  }
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN', 'OWNER', 'ADMIN')
+  @Permissions('product.view')
+  @Get('export-csv')
+  exportCsv(@CurrentUser() user: AuthUser) {
+    return this.products.exportCsv(user);
+  }
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN', 'OWNER', 'ADMIN')
+  @Permissions('product.create')
+  @Post('bulk-import')
+  bulkImport(@Body() dto: BulkImportProductsDto, @CurrentUser() user: AuthUser) {
+    return this.products.bulkImport(dto, user);
   }
 
   @Public()

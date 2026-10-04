@@ -82,7 +82,9 @@ type Tone = 'info' | 'success' | 'error';
 
 function productPrice(product: Product) { return Number(product.effectiveSalePrice ?? product.salePrice); }
 function sellingOptions(product: Product): SellingOption[] {
-  const base: SellingOption = { unitCode: product.unit || 'PCS', quantityFactor: 1, unitPrice: productPrice(product), label: `${product.unit || 'PCS'} · base unit` };
+  const baseUnit = product.unit.trim().toUpperCase();
+  if (!baseUnit) throw new Error(`Produk ${product.sku} belum memiliki base unit dari master UNIT.`);
+  const base: SellingOption = { unitCode: baseUnit, quantityFactor: 1, unitPrice: productPrice(product), label: `${baseUnit} · base unit` };
   const units = (product.units ?? []).map((unit): SellingOption => ({
     productUnitId: unit.id,
     variantId: unit.variantId ?? undefined,

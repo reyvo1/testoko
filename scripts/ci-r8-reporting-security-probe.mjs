@@ -87,8 +87,10 @@ try {
     artifacts.createdWarehouse = true;
     artifacts.warehouseId = warehouse.id;
   }
+  const baseUnit = await prisma.masterReference.findFirst({ where: { companyId, branchId: null, type: 'UNIT', isActive: true }, orderBy: [{ code: 'asc' }, { id: 'asc' }], select: { code: true } });
+  if (!baseUnit?.code) throw new Error('Master UNIT aktif tingkat perusahaan tidak tersedia untuk fixture R8.');
   const productName = `R8 Low Stock ${stamp}`;
-  const product = await prisma.product.create({ data: { companyId, sku: `R8SKU${stamp}`, name: productName, unit: 'pcs', costPrice: 1000, salePrice: 2000, minStock: 10, isActive: true } });
+  const product = await prisma.product.create({ data: { companyId, sku: `R8SKU${stamp}`, name: productName, unit: baseUnit.code, costPrice: 1000, salePrice: 2000, minStock: 10, isActive: true } });
   artifacts.productId = product.id;
   const inventory = await prisma.inventory.create({ data: { warehouseId: warehouse.id, productId: product.id, quantity: 2, reserved: 0, available: 2 } });
   artifacts.inventoryId = inventory.id;

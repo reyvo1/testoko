@@ -898,6 +898,42 @@ async function main() {
     if (loginBody?.code === 'TWO_FACTOR_REQUIRED') throw new Error('Akun UAT membutuhkan 2FA; gunakan akun staging UAT khusus atau jalankan login manual tervalidasi.');
     evidence.checks.push({ id: 'ADMIN_API_LOGIN', status: 'PASS' });
 
+    const staffAuthHeaders = { authorization: `Bearer ${loginBody.accessToken}` };
+    const unitResponse = await http(`${apiUrl}/master-data/references?type=UNIT`, { headers: staffAuthHeaders });
+    const unitRows = await unitResponse.json().catch(() => null);
+    if (!unitResponse.ok) throw new Error(`Master UNIT UAT gagal dibaca (HTTP ${unitResponse.status}).`);
+    const activeUnit = (Array.isArray(unitRows) ? unitRows : []).find((item) => item?.type === 'UNIT' && item?.isActive !== false && !item?.branchId && String(item?.code || '').trim());
+    if (!activeUnit?.code) throw new Error('Browser UAT membutuhkan minimal satu master UNIT aktif tingkat perusahaan.');
+    const uatUnitCode = String(activeUnit.code).trim().toUpperCase();
+    evidence.checks.push({ id: 'DYNAMIC_UNIT_MASTER_RUNTIME', status: 'PASS', unitCode: uatUnitCode });
+
+    const memoKey = `browser-uat-memo:${Date.now()}:${process.pid}`;
+    const memoTitle = `Browser UAT memo ${process.pid}`;
+    const createMemoResponse = await http(`${apiUrl}/staff-memos`, {
+      method: 'POST',
+      headers: { ...staffAuthHeaders, 'content-type': 'application/json', 'idempotency-key': memoKey },
+      body: JSON.stringify({ title: memoTitle, body: 'Exact-runtime memo persistence evidence.' }),
+    });
+    const createdMemo = await createMemoResponse.json().catch(() => null);
+    if (!createMemoResponse.ok || !createdMemo?.id) throw new Error(`Staff Memo UAT gagal dibuat (HTTP ${createMemoResponse.status}).`);
+    const retryMemoResponse = await http(`${apiUrl}/staff-memos`, {
+      method: 'POST',
+      headers: { ...staffAuthHeaders, 'content-type': 'application/json', 'idempotency-key': memoKey },
+      body: JSON.stringify({ title: memoTitle, body: 'Exact-runtime memo persistence evidence.' }),
+    });
+    const retriedMemo = await retryMemoResponse.json().catch(() => null);
+    if (!retryMemoResponse.ok || retriedMemo?.id !== createdMemo.id) throw new Error('Staff Memo idempotency retry tidak mengembalikan memo yang sama.');
+    const memoListResponse = await http(`${apiUrl}/staff-memos?limit=50`, { headers: staffAuthHeaders });
+    const memoList = await memoListResponse.json().catch(() => null);
+    if (!memoListResponse.ok || !memoList?.items?.some((item) => item?.id === createdMemo.id)) throw new Error('Staff Memo yang dibuat tidak terbaca kembali pada scope pengguna/cabang yang sama.');
+    const pinMemoResponse = await http(`${apiUrl}/staff-memos/${createdMemo.id}`, { method: 'PATCH', headers: { ...staffAuthHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ isPinned: true }) });
+    const pinnedMemo = await pinMemoResponse.json().catch(() => null);
+    if (!pinMemoResponse.ok || pinnedMemo?.isPinned !== true) throw new Error('Staff Memo pin lifecycle gagal.');
+    const archiveMemoResponse = await http(`${apiUrl}/staff-memos/${createdMemo.id}`, { method: 'PATCH', headers: { ...staffAuthHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ archived: true }) });
+    const archivedMemo = await archiveMemoResponse.json().catch(() => null);
+    if (!archiveMemoResponse.ok || !archivedMemo?.archivedAt) throw new Error('Staff Memo archive lifecycle gagal.');
+    evidence.checks.push({ id: 'STAFF_MEMO_RUNTIME', status: 'PASS', memoId: createdMemo.id, idempotentRetry: true, pinLifecycle: true, archiveLifecycle: true });
+
     if (String(process.env.T360_UAT_PREPARE_P5_STOREFRONT_FIXTURE || '').toLowerCase() === 'true') {
       const fixtureHost = new URL(apiUrl).hostname;
       const fixtureEnvironment = String(process.env.T360_UAT_ENVIRONMENT || '').trim();
@@ -920,7 +956,7 @@ async function main() {
             sku: `P5-UAT-${uniqueSuffix}`,
             name: 'P5 Browser UAT Product',
             description: 'Fixture non-production untuk membuktikan visual detail produk P5.',
-            unit: 'PCS',
+            unit: uatUnitCode,
             productType: 'PHYSICAL',
             costPrice: 10000,
             salePrice: 15000,
@@ -1096,7 +1132,9 @@ async function main() {
     const access = JSON.stringify(loginBody.accessToken); const refresh = JSON.stringify(loginBody.refreshToken || '');
     await cdp.call('Runtime.evaluate', { expression: `localStorage.setItem('toko360_token', ${access}); localStorage.setItem('toko360_refresh', ${refresh}); localStorage.setItem('toko360:ui-theme:admin', 'light'); location.reload(); true`, returnByValue: true });
     await waitExpression(cdp, `Boolean(document.querySelector('aside[aria-label=\"Navigasi Admin\"] .navItem'))`, 'Navigasi Admin setelah login', 45000);
+    await waitExpression(cdp, `Boolean(document.querySelector('[data-staff-memo-surface=\"admin\"]'))`, 'Admin staff memo surface', 45000);
     evidence.checks.push({ id: 'ADMIN_AUTHENTICATED_SHELL', status: 'PASS' });
+    evidence.checks.push({ id: 'STAFF_MEMO_ADMIN_SURFACE', status: 'PASS' });
     evidence.checks.push({ id: 'ADMIN_RESPONSIVE_SHELL', status: 'PASS', matrix: await assertResponsiveMatrix(cdp, 'Admin authenticated shell') });
     evidence.checks.push({ id: 'ADMIN_SHELL_GEOMETRY', status: 'PASS', matrix: await assertAdminShellMatrix(cdp) });
     evidence.checks.push({ id: 'P5_V4_ADMIN_VISUAL_IDENTITY', status: 'PASS', metrics: await assertP5V4VisualIdentity(cdp, 'admin', { lightRoot: true, lightAdminSidebar: true }) });
@@ -1287,7 +1325,9 @@ await waitExpression(cdp, `(() => {
       evidence.posDiagnostic = await browserPageDiagnostic(cdp, `${apiUrl}/health`).catch((diagnosticError) => ({ diagnosticError: diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError) }));
       throw error;
     }
+    await waitExpression(cdp, `Boolean(document.querySelector('[data-staff-memo-surface=\"pos\"]'))`, 'POS staff memo surface', 45000);
     evidence.checks.push({ id: 'POS_AUTHENTICATED_RUNTIME', status: 'PASS', assertions: ['cashier shell', 'warehouse selector', 'server online', 'offline config/data bootstrap'] });
+    evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });
     evidence.checks.push({ id: 'P5_V4_POS_VISUAL_IDENTITY', status: 'PASS', metrics: await assertP5V4VisualIdentity(cdp, 'pos', { lightRoot: true }) });
@@ -1309,7 +1349,9 @@ await waitExpression(cdp, `(() => {
       await waitExpression(cdp, `document.body && document.body.innerText.includes('TOKO360 HR') && document.body.innerText.includes('Halo,') && document.body.innerText.includes('CI-UAT-ADMIN') && document.body.innerText.includes('REKAMAN 31 HARI') && document.body.innerText.includes('Slip Gaji')`, 'Employee Portal authenticated self-service', 45000);
       const employeeText = await cdp.call('Runtime.evaluate', { expression: `document.body.innerText`, returnByValue: true });
       if (String(employeeText?.result?.value || '').includes('Profil belum tersedia')) throw new Error('Employee Portal authenticated shell dirender tetapi self-service read model gagal.');
+      await waitExpression(cdp, `Boolean(document.querySelector('[data-staff-memo-surface=\"employee\"]'))`, 'Employee staff memo surface', 45000);
       evidence.checks.push({ id: 'EMPLOYEE_PORTAL_AUTHENTICATED_RUNTIME', status: 'PASS', assertions: ['employee profile', 'attendance history', 'payslip self-service'] });
+      evidence.checks.push({ id: 'STAFF_MEMO_EMPLOYEE_SURFACE', status: 'PASS' });
       const employeeRoutes = await evaluateValue(cdp, `([...document.querySelectorAll('.employeeNav a')]).map(a => a.getAttribute('href')).filter(Boolean)`);
       const visitedEmployeeRoutes = [];
       const p5EmployeeScreenshots = [];

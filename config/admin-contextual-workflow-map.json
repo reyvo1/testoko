@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "TOKO360 Admin Contextual Workflow Map",
-  "expectedContextualViews": 65,
+  "expectedContextualViews": 70,
   "rows": [
     {
       "workspace": "master-data",
@@ -455,6 +455,41 @@
       "workspace": "settings",
       "view": "mobile-ops",
       "renderer": "MobileOpsView",
+      "status": "SOURCE_IMPLEMENTED",
+      "sourceFile": "apps/admin/app/page.tsx"
+    },
+    {
+      "workspace": "master-data",
+      "view": "bulk-labels",
+      "renderer": "ProductBulkLabelsView",
+      "status": "SOURCE_IMPLEMENTED",
+      "sourceFile": "apps/admin/app/page.tsx"
+    },
+    {
+      "workspace": "manufacturing",
+      "view": "recipes",
+      "renderer": "ManufacturingView:recipes",
+      "status": "SOURCE_IMPLEMENTED",
+      "sourceFile": "apps/admin/app/page.tsx"
+    },
+    {
+      "workspace": "manufacturing",
+      "view": "orders",
+      "renderer": "ManufacturingView:orders",
+      "status": "SOURCE_IMPLEMENTED",
+      "sourceFile": "apps/admin/app/page.tsx"
+    },
+    {
+      "workspace": "integrations",
+      "view": "ppob",
+      "renderer": "DigitalServicesView",
+      "status": "SOURCE_IMPLEMENTED",
+      "sourceFile": "apps/admin/app/page.tsx"
+    },
+    {
+      "workspace": "settings",
+      "view": "setup",
+      "renderer": "SetupReadinessView",
       "status": "SOURCE_IMPLEMENTED",
       "sourceFile": "apps/admin/app/page.tsx"
     }

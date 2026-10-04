@@ -133,6 +133,7 @@ async function main() {
     'inspection.view','inspection.record','inspection.manage','inspection.approve','gate_pass.manage','gate_pass.approve',
     'operations.policy.view','operations.policy.manage','operations.confirm','automation.manage',
     'goods_receipt.confirm','goods_receipt.reject',
+    'manufacturing.view','manufacturing.manage','digital_service.view','digital_service.manage',
     // POST-1D. Deliberately read-only and deliberately narrow. A kiosk key carries this scope and
     // nothing else, so the device cannot reach a single Admin or POS mutation even if it is stolen
     // and the key is pasted into another client. It is granted to no role by default — an operator
@@ -180,6 +181,8 @@ async function main() {
       create: { companyId: company.id, branchId: refBranchId, type, code, name },
     });
   }
+  const starterUnitCode = masterRefs.find(([type]) => type === 'UNIT')?.[1];
+  if (!starterUnitCode) throw new Error('Seed harus memiliki minimal satu starter UNIT.');
   await prisma.masterReference.update({
     where: { companyId_type_code: { companyId: company.id, type: 'COURIER', code: 'PICKUP' } },
     data: { branchId: branch.id, metadata: { fulfillmentType: 'PICKUP', price: 0, requiresAddress: false } },
@@ -217,7 +220,7 @@ async function main() {
     ['2103','Utang Pajak Penghasilan Karyawan',AccountType.LIABILITY],
     ['2104','Utang Jaminan Sosial dan Potongan Payroll',AccountType.LIABILITY],
     ['1103','Kas Kurir / COD',AccountType.ASSET], ['1203','Piutang COD',AccountType.ASSET],
-    ['1205','Pajak Masukan / Pajak Dibayar Dimuka',AccountType.ASSET], ['1302','Persediaan Dalam Perjalanan',AccountType.ASSET],
+    ['1205','Pajak Masukan / Pajak Dibayar Dimuka',AccountType.ASSET], ['1302','Persediaan Dalam Perjalanan',AccountType.ASSET], ['1303','Barang Dalam Proses (WIP)',AccountType.ASSET],
     ['1401','Aset Tetap Umum',AccountType.ASSET], ['1402','Kendaraan',AccountType.ASSET],
     ['1403','Bangunan',AccountType.ASSET], ['1404','Tanah',AccountType.ASSET],
     ['1491','Akumulasi Penyusutan Aset',AccountType.ASSET], ['1492','Akumulasi Penyusutan Kendaraan',AccountType.ASSET],
@@ -269,17 +272,17 @@ async function main() {
     for (const item of products) {
       const product = await prisma.product.upsert({
         where: { sku: item.sku },
-        update: { companyId: company.id, name: item.name, costPrice: new Prisma.Decimal(item.cost), salePrice: new Prisma.Decimal(item.sale) },
+        update: { companyId: company.id, name: item.name, unit: starterUnitCode, costPrice: new Prisma.Decimal(item.cost), salePrice: new Prisma.Decimal(item.sale) },
         create: {
           companyId: company.id, categoryId: category.id, sku: item.sku, barcode: item.barcode, name: item.name,
-          costPrice: new Prisma.Decimal(item.cost), salePrice: new Prisma.Decimal(item.sale), minStock: 5,
+          unit: starterUnitCode, costPrice: new Prisma.Decimal(item.cost), salePrice: new Prisma.Decimal(item.sale), minStock: 5,
         },
       });
       if (item.barcode) {
         await prisma.productBarcode.upsert({
           where: { code: item.barcode },
-          update: { productId: product.id, isPrimary: true },
-          create: { productId: product.id, code: item.barcode, unitCode: 'PCS', quantityFactor: new Prisma.Decimal(1), isPrimary: true },
+          update: { productId: product.id, unitCode: product.unit, quantityFactor: new Prisma.Decimal(1), isPrimary: true },
+          create: { productId: product.id, code: item.barcode, unitCode: product.unit, quantityFactor: new Prisma.Decimal(1), isPrimary: true },
         });
       }
       const retailPrice = await prisma.productPrice.findFirst({ where: { productId: product.id, branchId: branch.id, segmentCode: 'RETAIL', minQty: new Prisma.Decimal(1) } });
@@ -342,6 +345,8 @@ async function main() {
     ['gate-pass','Kontrol Kendaraan dan Barang di Gerbang','OPERATIONS',false,'gate_pass'],
     ['operations-automation','Otomatisasi Operasional','PLATFORM',false,'operations_automation'],
     ['finance-operations','Transaksi Keuangan Lintas Modul','FINANCE',true,'accounting_full'],
+    ['manufacturing','Resep, BOM dan Produksi','OPERATIONS',false,'manufacturing'],
+    ['digital-services','PPOB dan Produk Digital','INTEGRATION',false,'ppob'],
   ] as const;
   for (const [code, name, category, isCore, featureKey] of modules) {
     await prisma.moduleDefinition.upsert({
@@ -377,7 +382,7 @@ async function main() {
     ['system_tax', true, 'versioned-configurable-engine'], ['fixed_assets', true, 'implemented-foundation'],
     ['fleet_delivery', true, 'implemented-foundation'], ['quality_inspection', true, 'implemented-foundation'],
     ['gate_pass', true, 'implemented-foundation'], ['operations_automation', true, 'worker-ready'],
-    ['fleet_gps', false, 'adapter-ready'],
+    ['fleet_gps', false, 'adapter-ready'], ['manufacturing', true, 'implemented-production-ledger'], ['ppob', true, 'adapter-ready-digiflazz'],
   ];
   const maturityTruth = (maturity: string) => {
     const normalized = maturity.toLowerCase();
@@ -549,6 +554,14 @@ async function main() {
       { accountCodeKey: 'outputTax', side: 'CREDIT', amountKey: 'outputTax', skipIfZero: true },
       { accountCodeKey: 'cogs', side: 'DEBIT', amountKey: 'cogs' },
       { accountCodeKey: 'inventory', side: 'CREDIT', amountKey: 'inventory' },
+    ] },
+    { code: 'PRODUCTION-CONSUME', eventType: 'PRODUCTION_CONSUME', lines: [
+      { accountCodeKey: 'wip', side: 'DEBIT', amountKey: 'inventory' },
+      { accountCodeKey: 'inventory', side: 'CREDIT', amountKey: 'inventory' },
+    ] },
+    { code: 'PRODUCTION-COMPLETE', eventType: 'PRODUCTION_COMPLETE', lines: [
+      { accountCodeKey: 'inventory', side: 'DEBIT', amountKey: 'inventory' },
+      { accountCodeKey: 'wip', side: 'CREDIT', amountKey: 'inventory' },
     ] },
     { code: 'PURCHASE-RECEIPT-CREDIT', eventType: 'PURCHASE_RECEIPT_CREDIT', lines: [
       { accountCodeKey: 'inventory', side: 'DEBIT', amountKey: 'inventory' },
@@ -819,9 +832,9 @@ async function main() {
       'fleet.view','fleet.manage','fleet.expense','delivery.trip.manage','delivery.loading.confirm','delivery.dispatch','delivery.proof',
       'inspection.view','inspection.record','inspection.manage','inspection.approve','gate_pass.manage','gate_pass.approve',
       'operations.policy.view','operations.policy.manage','operations.confirm','automation.manage',
-      'goods_receipt.confirm','goods_receipt.reject',
+      'goods_receipt.confirm','goods_receipt.reject','manufacturing.view','manufacturing.manage','digital_service.view','digital_service.manage',
     ]],
-    ['CASHIER', ['product.view','inventory.view','sale.view','sale.create','sale.return','order.view','loyalty.view','loyalty.manage','promotion.view','customer.view','customer.manage']],
+    ['CASHIER', ['product.view','inventory.view','sale.view','sale.create','sale.return','order.view','loyalty.view','loyalty.manage','promotion.view','customer.view','customer.manage','digital_service.view','digital_service.manage']],
     ['WAREHOUSE', [
       'master_data.view','master_data.manage',
       'product.view','supplier.view','purchase.view','purchase.receive','purchase.return',
@@ -831,7 +844,7 @@ async function main() {
       'delivery.trip.manage','delivery.loading.confirm','delivery.dispatch','delivery.proof',
       'inspection.view','inspection.record','inspection.manage','inspection.approve',
       'gate_pass.manage','gate_pass.approve','goods_receipt.confirm','goods_receipt.reject',
-      'operations.confirm','attendance.record',
+      'operations.confirm','attendance.record','manufacturing.view','manufacturing.manage',
     ]],
     ['PURCHASING', ['master_data.view','product.view','supplier.view','supplier.create','supplier.update','purchase.view','purchase.create','purchase.approve','purchase.receive','purchase.return','inventory.view','inventory.batch','inspection.view','inspection.record','goods_receipt.confirm','goods_receipt.reject']],
     ['FINANCE', [
@@ -843,7 +856,7 @@ async function main() {
       'report.view','report.export','audit.view','inventory.view','asset.view','asset.depreciate','fleet.view',
       'inspection.view','operations.confirm','goods_receipt.confirm','goods_receipt.reject','sale.return','purchase.return',
     ]],
-    ['AUDITOR', ['product.view','supplier.view','purchase.view','sale.view','order.view','inventory.view','finance.view','tax.view','accounting.event.view','payroll.view','report.view','report.export','audit.view','inspection.view','asset.view','fleet.view','payment.view']],
+    ['AUDITOR', ['product.view','supplier.view','purchase.view','sale.view','order.view','inventory.view','finance.view','tax.view','accounting.event.view','payroll.view','report.view','report.export','audit.view','inspection.view','asset.view','fleet.view','payment.view','manufacturing.view','digital_service.view']],
     ['HR', ['employee.view','employee.manage','attendance.view','attendance.manage','attendance.approve','leave.view','leave.manage','leave.approve','overtime.view','overtime.manage','overtime.approve','payroll.view','report.view']],
     ['PAYROLL', ['employee.view','attendance.view','attendance.approve','payroll.view','payroll.manage','payroll.calculate','payroll.approve','payroll.post','payroll.publish','tax.view','tax.manage','accounting.event.view','report.view']],
     ['MANAGER', [
@@ -851,7 +864,7 @@ async function main() {
       'sale.view','order.view','payment.view','finance.view','finance.approve','report.view','report.export','audit.view',
       'employee.view','attendance.view','attendance.approve','payroll.view','payroll.approve',
       'inspection.view','inspection.approve','gate_pass.approve','operations.policy.view','operations.confirm',
-      'asset.view','fleet.view','delivery.trip.manage','delivery.dispatch',
+      'asset.view','fleet.view','delivery.trip.manage','delivery.dispatch','manufacturing.view','manufacturing.manage','digital_service.view',
     ]],
     ['EMPLOYEE', ['employee.self','attendance.record','attendance.view','leave.view','overtime.view','payroll.view']],
   ];

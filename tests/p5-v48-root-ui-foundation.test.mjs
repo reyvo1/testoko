@@ -45,8 +45,14 @@ test('P5 V4.11 Admin exposes every permission-visible domain and subdomain throu
   assert.match(adminShell,/data-admin-route=\{domainRoute\(item, view\)\}/);
   assert.doesNotMatch(adminShell,/adminModuleDirectory|moduleOpen|className="domainTabs/);
   assert.equal(context.rows.length,context.expectedContextualViews);
-  // 65 since POST-1A added settings/branch-sync and POST-1C added settings/mobile-ops.
-  assert.equal(context.expectedContextualViews,65);
+  assert.equal(context.expectedContextualViews,70);
+  for (const route of [
+    ['master-data','bulk-labels'],
+    ['manufacturing','recipes'],
+    ['manufacturing','orders'],
+    ['integrations','ppob'],
+    ['settings','setup'],
+  ]) assert.ok(context.rows.some((row)=>row.workspace===route[0]&&row.view===route[1]), `missing contextual route ${route.join('/')}`);
 });
 
 test('P5 V4.11 Admin replaces override accretion with one tokenized layout authority',()=>{

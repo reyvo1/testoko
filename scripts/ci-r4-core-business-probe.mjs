@@ -41,6 +41,9 @@ const [productsPage, warehouses, manifest] = await Promise.all([
 let product = (productsPage?.items || []).find((item) => !item.trackBatch && !item.trackSerial) || productsPage?.items?.[0];
 const warehouse = warehouses?.[0];
 if (!warehouse?.id) throw new Error('Gudang bootstrap R4 runtime tidak tersedia.');
+const unitRefs = await request('/master-data/references?type=UNIT', { token });
+const baseUnitCode = (Array.isArray(unitRefs) ? unitRefs : []).find((row) => row?.isActive !== false && !row?.branchId && String(row?.code || '').trim())?.code;
+if (!baseUnitCode) throw new Error('Master UNIT aktif tingkat perusahaan tidak tersedia untuk fixture R4.');
 if (!product?.id) {
   product = await request('/products', {
     method: 'POST',
@@ -48,7 +51,7 @@ if (!product?.id) {
     body: {
       sku: `R4SKU${String(stamp).slice(-8)}`,
       name: `R4 Runtime Product ${stamp}`,
-      unit: 'pcs',
+      unit: baseUnitCode,
       productType: 'PHYSICAL',
       trackBatch: false,
       trackExpiry: false,

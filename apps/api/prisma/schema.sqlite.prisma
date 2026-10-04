@@ -194,6 +194,8 @@ enum InventoryMovementType {
   ADJUSTMENT_OUT
   LOCATION_MOVE_IN
   LOCATION_MOVE_OUT
+  PRODUCTION_CONSUME
+  PRODUCTION_OUTPUT
 }
 
 enum InventoryCondition {
@@ -201,6 +203,23 @@ enum InventoryCondition {
   DAMAGED
   QUARANTINE
   LOST
+}
+
+enum ProductionOrderStatus {
+  DRAFT
+  RELEASED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DigitalServiceTransactionStatus {
+  QUEUED
+  PROCESSING
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
 }
 
 enum SaleChannel {
@@ -259,6 +278,11 @@ model Company {
   categories Category[]
   purchaseRequests PurchaseRequest[]
   orderReturns OrderReturn[]
+  productionRecipes ProductionRecipe[]
+  productionOrders ProductionOrder[]
+  digitalServiceProducts DigitalServiceProduct[]
+  digitalServiceTransactions DigitalServiceTransaction[]
+  staffMemos StaffMemo[]
 }
 
 model Branch {
@@ -281,6 +305,9 @@ model Branch {
   productPrices ProductPrice[]
   purchaseRequests PurchaseRequest[]
   orderReturns OrderReturn[]
+  productionOrders ProductionOrder[]
+  digitalServiceTransactions DigitalServiceTransaction[]
+  staffMemos StaffMemo[]
 }
 
 model Warehouse {
@@ -303,6 +330,7 @@ model Warehouse {
   orders         Order[]
   purchaseRequests PurchaseRequest[]
   orderReturns OrderReturn[]
+  productionOrders ProductionOrder[]
   @@index([branchId])
 }
 
@@ -331,6 +359,9 @@ model User {
   cashierShifts CashierShift[]
   sessions       AuthSession[]
   passwordResetTokens PasswordResetToken[]
+  createdProductionOrders ProductionOrder[]
+  requestedDigitalServiceTransactions DigitalServiceTransaction[]
+  staffMemos StaffMemo[]
 }
 
 model PasswordResetToken {
@@ -433,9 +464,10 @@ model Product {
   barcode            String?               @unique
   name               String
   description        String?
-  unit               String                @default("pcs")
+  unit               String
   costPrice          Decimal
   salePrice          Decimal
+  retailCeilingPrice Decimal?
   minStock           Int                   @default(0)
   productType       String                @default("PHYSICAL")
   taxCategoryCode   String?
@@ -469,10 +501,95 @@ model Product {
   favorites          ProductFavorite[]
   reviews            ProductReview[]
   orderReturnItems   OrderReturnItem[]
+  productionOutputs  ProductionRecipe[] @relation("ProductionRecipeOutput")
+  recipeComponents   ProductionRecipeItem[] @relation("ProductionRecipeComponent")
+  productionOrderComponents ProductionOrderComponent[] @relation("ProductionOrderComponentProduct")
   @@index([companyId, isActive, name, id])
   @@index([companyId, sku])
   @@index([isActive, name, id])
   @@index([createdAt, id])
+}
+
+model ProductionRecipe {
+  id              String   @id @default(uuid())
+  companyId       String
+  code            String
+  name            String
+  outputProductId String
+  outputQtyPerBatch Int
+  version         Int      @default(1)
+  notes           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  company         Company  @relation(fields: [companyId], references: [id])
+  outputProduct   Product  @relation("ProductionRecipeOutput", fields: [outputProductId], references: [id])
+  items           ProductionRecipeItem[]
+  orders          ProductionOrder[]
+  @@unique([companyId, code, version])
+  @@index([companyId, isActive, name])
+  @@index([outputProductId])
+}
+
+model ProductionRecipeItem {
+  id                 String   @id @default(uuid())
+  recipeId           String
+  componentProductId String
+  quantityPerBatch   Int
+  wastePct           Decimal  @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  recipe             ProductionRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  componentProduct   Product @relation("ProductionRecipeComponent", fields: [componentProductId], references: [id])
+  @@unique([recipeId, componentProductId])
+  @@index([componentProductId])
+}
+
+model ProductionOrder {
+  id               String   @id @default(uuid())
+  companyId        String
+  branchId         String
+  warehouseId      String
+  recipeId         String
+  createdById      String
+  number           String   @unique
+  status           ProductionOrderStatus @default(DRAFT)
+  batchCount       Int
+  plannedOutputQty Int
+  actualOutputQty  Int?
+  totalCost        Decimal?
+  notes            String?
+  releasedAt       DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company @relation(fields: [companyId], references: [id])
+  branch           Branch @relation(fields: [branchId], references: [id])
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+  recipe           ProductionRecipe @relation(fields: [recipeId], references: [id])
+  createdBy        User @relation(fields: [createdById], references: [id])
+  components       ProductionOrderComponent[]
+  @@index([companyId, branchId, status, createdAt])
+  @@index([warehouseId, status])
+  @@index([recipeId])
+}
+
+model ProductionOrderComponent {
+  id          String   @id @default(uuid())
+  orderId     String
+  productId   String
+  plannedQty  Int
+  actualQty   Int?
+  unitCost    Decimal?
+  totalCost   Decimal?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  order       ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product @relation("ProductionOrderComponentProduct", fields: [productId], references: [id])
+  @@unique([orderId, productId])
+  @@index([productId])
 }
 
 model Supplier {
@@ -1097,6 +1214,26 @@ model AuditLog {
 }
 
 
+model StaffMemo {
+  id           String   @id @default(uuid())
+  companyId    String
+  branchId     String
+  userId       String
+  operationKey String
+  requestHash  String
+  title        String
+  body         String
+  isPinned     Boolean  @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  company      Company  @relation(fields: [companyId], references: [id])
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, branchId, operationKey])
+  @@index([companyId, branchId, userId, archivedAt, isPinned, updatedAt])
+}
+
 enum FeatureScope {
   GLOBAL
   COMPANY
@@ -1114,6 +1251,7 @@ enum IntegrationType {
   ANALYTICS
   IDENTITY
   DEVICE
+  PPOB
   CUSTOM
 }
 
@@ -1391,7 +1529,72 @@ model IntegrationConnection {
   lastError        String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
+  digitalServiceProducts DigitalServiceProduct[]
+  digitalServiceTransactions DigitalServiceTransaction[]
   @@unique([companyId, branchId, type, provider, name])
+}
+
+model DigitalServiceProduct {
+  id                 String   @id @default(uuid())
+  companyId          String
+  integrationId      String
+  providerSku        String
+  name               String
+  category           String
+  brand              String?
+  type               String?
+  sellerName         String?
+  kind               String   @default("PREPAID")
+  costPrice          Decimal?
+  salePrice          Decimal
+  buyerProductStatus Boolean  @default(true)
+  sellerProductStatus Boolean @default(true)
+  unlimitedStock     Boolean  @default(false)
+  stock              Int?
+  active             Boolean  @default(true)
+  metadata           Json?
+  syncedAt           DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  company            Company @relation(fields: [companyId], references: [id])
+  integration        IntegrationConnection @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  @@unique([integrationId, providerSku])
+  @@index([companyId, active, category, brand])
+}
+
+model DigitalServiceTransaction {
+  id             String   @id @default(uuid())
+  companyId      String
+  branchId       String
+  integrationId  String
+  requestedById  String
+  providerSku    String
+  customerNo     String
+  number         String   @unique
+  idempotencyKey String
+  kind           String   @default("PREPAID")
+  sellingPrice   Decimal
+  maxPrice       Decimal?
+  costAmount     Decimal?
+  status         DigitalServiceTransactionStatus @default(QUEUED)
+  providerRef    String?
+  providerRc     String?
+  message        String?
+  serialNumber   String?
+  requestData    Json?
+  responseData   Json?
+  attempts       Int      @default(0)
+  lastCheckedAt  DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  company        Company @relation(fields: [companyId], references: [id])
+  branch         Branch @relation(fields: [branchId], references: [id])
+  integration    IntegrationConnection @relation(fields: [integrationId], references: [id])
+  requestedBy    User @relation(fields: [requestedById], references: [id])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, branchId, status, createdAt])
+  @@index([integrationId, providerSku])
 }
 
 model ExternalMapping {

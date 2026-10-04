@@ -23,11 +23,9 @@ const requirePass = (id) => {
   return check;
 };
 
-const expectedWorkspaces = [
-  'Dashboard', 'Penjualan & Order', 'Pembelian', 'Persediaan', 'Kontrol Operasional',
-  'Produk & Master Data', 'Keuangan', 'Laporan & Analitik', 'HRIS & Payroll', 'Aset & Armada',
-  'Forecast & Otomasi', 'Integrasi & Notifikasi', 'Tenant & Organisasi', 'Pengaturan & Akses',
-];
+const visualMap = JSON.parse(fs.readFileSync(path.join(root, 'config', 'p5-visual-surface-map.json'), 'utf8'));
+const expectedWorkspaces = (visualMap.admin?.primaryWorkspaces || []).map((workspace) => workspace.label);
+if (!expectedWorkspaces.length) throw new Error('R7 visual workspace authority kosong.');
 
 const employeeResponsive = requirePass('EMPLOYEE_PORTAL_RESPONSIVE');
 const responsive = [
@@ -70,7 +68,7 @@ const result = {
   status: 'PASS',
   sourceIdentity: current,
   checks: {
-    primaryNavigation: expectedWorkspaces.length === 14,
+    primaryNavigation: runtimeWorkspaces.length === expectedWorkspaces.length && expectedWorkspaces.every((label) => runtimeWorkspaces.includes(label)),
     contextualNavigation: true,
     canonicalCharts: true,
     adminResponsive: true,

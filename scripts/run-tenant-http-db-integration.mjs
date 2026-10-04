@@ -230,8 +230,12 @@ async function main() {
     state.userIds.push(userA.id, userB.id, noBranch.id);
     await prisma.userRole.createMany({ data: state.userIds.map((userId) => ({ userId, roleId: role.id })) });
 
-    const productA = await prisma.product.create({ data: { companyId: companyA.id, sku: `S19-PA-${suffix}`, name: 'Stage19 Product A', costPrice: 10, salePrice: 15 } });
-    const productB = await prisma.product.create({ data: { companyId: companyB.id, sku: `S19-PB-${suffix}`, name: 'Stage19 Product B', costPrice: 20, salePrice: 30 } });
+    const unitA = await prisma.masterReference.create({ data: { companyId: companyA.id, branchId: null, type: 'UNIT', code: `S19UNIT${suffix}`, name: 'Stage19 Base Unit', isActive: true } });
+    const unitB = await prisma.masterReference.create({ data: { companyId: companyB.id, branchId: null, type: 'UNIT', code: `S19UNIT${suffix}`, name: 'Stage19 Base Unit', isActive: true } });
+    state.masterReferenceIds.push(unitA.id, unitB.id);
+
+    const productA = await prisma.product.create({ data: { companyId: companyA.id, sku: `S19-PA-${suffix}`, name: 'Stage19 Product A', unit: unitA.code, costPrice: 10, salePrice: 15 } });
+    const productB = await prisma.product.create({ data: { companyId: companyB.id, sku: `S19-PB-${suffix}`, name: 'Stage19 Product B', unit: unitB.code, costPrice: 20, salePrice: 30 } });
     state.productIds.push(productA.id, productB.id);
     await prisma.inventory.createMany({ data: [
       { warehouseId: warehouseA.id, productId: productA.id, quantity: 20, available: 20 },

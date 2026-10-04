@@ -22,10 +22,14 @@ const v4Audit=read('scripts/audit-p5-v4-total-ui-rebuild.mjs');
 const fullSystem=read('.github/workflows/full-system-simulation.yml');
 const fullUat=read('.github/workflows/toko360-full-uat.yml');
 const accountingWorkspace=read('apps/admin/app/modules/accounting.tsx');
+const adminNavigation=read('apps/admin/app/navigation.ts');
 
 test('P5 screenshot matrix still covers all four products at desktop tablet and mobile widths',()=>{
-  assert.equal(visualMap.admin.primaryWorkspaces.length,14);
-  assert.equal(visualMap.admin.representativeContextualRoutes.length,13);
+  const navigationRows=[...adminNavigation.matchAll(/\{ key: '([^']+)', route: '([^']+)', label: '([^']+)'/g)].map((match)=>({key:match[1],route:match[2],label:match[3]}));
+  assert.deepEqual(visualMap.admin.primaryWorkspaces.map((item)=>item.route),navigationRows.map((item)=>item.route));
+  assert.equal(visualMap.admin.representativeContextualRoutes.length,Math.max(0,navigationRows.length-1));
+  assert.ok(visualMap.admin.primaryWorkspaces.some((item)=>item.route==='/manufacturing'&&item.label==='Produksi'));
+  assert.ok(visualMap.admin.representativeContextualRoutes.includes('/manufacturing/recipes'));
   assert.equal(visualMap.pos.views.length,4);
   assert.equal(visualMap.storefront.views.length,5);
   assert.equal(visualMap.employeePortal.views.length,7);

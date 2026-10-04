@@ -954,7 +954,7 @@
     "P4 exact-runtime closure requires ci:p4:probe PASS in both heavy GitHub workflows and aggregate evidence on the same source fingerprint with productionTouched=false.",
     "P4 FULL is runtime-verified on exact-source commit d305ade2050765de86c7f5ef1c54eb7426c5e25b / fingerprint cf6165fcc74e94abb3866230aa1764cee9487d4de6b630377465d20bda7d9246; P4 source is frozen absent regression evidence.",
     "P5 is one atomic visual-product wave across Admin, POS, Storefront and Employee Portal; global CSS-only or marker-only closure is forbidden.",
-    "P5 automated closure requires audit:p5:visual plus exact-source ci:p5:probe screenshot evidence for 14 Admin primary workspaces, 13 Admin contextual routes, 4 POS views, 5 Storefront views and 7 Employee Portal views at 1440/1024/390 geometry.",
+    "P5 automated closure requires audit:p5:visual plus exact-source ci:p5:probe screenshot evidence for 15 Admin primary workspaces, 14 Admin contextual routes, 4 POS views, 5 Storefront views and 7 Employee Portal views at 1440/1024/390 geometry.",
     "P5 automated PASS does not replace human visual acceptance; A-07 remains IMPLEMENTED_RUNTIME_PENDING until exact-source automated evidence is green and human UI acceptance is recorded separately.",
     "P5 V1 exact-source automated Browser/R7/P5/R8/aggregate evidence is green on commit af7cb87bbdc1ee898f785a072993e79877326b27 / fingerprint f7f2c6bf6f1a22c8df42afbe0cda001e0f926a09b9b2a33e27650eb2fc58bd3e, but human visual acceptance rejected the real runtime presentation; automation does not override that rejection.",
     "P5 V2 is one atomic presentation-only wave. It must keep business logic/API/domain behavior unchanged while giving Admin, POS, Storefront and Employee Portal visibly distinct art direction, layered glass/elevation, clearer navigation hierarchy, and non-black customer/self-service surfaces.",
@@ -974,7 +974,7 @@
     "P5 V2 human rework visibly differentiates the four products and removes the all-black/flat/stacked-menu failure observed in the runtime video.",
     "P5 V2 keeps Browser UAT responsive geometry green while adding glass/elevation and light Storefront/Employee themes without decorative gradients.",
     "P5 V4 source audit passes with four distinct product identities, direct Tailwind shell utilities, replacement compatibility layers, controlled brand/depth gradients, no legacy version override selectors and no horizontal page scroll.",
-    "P5 V4 preserves the existing Browser screenshot matrix for 14 Admin primary, 13 Admin contextual, 4 POS, 5 Storefront and 7 Employee Portal views at 1440/1024/390.",
+    "P5 V4 preserves the existing Browser screenshot matrix for 15 Admin primary, 14 Admin contextual, 4 POS, 5 Storefront and 7 Employee Portal views at 1440/1024/390.",
     "P5 V4 human visual acceptance is explicitly recorded only after the local runtime is visibly accepted and exact-source automation passes; only then may P6 start."
   ],
   "testPlan": [

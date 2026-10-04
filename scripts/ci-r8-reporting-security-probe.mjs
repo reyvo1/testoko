@@ -95,7 +95,10 @@ try {
   const inventory = await prisma.inventory.create({ data: { warehouseId: warehouse.id, productId: product.id, quantity: 2, reserved: 0, available: 2 } });
   artifacts.inventoryId = inventory.id;
   const preview = await request('/reports/daily-digest/preview', { token });
-  if (!String(preview?.text || '').includes(productName) || !String(preview?.text || '').includes('sisa 2 (min 10)')) throw new Error('Low-stock digest tidak membandingkan available terhadap product.minStock pada runtime.');
+  const expectedLowStockLine = `sisa 2 ${baseUnit.code} (min 10 ${baseUnit.code})`;
+  if (!String(preview?.text || '').includes(productName) || !String(preview?.text || '').includes(expectedLowStockLine)) {
+    throw new Error(`Low-stock digest tidak membandingkan available/minStock dalam base unit dinamis. expected=${expectedLowStockLine}`);
+  }
   if (!(Number(preview?.summary?.lowStockCount) >= 1)) throw new Error('Low-stock summary count tidak mencerminkan fixture R8.');
 
   result = {

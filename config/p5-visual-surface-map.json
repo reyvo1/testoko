@@ -31,6 +31,11 @@
         "label": "Pembelian"
       },
       {
+        "route": "/manufacturing",
+        "key": "manufacturing",
+        "label": "Produksi"
+      },
+      {
         "route": "/inventory-control",
         "key": "inventory-control",
         "label": "Persediaan"
@@ -89,6 +94,7 @@
     "representativeContextualRoutes": [
       "/commerce/orders",
       "/procurement/requests",
+      "/manufacturing/recipes",
       "/inventory-control/overview",
       "/operations-control/inspections",
       "/master-data/catalog",

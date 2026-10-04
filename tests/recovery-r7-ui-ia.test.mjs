@@ -14,9 +14,11 @@ const full = read('.github/workflows/full-system-simulation.yml');
 const uat = read('.github/workflows/toko360-full-uat.yml');
 const pkg = JSON.parse(read('package.json'));
 const matrix = JSON.parse(read('config/recovery-finding-matrix.json'));
+const visualMap = JSON.parse(read('config/p5-visual-surface-map.json'));
 
-test('R7 keeps one primary + one contextual Admin navigation layer with 14 explicit workspaces', () => {
-  const labels = ['Dashboard','Penjualan & Order','Pembelian','Persediaan','Kontrol Operasional','Produk & Master Data','Keuangan','Laporan & Analitik','HRIS & Payroll','Aset & Armada','Forecast & Otomasi','Integrasi & Notifikasi','Tenant & Organisasi','Pengaturan & Akses'];
+test('R7 keeps one primary + one contextual Admin navigation layer for every configured workspace', () => {
+  const labels = visualMap.admin.primaryWorkspaces.map((item) => item.label);
+  assert.ok(labels.includes('Produksi'));
   for (const label of labels) assert.ok(navigation.includes(`label: '${label}'`), label);
   assert.match(shell, /className={`adminV4Sidebar/);
   assert.match(shell, /<nav className="adminPrimaryNavigation"/);
@@ -56,8 +58,9 @@ test('R7 browser UAT proves the V4.6 reference dashboard and responsive runtime 
   assert.match(browser, /EMPLOYEE_ALL_SELF_SERVICE_ROUTES/);
 });
 
-test('R7 exact-source probe requires 14 workspaces, 13 non-Dashboard contextual views, screenshots and three viewport widths', () => {
+test('R7 exact-source probe requires every visual-authority workspace, contextual coverage, screenshots and three viewport widths', () => {
   for (const marker of ['expectedWorkspaces', 'runtimeWorkspaces', 'EMPLOYEE_PORTAL_RESPONSIVE', 'contextualNavigation', 'canonicalCharts', 'screenshots', '[1440,1024,390]']) assert.ok(probe.includes(marker), marker);
+  assert.match(probe, /p5-visual-surface-map\.json/);
   assert.match(probe, /expectedWorkspaces\.filter\(\(label\) => label !== 'Dashboard'\)/);
   assert.match(probe, /nav\.domainViews\.find\(\(item\) => item\?\.workspace === label\)/);
   assert.match(probe, /evidenceFingerprint !== current\.value/);

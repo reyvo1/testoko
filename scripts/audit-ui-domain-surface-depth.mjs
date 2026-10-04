@@ -152,7 +152,6 @@ if (!/api\('\/platform\/manifest'\)/.test(employeeApp) || !/companyName=\{manife
 if (/NAV\.slice\(0,\s*4\)/.test(employeeShell)) errors.push('employee-portal: mobile navigation hides valid subdomains');
 if (!/NAV\.map\(/.test(employeeShell)) errors.push('employee-portal: complete mobile navigation missing');
 
-if (visualMap.admin.primaryWorkspaces.length !== 14) errors.push('admin: primary workspace count must remain 14');
 if (visualMap.pos.views.length !== 4 || visualMap.storefront.views.length !== 5 || visualMap.employeePortal.views.length !== 7) errors.push('P5 surface matrix changed unexpectedly');
 
 const hiddenControllers = f1.controllerExposure.filter((item) => item.exposure !== 'EXPOSED_OR_PARTIAL');
@@ -207,6 +206,13 @@ for (const app of apps) {
 }
 
 const workspaceRows = [...adminNavigation.matchAll(/\{ key: '([^']+)', route: '([^']+)', label: '([^']+)'/g)].map((match) => ({ key: match[1], route: match[2], label: match[3] }));
+const visualWorkspaceRoutes = visualMap.admin.primaryWorkspaces.map((workspace) => workspace.route);
+const sourceWorkspaceRoutes = workspaceRows.map((workspace) => workspace.route);
+if (JSON.stringify(visualWorkspaceRoutes) !== JSON.stringify(sourceWorkspaceRoutes)) errors.push(`admin: visual primary workspace authority drift map=${visualWorkspaceRoutes.length} source=${sourceWorkspaceRoutes.length}`);
+if (visualMap.admin.representativeContextualRoutes.length !== Math.max(0, workspaceRows.length - 1)) errors.push('admin: every non-Dashboard primary workspace must keep one representative contextual screenshot route');
+for (const workspace of workspaceRows.filter((workspace) => workspace.route !== '/dashboard')) {
+  if (!visualMap.admin.representativeContextualRoutes.some((route) => route.startsWith(`${workspace.route}/`))) errors.push(`admin: missing representative contextual screenshot route for ${workspace.route}`);
+}
 const contextualByWorkspace = {};
 for (const row of adminContextual.rows) (contextualByWorkspace[row.workspace] ??= []).push(row.view);
 if (adminContextual.rows.length !== adminContextual.expectedContextualViews) errors.push(`admin: contextual source mapping ${adminContextual.rows.length}/${adminContextual.expectedContextualViews}`);

@@ -15,7 +15,7 @@ P5 closes audit finding A-07 by rebuilding the four operator/customer products a
 
 - Keep one primary navigation, one contextual navigation, and one content surface.
 - Give every primary workspace a clear title row, workspace identity, tenant/branch context, and intentional content density.
-- Preserve the 14 canonical primary workspaces and verify 13 representative contextual routes.
+- Cover every current canonical primary workspace and one representative contextual route for every non-Dashboard workspace.
 - Tables, panels, stats, forms, and contextual tabs must remain readable at desktop/tablet/mobile widths without uncontrolled horizontal overflow.
 
 ### POS
@@ -43,8 +43,8 @@ P5 closes audit finding A-07 by rebuilding the four operator/customer products a
 
 `config/p5-visual-surface-map.json` is the P5 visual coverage contract:
 
-- Admin primary: 14
-- Admin representative contextual: 13
+- Admin primary: 15
+- Admin representative contextual: 14
 - POS views: 4
 - Storefront views: 5
 - Employee Portal views: 7
@@ -80,8 +80,8 @@ npm run ci:p5:probe
 The probe consumes exact-source `handoff/quality/browser-uat-latest.json` and requires:
 
 - Browser UAT PASS on the current source fingerprint;
-- 14 Admin primary screenshots;
-- 13 Admin contextual screenshots;
+- 15 Admin primary screenshots;
+- 14 Admin contextual screenshots;
 - 4 POS screenshots;
 - 5 Storefront screenshots;
 - 7 authenticated Employee Portal screenshots;

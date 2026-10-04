@@ -30,7 +30,7 @@ A-10 is `RUNTIME_VERIFIED`. Canonical `/returns/*` remains authoritative, legacy
 ## P5 FULL truth
 
 - A-07: `IMPLEMENTED_RUNTIME_PENDING`; P5 is a page-level rebuild, not a global CSS or marker cleanup.
-- Admin: 14 primary workspaces + 13 representative contextual screenshot routes.
+- Admin: 15 primary workspaces + 14 representative contextual screenshot routes.
 - POS: 4 cashier-specific workspaces.
 - Storefront: 5 customer journey views.
 - Employee Portal: 7 authenticated self-service views.

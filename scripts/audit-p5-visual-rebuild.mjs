@@ -27,8 +27,6 @@ const v4Active = v4?.phase === 'P5-V4';
 const controlledGradientsAllowed = v4Active && v4?.decision?.controlledDecorativeGradientsAllowed === true;
 if (map.phase !== 'P5') fail(`visual map phase harus P5, actual=${map.phase}`);
 if (map.baseline?.commit !== 'd305ade2050765de86c7f5ef1c54eb7426c5e25b') fail('baseline P4 commit tidak cocok.');
-if (map.admin?.primaryWorkspaces?.length !== 14) fail(`Admin primary workspace harus 14, actual=${map.admin?.primaryWorkspaces?.length ?? 0}`);
-if (map.admin?.representativeContextualRoutes?.length !== 13) fail(`Admin contextual representative harus 13, actual=${map.admin?.representativeContextualRoutes?.length ?? 0}`);
 if (map.pos?.views?.length !== 4) fail('POS visual view harus 4.');
 if (map.storefront?.views?.length !== 5) fail('Storefront visual view harus 5.');
 if (map.employeePortal?.views?.length !== 7) fail('Employee Portal visual view harus 7.');
@@ -89,8 +87,25 @@ if (v4Active) {
   }
 }
 
-for (const workspace of map.admin.primaryWorkspaces) {
-  if (!sources.navigation.includes(`route: '${workspace.route}'`)) fail(`Admin visual route tidak ada di navigation: ${workspace.route}`);
+const navigationWorkspaces = [...sources.navigation.matchAll(/\{ key: '([^']+)', route: '([^']+)', label: '([^']+)'/g)]
+  .map((match) => ({ key: match[1], route: match[2], label: match[3] }));
+if (!navigationWorkspaces.length) fail('Admin navigation workspace tidak dapat diparse.');
+if (map.admin?.primaryWorkspaces?.length !== navigationWorkspaces.length) {
+  fail(`Admin visual primary coverage drift: map=${map.admin?.primaryWorkspaces?.length ?? 0} navigation=${navigationWorkspaces.length}`);
+}
+const mapRoutes = map.admin.primaryWorkspaces.map((workspace) => workspace.route);
+const navigationRoutes = navigationWorkspaces.map((workspace) => workspace.route);
+if (JSON.stringify(mapRoutes) !== JSON.stringify(navigationRoutes)) {
+  fail(`Admin visual primary route order drift: map=${mapRoutes.join(',')} navigation=${navigationRoutes.join(',')}`);
+}
+const expectedContextualRepresentatives = Math.max(0, navigationWorkspaces.length - 1);
+if (map.admin?.representativeContextualRoutes?.length !== expectedContextualRepresentatives) {
+  fail(`Admin contextual representative coverage drift: map=${map.admin?.representativeContextualRoutes?.length ?? 0} expected=${expectedContextualRepresentatives}`);
+}
+for (const workspace of navigationWorkspaces.filter((workspace) => workspace.route !== '/dashboard')) {
+  if (!map.admin.representativeContextualRoutes.some((route) => route.startsWith(`${workspace.route}/`))) {
+    fail(`Admin workspace belum punya representative contextual screenshot: ${workspace.route}`);
+  }
 }
 for (const route of map.admin.representativeContextualRoutes) {
   const [workspaceRoute, view] = route.split('/').filter(Boolean);

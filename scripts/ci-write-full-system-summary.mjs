@@ -53,6 +53,14 @@ function candidateStatus(candidate, currentSource) {
 export function collectFullSystemSummary(root = process.cwd(), env = process.env) {
   const sourceIdentity = sourceFingerprint(root);
   const current = sourceIdentity.value;
+  const visualMap = readJson(root, 'config/p5-visual-surface-map.json');
+  const expectedP5Screenshots = {
+    adminPrimary: visualMap?.admin?.primaryWorkspaces?.length ?? -1,
+    adminContextual: visualMap?.admin?.representativeContextualRoutes?.length ?? -1,
+    pos: visualMap?.pos?.views?.length ?? -1,
+    storefront: visualMap?.storefront?.views?.length ?? -1,
+    employeePortal: visualMap?.employeePortal?.views?.length ?? -1,
+  };
   const build = readJson(root, 'handoff/quality/build-gate-latest.json');
   const artifact = readJson(root, 'handoff/quality/build-artifact-manifest-latest.json');
   const transport = readJson(root, 'handoff/quality/github-runtime-artifact-transport-latest.json');
@@ -119,9 +127,9 @@ export function collectFullSystemSummary(root = process.cwd(), env = process.env
     r6ScaleAi: gateStatus(r6ScaleAi, current, (v) => v.status === 'PASS' && Object.values(v.checks || {}).every(Boolean)),
     p3Productization: gateStatus(p3Productization, current, (v) => v.status === 'PASS' && v.productionTouched === false && Object.values(v.checks || {}).every(Boolean)),
     p4CanonicalOwnership: gateStatus(p4CanonicalOwnership, current, (v) => v.status === 'PASS' && v.productionTouched === false && Object.values(v.checks || {}).every(Boolean) && v.ownership?.domainCount === 9),
-    p5VisualRebuild: gateStatus(p5VisualRebuild, current, (v) => v.status === 'PASS' && v.productionTouched === false && v.humanAcceptance === 'PENDING' && Object.values(v.checks || {}).every(Boolean) && v.screenshotCounts?.adminPrimary === 14 && v.screenshotCounts?.adminContextual === 13 && v.screenshotCounts?.pos === 4 && v.screenshotCounts?.storefront === 5 && v.screenshotCounts?.employeePortal === 7),
+    p5VisualRebuild: gateStatus(p5VisualRebuild, current, (v) => v.status === 'PASS' && v.productionTouched === false && v.humanAcceptance === 'PENDING' && Object.values(v.checks || {}).every(Boolean) && Object.entries(expectedP5Screenshots).every(([key, expected]) => expected >= 0 && v.screenshotCounts?.[key] === expected)),
     r3Residual: gateStatus(r3Residual, current, (v) => v.status === 'PASS' && Object.values(v.checks || {}).every(Boolean)),
-    r7Ui: gateStatus(r7Ui, current, (v) => v.status === 'PASS' && Object.values(v.checks || {}).every(Boolean) && v.workspaceCount >= 14),
+    r7Ui: gateStatus(r7Ui, current, (v) => v.status === 'PASS' && Object.values(v.checks || {}).every(Boolean) && v.workspaceCount === expectedP5Screenshots.adminPrimary && v.contextualWorkspaceCount >= Math.max(0, expectedP5Screenshots.adminPrimary - 1)),
     r8ReportingSecurity: gateStatus(r8ReportingSecurity, current, (v) => v.status === 'PASS' && Object.values(v.checks || {}).every(Boolean) && v.productionTouched === false),
     r8Release: gateStatus(r8Release, current, (v) => v.status === 'PASS' && v.scenarioCount === 12 && v.productionTouched === false && v.humanStage20 === 'PENDING'),
     notificationProviderProbe: gateStatus(providerProbe, current, (v) => v.status === 'PASS' && v.productionTouched === false && v.simulator?.telegramCalls >= 2 && v.simulator?.whatsappCalls >= 1),

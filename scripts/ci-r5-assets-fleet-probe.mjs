@@ -133,13 +133,23 @@ const driverAssignment = await request('/fleet/driver-assignments', {
 const assignments = await request('/fleet/driver-assignments', { token });
 const assignmentVisible = Array.isArray(assignments) && assignments.some((row) => row.id === driverAssignment.id && row.vehicleId === vehicle.id && row.employeeId === employee.id && row.isPrimary === true);
 if (!assignmentVisible) throw new Error('VehicleDriverAssignment R5 tidak terlihat pada lifecycle list.');
+const assignmentEffectiveFrom = new Date(driverAssignment.effectiveFrom);
+if (Number.isNaN(assignmentEffectiveFrom.getTime()) || assignmentEffectiveFrom > new Date()) {
+  throw new Error(`VehicleDriverAssignment R5 business-date dipersist sebagai future instant: businessDate=${today}, timezone=${companyTimeZone}, effectiveFrom=${driverAssignment.effectiveFrom}.`);
+}
 const vehiclesWithDefault = await request('/fleet/vehicles', { token });
-const primaryDriverProjected = vehiclesWithDefault.some((row) => row.id === vehicle.id && row.defaultDriverEmployeeId === employee.id);
-if (!primaryDriverProjected) throw new Error('Primary VehicleDriverAssignment R5 tidak diproyeksikan ke default driver aktif.');
+const projectedVehicle = vehiclesWithDefault.find((row) => row.id === vehicle.id);
+const primaryDriverProjected = projectedVehicle?.defaultDriverEmployeeId === employee.id;
+if (!primaryDriverProjected) {
+  throw new Error(`Primary VehicleDriverAssignment R5 tidak diproyeksikan ke default driver aktif: businessDate=${today}, timezone=${companyTimeZone}, effectiveFrom=${driverAssignment.effectiveFrom}, defaultDriverEmployeeId=${projectedVehicle?.defaultDriverEmployeeId ?? 'null'}.`);
+}
 await request(`/fleet/driver-assignments/${driverAssignment.id}/end`, { method: 'POST', token, body: {} });
 const assignmentsAfterEnd = await request('/fleet/driver-assignments', { token });
 const assignmentEnded = assignmentsAfterEnd.some((row) => row.id === driverAssignment.id && Boolean(row.effectiveTo));
 if (!assignmentEnded) throw new Error('VehicleDriverAssignment R5 tidak dapat diakhiri.');
+const vehiclesAfterEnd = await request('/fleet/vehicles', { token });
+const primaryDriverCleared = vehiclesAfterEnd.some((row) => row.id === vehicle.id && row.defaultDriverEmployeeId !== employee.id);
+if (!primaryDriverCleared) throw new Error('VehicleDriverAssignment R5 yang diakhiri masih tertinggal sebagai default driver aktif.');
 
 const assigned = await request(`/assets/${asset.id}/assign`, {
   method: 'POST', token,
@@ -163,6 +173,7 @@ const checks = {
   maintenancePlanManagement: planVisible && planTogglePersisted,
   driverAssignmentLifecycle: assignmentVisible && assignmentEnded,
   primaryDriverProjection: primaryDriverProjected,
+  primaryDriverClearOnEnd: primaryDriverCleared,
   assetAssignLifecycle: Boolean(assigned?.id),
   assetTransferRequiresPassedInspection: transferred.locationName === `R5 Transfer Location ${stamp}`,
   assetDisposeLifecycle: disposed.status === 'DISPOSED',

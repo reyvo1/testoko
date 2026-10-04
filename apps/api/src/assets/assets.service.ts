@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { Prisma } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
 import { AuthUser } from '../auth/auth.types';
+import { parseBusinessDateBoundary } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { consumeAvailableLocationStock } from '../common/location-inventory';
 import { PrismaService } from '../prisma/prisma.service';
@@ -112,13 +113,14 @@ export class AssetsService {
   }
 
 
-  private parseBusinessDate(value?: string, endOfDay = false) {
-    const date = value ? new Date(value) : new Date();
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException({ code: 'INVALID_BUSINESS_DATE', message: 'Tanggal transaksi tidak valid.' });
-    }
-    if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) date.setHours(23, 59, 59, 999);
-    return date;
+  private async companyTimeZone(client: DbClient, companyId: string): Promise<string> {
+    const company = await client.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new BadRequestException({ code: 'COMPANY_NOT_FOUND', message: 'Company aset tidak ditemukan.' });
+    return company.timezone;
+  }
+
+  private parseBusinessDate(value: string | undefined, timeZone: string, endOfDay = false) {
+    return parseBusinessDateBoundary(value, new Date(), timeZone, endOfDay);
   }
 
   private countCalendarMonths(start: Date, end: Date, capitalizationDate: Date) {
@@ -240,10 +242,8 @@ export class AssetsService {
       await this.assertWarehouse(tx, user, scope, dto.warehouseId);
       await this.assertEmployee(tx, user, scope, dto.assignedEmployeeId);
       await this.assertSupplier(tx, user, scope, dto.supplierId);
-      const acquisitionDate = dto.acquisitionDate ? new Date(dto.acquisitionDate) : new Date();
-      if (Number.isNaN(acquisitionDate.getTime())) {
-        throw new BadRequestException({ code: 'INVALID_ACQUISITION_DATE', message: 'Tanggal akuisisi aset tidak valid.' });
-      }
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const acquisitionDate = this.parseBusinessDate(dto.acquisitionDate, timeZone);
       const tax = await this.accounting.calculateTax(tx, dto.taxCodeId, dto.acquisitionCost, scope.companyId, acquisitionDate, ['ASSET', 'PURCHASE', 'OTHER']);
       const usefulLife = dto.usefulLifeMonths ?? category.usefulLifeMonths;
       const residual = new Prisma.Decimal(dto.residualValue ?? 0);
@@ -381,7 +381,8 @@ export class AssetsService {
       const vehicle = await this.assertVehicle(tx, user, scope, dto.vehicleId);
       if (vehicle?.assetId && vehicle.assetId !== asset.id) throw new BadRequestException('Kendaraan maintenance tidak terhubung ke aset yang dipilih.');
       await this.assertSupplier(tx, user, scope, dto.supplierId);
-      const scheduledAt = dto.scheduledAt ? this.parseBusinessDate(dto.scheduledAt) : new Date();
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const scheduledAt = dto.scheduledAt ? this.parseBusinessDate(dto.scheduledAt, timeZone) : new Date();
       if (dto.taxCodeId) await this.accounting.calculateTax(tx, dto.taxCodeId, 0, scope.companyId, scheduledAt, ['EXPENSE', 'ASSET', 'OTHER']);
       const row = await tx.maintenanceWorkOrder.create({ data: {
         companyId: scope.companyId,
@@ -423,7 +424,8 @@ export class AssetsService {
       if (inspection && !['PASSED', 'APPROVED'].includes(inspection.status)) {
         throw new BadRequestException('Inspeksi maintenance belum lulus untuk penyelesaian work order.');
       }
-      const completedAt = this.parseBusinessDate(dto.completedAt);
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const completedAt = this.parseBusinessDate(dto.completedAt, timeZone);
       const paymentMode = (dto.paymentMode ?? 'CASH').toUpperCase();
       if (!['CASH', 'BANK', 'CREDIT'].includes(paymentMode)) throw new BadRequestException('Payment mode maintenance hanya CASH, BANK, atau CREDIT.');
       if (paymentMode === 'CREDIT' && !work.vendorId) throw new BadRequestException('Maintenance kredit wajib memiliki supplier pada work order agar utang dapat direkonsiliasi.');
@@ -569,8 +571,9 @@ export class AssetsService {
   async runDepreciation(dto: RunDepreciationDto, user: AuthUser) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId, 'AssetDepreciationRun');
-    const start = this.parseBusinessDate(dto.periodStart);
-    const end = this.parseBusinessDate(dto.periodEnd, true);
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
+    const start = this.parseBusinessDate(dto.periodStart, timeZone);
+    const end = this.parseBusinessDate(dto.periodEnd, timeZone, true);
     if (start > end) throw new BadRequestException('Periode depresiasi tidak valid.');
     return this.prisma.$transaction(async (tx) => {
       const overlapping = await tx.assetDepreciationRun.findFirst({
@@ -712,10 +715,11 @@ export class AssetsService {
       const template = await this.prisma.inspectionTemplate.findFirst({ where: { id: dto.checklistTemplateId, companyId: scope.companyId, status: 'ACTIVE' } });
       if (!template) return this.denyTenantAccess(this.prisma, user, scope, 'InspectionTemplate', dto.checklistTemplateId);
     }
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
     const row = await this.prisma.assetMaintenancePlan.create({ data: {
       companyId: scope.companyId, assetId: asset.id, code: dto.code.trim(), name: dto.name.trim(), scheduleType: dto.scheduleType.trim(),
       intervalDays: dto.intervalDays, intervalOdometer: dto.intervalOdometer,
-      nextDueDate: dto.nextDueDate ? this.parseBusinessDate(dto.nextDueDate) : undefined, nextDueOdometer: dto.nextDueOdometer,
+      nextDueDate: dto.nextDueDate ? this.parseBusinessDate(dto.nextDueDate, timeZone) : undefined, nextDueOdometer: dto.nextDueOdometer,
       checklistTemplateId: dto.checklistTemplateId, autoCreateWorkOrder: dto.autoCreateWorkOrder ?? true, isActive: dto.isActive ?? true,
       metadata: dto.metadata as Prisma.InputJsonValue | undefined,
     } });
@@ -739,9 +743,10 @@ export class AssetsService {
       const template = await this.prisma.inspectionTemplate.findFirst({ where: { id: dto.checklistTemplateId, companyId: scope.companyId, status: 'ACTIVE' } });
       if (!template) return this.denyTenantAccess(this.prisma, user, scope, 'InspectionTemplate', dto.checklistTemplateId);
     }
+    const timeZone = await this.companyTimeZone(this.prisma, scope.companyId);
     const row = await this.prisma.assetMaintenancePlan.update({ where: { id }, data: {
       name: dto.name?.trim(), scheduleType: dto.scheduleType?.trim(), intervalDays: dto.intervalDays, intervalOdometer: dto.intervalOdometer,
-      nextDueDate: dto.nextDueDate ? this.parseBusinessDate(dto.nextDueDate) : undefined, nextDueOdometer: dto.nextDueOdometer,
+      nextDueDate: dto.nextDueDate ? this.parseBusinessDate(dto.nextDueDate, timeZone) : undefined, nextDueOdometer: dto.nextDueOdometer,
       checklistTemplateId: dto.checklistTemplateId, autoCreateWorkOrder: dto.autoCreateWorkOrder, isActive: dto.isActive,
       metadata: dto.metadata as Prisma.InputJsonValue | undefined,
     } });
@@ -804,7 +809,8 @@ export class AssetsService {
       });
       if (previousTransfer) return tx.asset.findUniqueOrThrow({ where: { id: asset.id } });
       if (!dto.targetWarehouseId && !dto.targetEmployeeId && !dto.targetLocationName) throw new BadRequestException('Tujuan transfer aset belum diisi.');
-      const transferredAt = this.parseBusinessDate(dto.transferredAt);
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const transferredAt = this.parseBusinessDate(dto.transferredAt, timeZone);
       await tx.assetAssignment.updateMany({
         where: { assetId: asset.id, companyId: scope.companyId, returnedAt: null },
         data: { returnedAt: transferredAt, returnInspectionId: inspection.id, notes: dto.notes },
@@ -854,7 +860,8 @@ export class AssetsService {
       const proceeds = new Prisma.Decimal(dto.proceeds ?? 0);
       if (mode === 'SALE' && proceeds.lessThanOrEqualTo(0)) throw new BadRequestException('Penjualan aset membutuhkan nilai proceeds lebih dari nol.');
       if (mode === 'DISPOSAL' && proceeds.greaterThan(0)) throw new BadRequestException('Gunakan mode SALE jika pelepasan aset menghasilkan proceeds.');
-      const disposedAt = this.parseBusinessDate(dto.disposedAt);
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const disposedAt = this.parseBusinessDate(dto.disposedAt, timeZone);
       const settlementMode = (dto.settlementMode ?? 'CASH').toUpperCase();
       if (mode === 'SALE' && !['CASH', 'BANK'].includes(settlementMode)) throw new BadRequestException('Settlement penjualan aset hanya CASH atau BANK. Penjualan kredit memerlukan workflow customer receivable yang belum diaktifkan untuk disposal aset.');
       const tax = mode === 'SALE'

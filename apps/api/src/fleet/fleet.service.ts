@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { Prisma } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
 import { AuthUser } from '../auth/auth.types';
+import { parseBusinessDateBoundary } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloseTripDto, CompleteStopDto, ConfirmLoadingDto, CreateDeliveryTripDto, CreateVehicleDriverAssignmentDto, CreateVehicleDto, DispatchTripDto, EndVehicleDriverAssignmentDto, RecordFuelDto } from './dto/fleet.dto';
@@ -23,10 +24,14 @@ export class FleetService {
     return { companyId: user.companyId, branchId: user.branchId };
   }
 
-  private parseBusinessDate(value?: string) {
-    const date = value ? new Date(value) : new Date();
-    if (Number.isNaN(date.getTime())) throw new BadRequestException('Tanggal transaksi armada tidak valid.');
-    return date;
+  private async companyTimeZone(client: DbClient, companyId: string): Promise<string> {
+    const company = await client.company.findUnique({ where: { id: companyId }, select: { timezone: true } });
+    if (!company) throw new BadRequestException('Company armada tidak ditemukan.');
+    return company.timezone;
+  }
+
+  private parseBusinessDate(value: string | undefined, timeZone: string, endOfDay = false) {
+    return parseBusinessDateBoundary(value, new Date(), timeZone, endOfDay);
   }
 
   private async denyTenantAccess(
@@ -234,8 +239,9 @@ export class FleetService {
       const vehicle = await this.scopedVehicle(tx, user, scope, dto.vehicleId);
       const employee = await this.assertEmployee(tx, user, scope, dto.employeeId);
       if (!employee) throw new BadRequestException('Pengemudi tidak ditemukan.');
-      const effectiveFrom = this.parseBusinessDate(dto.effectiveFrom);
-      const effectiveTo = dto.effectiveTo ? this.parseBusinessDate(dto.effectiveTo) : undefined;
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const effectiveFrom = this.parseBusinessDate(dto.effectiveFrom, timeZone);
+      const effectiveTo = dto.effectiveTo ? this.parseBusinessDate(dto.effectiveTo, timeZone, true) : undefined;
       if (effectiveTo && effectiveTo < effectiveFrom) throw new BadRequestException('Akhir penugasan pengemudi tidak boleh sebelum tanggal mulai.');
       const overlap = await tx.vehicleDriverAssignment.findFirst({
         where: { companyId: scope.companyId, vehicleId: vehicle.id, employeeId: employee.id, effectiveFrom: { lte: effectiveTo ?? new Date('9999-12-31T23:59:59.999Z') }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: effectiveFrom } }] },
@@ -270,7 +276,8 @@ export class FleetService {
       const assignment = await tx.vehicleDriverAssignment.findFirst({ where: { id, companyId: scope.companyId } });
       if (!assignment) return this.denyTenantAccess(tx, user, scope, 'VehicleDriverAssignment', id);
       const vehicle = await this.scopedVehicle(tx, user, scope, assignment.vehicleId);
-      const effectiveTo = this.parseBusinessDate(dto.effectiveTo);
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const effectiveTo = this.parseBusinessDate(dto.effectiveTo, timeZone, true);
       if (effectiveTo < assignment.effectiveFrom) throw new BadRequestException('Akhir penugasan pengemudi tidak boleh sebelum tanggal mulai.');
       if (assignment.effectiveTo && assignment.effectiveTo <= effectiveTo) return assignment;
       const row = await tx.vehicleDriverAssignment.update({ where: { id }, data: { effectiveTo, notes: dto.notes ?? assignment.notes } });
@@ -713,7 +720,8 @@ export class FleetService {
         trip = await this.scopedTrip(tx, user, scope, dto.tripId);
         if (trip.vehicleId !== vehicle.id) throw new BadRequestException('Trip tidak menggunakan kendaraan yang dipilih.');
       }
-      const transactionDate = this.parseBusinessDate(dto.transactionDate);
+      const timeZone = await this.companyTimeZone(tx, scope.companyId);
+      const transactionDate = this.parseBusinessDate(dto.transactionDate, timeZone);
       if (dto.odometer !== undefined && dto.odometer < vehicle.currentOdometer) {
         throw new BadRequestException('Odometer transaksi BBM tidak boleh lebih kecil dari odometer kendaraan saat ini.');
       }

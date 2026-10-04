@@ -73,6 +73,25 @@ test('R5 F32 implements VehicleDriverAssignment lifecycle and primary-driver pro
   assert.match(fleetService, /END_VEHICLE_DRIVER_ASSIGNMENT/);
 });
 
+
+test('R5 business-date input is interpreted in company timezone before active projection/accounting', () => {
+  for (const source of [fleetService, assetService]) {
+    assert.match(source, /parseBusinessDateBoundary/);
+    assert.match(source, /company\.findUnique\(\{ where: \{ id: companyId \}, select: \{ timezone: true \} \}\)/);
+    assert.doesNotMatch(source, /private parseBusinessDate[\s\S]{0,400}?new Date\(value\)/);
+  }
+  assert.match(fleetService, /effectiveFrom = this\.parseBusinessDate\(dto\.effectiveFrom, timeZone\)/);
+  assert.match(fleetService, /effectiveTo = dto\.effectiveTo \? this\.parseBusinessDate\(dto\.effectiveTo, timeZone, true\) : undefined/);
+  assert.match(fleetService, /effectiveTo = this\.parseBusinessDate\(dto\.effectiveTo, timeZone, true\)/);
+  assert.match(fleetService, /transactionDate = this\.parseBusinessDate\(dto\.transactionDate, timeZone\)/);
+  assert.match(assetService, /acquisitionDate = this\.parseBusinessDate\(dto\.acquisitionDate, timeZone\)/);
+  assert.match(assetService, /start = this\.parseBusinessDate\(dto\.periodStart, timeZone\)/);
+  assert.match(assetService, /end = this\.parseBusinessDate\(dto\.periodEnd, timeZone, true\)/);
+  assert.match(runtimeProbe, /assignmentEffectiveFrom > new Date\(\)/);
+  assert.match(runtimeProbe, /primaryDriverClearOnEnd/);
+});
+
+
 test('R5 F33 exposes assign transfer dispose in Admin while preserving passed-inspection gate', () => {
   assert.match(adminUi, /\/assets\/\$\{assetAssignForm\.assetId\}\/assign/);
   assert.match(adminUi, /\/assets\/\$\{assetTransferForm\.assetId\}\/transfer/);
@@ -104,6 +123,6 @@ test('R5 exact-source PostgreSQL runtime probe is required by both GitHub workfl
   assert.match(report, /R5 assets\/fleet runtime probe/);
   assert.match(summary, /github-r5-assets-fleet-probe-latest\.json/);
   assert.match(summary, /r5AssetsFleet/);
-  for (const token of ['maintenancePlanManagement','driverAssignmentLifecycle','primaryDriverProjection','assetAssignLifecycle','assetTransferRequiresPassedInspection','assetDisposeLifecycle']) assert.match(runtimeProbe, new RegExp(token));
+  for (const token of ['maintenancePlanManagement','driverAssignmentLifecycle','primaryDriverProjection','primaryDriverClearOnEnd','assetAssignLifecycle','assetTransferRequiresPassedInspection','assetDisposeLifecycle']) assert.match(runtimeProbe, new RegExp(token));
   assert.match(runtimeProbe, /sourceIdentity: sourceFingerprint\(root\)/);
 });

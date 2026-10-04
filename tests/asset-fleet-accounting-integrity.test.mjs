@@ -20,6 +20,7 @@ const pgMigration = read('database/migrations/T360-20260911-asset-fleet-reconcil
 const sqliteMigration = read('database/migrations/T360-20260911-asset-fleet-reconciliation/sqlite-expand.sql');
 
 test('asset acquisition uses business date, supplier-safe AP, and correct cash/bank/credit settlement', () => {
+  assert.match(assets, /const timeZone = await this\.companyTimeZone\(tx, scope\.companyId\);[\s\S]{0,200}const acquisitionDate = this\.parseBusinessDate\(dto\.acquisitionDate, timeZone\)/);
   assert.match(assets, /capitalizationDate: acquisitionDate/);
   assert.match(assets, /businessDate: acquisitionDate/);
   assert.match(assets, /paymentMode === 'CREDIT' && !dto\.supplierId/);
@@ -43,11 +44,11 @@ test('maintenance completion is atomic, inspection-gated, business-dated, and id
   assert.match(assets, /return this\.prisma\.\$transaction\(async \(tx\) =>/);
   assert.match(assets, /if \(work\.status === 'COMPLETED'\) return work/);
   assert.match(assets, /\['PASSED', 'APPROVED'\]\.includes\(inspection\.status\)/);
-  assert.match(assets, /const completedAt = this\.parseBusinessDate\(dto\.completedAt\)/);
+  assert.match(assets, /const timeZone = await this\.companyTimeZone\(tx, scope\.companyId\);[\s\S]{0,200}const completedAt = this\.parseBusinessDate\(dto\.completedAt, timeZone\)/);
   assert.match(assets, /businessDate: completedAt/);
   assert.match(assets, /dto\.odometer < vehicle\.currentOdometer/);
   assert.match(assets, /paymentMode === 'CREDIT' && !work\.vendorId/);
-  assert.match(assets, /scheduledAt = dto\.scheduledAt \? this\.parseBusinessDate\(dto\.scheduledAt\) : new Date\(\)/);
+  assert.match(assets, /const timeZone = await this\.companyTimeZone\(tx, scope\.companyId\);[\s\S]{0,220}scheduledAt = dto\.scheduledAt \? this\.parseBusinessDate\(dto\.scheduledAt, timeZone\) : new Date\(\)/);
 });
 
 test('maintenance parts reconcile physical inventory, batch reservations, and accounting cost', () => {
@@ -107,7 +108,7 @@ test('delivery stop COD is bounded and rolls up to trip summary', () => {
 test('fuel entry is business-dated, traceable, retry-safe, supplier-aware, and odometer-safe', () => {
   assert.match(fleetDto, /transactionDate\?: string/);
   assert.match(fleetDto, /supplierId\?: string/);
-  assert.match(fleet, /const transactionDate = this\.parseBusinessDate\(dto\.transactionDate\)/);
+  assert.match(fleet, /const timeZone = await this\.companyTimeZone\(tx, scope\.companyId\);[\s\S]{0,200}const transactionDate = this\.parseBusinessDate\(dto\.transactionDate, timeZone\)/);
   assert.match(fleet, /calculateTax\(tx, dto\.taxCodeId, base, scope\.companyId, transactionDate/);
   assert.match(fleet, /wajib memiliki receiptNumber atau evidenceReference/);
   assert.match(fleet, /Receipt\/evidence BBM sudah digunakan/);

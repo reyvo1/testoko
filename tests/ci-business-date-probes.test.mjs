@@ -52,3 +52,16 @@ test('R8 remains fail-closed on real R6 evidence and never synthesizes a fallbac
   assert.match(source, /evidence\[id\]\?\.status!=='PASS'/);
   assert.doesNotMatch(source, /R6_FALLBACK|syntheticR6|status:\s*'PASS'.*r6/s);
 });
+test('R5 asset and fleet date-only inputs use company timezone instead of UTC parsing', () => {
+  const fleetService = read('apps/api/src/fleet/fleet.service.ts');
+  const assetService = read('apps/api/src/assets/assets.service.ts');
+  for (const source of [fleetService, assetService]) {
+    assert.match(source, /parseBusinessDateBoundary/);
+    assert.match(source, /select: \{ timezone: true \}/);
+    assert.doesNotMatch(source, /private parseBusinessDate[\s\S]{0,400}?new Date\(value\)/);
+  }
+  assert.match(fleetService, /this\.parseBusinessDate\(dto\.effectiveFrom, timeZone\)/);
+  assert.match(fleetService, /this\.parseBusinessDate\(dto\.effectiveTo, timeZone, true\)/);
+  assert.match(fleetService, /this\.parseBusinessDate\(dto\.transactionDate, timeZone\)/);
+  assert.match(assetService, /this\.parseBusinessDate\(dto\.periodEnd, timeZone, true\)/);
+});

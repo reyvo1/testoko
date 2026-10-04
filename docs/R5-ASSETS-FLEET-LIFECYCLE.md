@@ -52,7 +52,8 @@ Rules:
 - primary-driver periods for the same vehicle cannot overlap;
 - an active primary assignment updates `Vehicle.defaultDriverEmployeeId`;
 - ending the current active primary assignment clears that projection;
-- create/end mutations are audited.
+- create/end mutations are audited;
+- date-only `effectiveFrom`/`effectiveTo` values are company-calendar dates, resolved with `Company.timezone` rather than UTC process midnight; an effective end date is inclusive through the company-local day.
 
 ## F33 — asset lifecycle operator flow
 
@@ -75,7 +76,8 @@ The probe verifies:
 
 - maintenance-plan create/list/update;
 - driver-assignment create/list/end;
-- active primary-driver projection;
+- company-timezone business-date activation for a primary driver, including the UTC/local-day boundary;
+- active primary-driver projection and projection clear after immediate end;
 - asset assignment;
 - inspection-gated asset transfer;
 - inspection-gated asset disposal.

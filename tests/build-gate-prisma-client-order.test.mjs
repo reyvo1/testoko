@@ -47,7 +47,13 @@ test('build gate generates schema-specific PostgreSQL Prisma Client before TypeS
     'gagal dengan ERR_MODULE_NOT_FOUND di checkout bersih');
 });
 
-test('PR CI does not test/build against an ungenerated or SQLite-generated Prisma Client', () => {
-  assert.match(ci, /Generate PostgreSQL Prisma Client for repository tests[\s\S]*npm run db:postgres:generate[\s\S]*npm test/);
+test('PR CI uses SQLite Client and worker artifacts for runtime tests, PostgreSQL Client for production build', () => {
+  const repositoryJob = ci.slice(ci.indexOf('  repository-tests:'), ci.indexOf('  sqlite-integration:'));
+  const postgres = repositoryJob.indexOf('run: npm run db:postgres:generate');
+  const sqlite = repositoryJob.indexOf('run: npm run db:local:generate');
+  const worker = repositoryJob.indexOf('run: npm run build -w @toko360/worker');
+  const testRun = repositoryJob.indexOf('run: npm test');
+  assert.ok(postgres >= 0 && sqlite > postgres, 'SQLite runtime client must be restored after PostgreSQL generation');
+  assert.ok(worker > sqlite && testRun > worker, 'runtime regression requires the SQLite client and real worker transport build');
   assert.match(ci, /npm run db:local:prepare[\s\S]*npm run test:db:smoke[\s\S]*Restore PostgreSQL Prisma Client for production build typing[\s\S]*npm run db:postgres:generate[\s\S]*npm run build/);
 });

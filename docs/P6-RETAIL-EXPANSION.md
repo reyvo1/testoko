@@ -56,3 +56,14 @@ Rollback application first, leave additive columns, disable new retail policies;
 posted inventory/accounting effects use canonical returns/reversals.
 
 P6C/P6D implementation must wait for P6B quality gates; neither is claimed complete.
+
+## P6B runtime checkpoint
+
+Business source `3d8e774a40faa380dc0ad28255203e4556e53466` passed
+[Governance](https://github.com/reyvo1/testoko/actions/runs/37358941375),
+[Full System Simulation](https://github.com/reyvo1/testoko/actions/runs/37358962197)
+and [Full Automated UAT](https://github.com/reyvo1/testoko/actions/runs/37358970410).
+The mandatory P6B PostgreSQL probe and Browser scanner/manual-weight/raster checks
+passed. Auxiliary PR CI exposed an older prerequisite defect: PostgreSQL client
+was used for SQLite tests and worker transport artifacts were absent. Its
+prerequisite repair remains in verification; no job/test is skipped.

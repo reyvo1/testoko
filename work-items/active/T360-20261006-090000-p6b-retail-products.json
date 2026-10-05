@@ -61,10 +61,20 @@
     "docs/adr/ADR-T360-20261006-090000-RETAIL-WEIGHT-KIT.md"
   ],
   "createdAt": "2026-10-06T09:00:00+08:00",
-  "updatedAt": "2026-10-05T18:48:44.627Z",
+  "updatedAt": "2026-10-05T19:04:47.555Z",
   "notes": [
+    "Auxiliary CI prerequisite repair passed focused 24/24 and official stable-source local candidate 1714/1714, lint/build/boot/migration/coverage. Source c261a86b8ed639e11c8f9bd88d012771e9d2ed7487fecd76ec019dcd21c87962. Publish repair and require new exact-commit auxiliary CI and full workflows.",
+    "Exact P6B business source 3d8e774 passed Governance, Full System Simulation and Full Automated UAT, including new PostgreSQL weighted/kit probe and new browser paths. Auxiliary PR CI prerequisite repair is in verification and must not be ignored. P6C implementation waits for this repair closure.",
     "Official stable-source local candidate PASS: 1714/1714 regression, lint, six-app build, API boot, expand SQLite migration, critical UAT source coverage 12/12. Source bc02270a469f8bd74b8392d8ac82e780a49e5b66dc34a454d650565009bd4573. GitHub PostgreSQL/Browser mandatory next; human acceptance separate.",
     "SQLite behavioral tests PASS 8/8 including concurrency, replay, immutable return, order reservation/cancel, nested/physical parent/inactive BOM denial. Official SQLite rehearsal PASS against P6A HEAD. Stable-source local candidate, exact-source PostgreSQL CI and Browser UAT pending.",
     "Local inherited RUST_LOG=warn prevents Prisma CLI scratch auto-creation; RUST_LOG=info fixes it. Use explicit /tmp SQLite TEST target for local candidate gate; do not seed/reset operator database."
-  ]
+  ],
+  "releaseEvidence": {
+    "runtimeCommit": "3d8e774a40faa380dc0ad28255203e4556e53466",
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37358941375",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37358962197",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37358970410",
+    "auxiliaryCiRepair": "pending final source verification",
+    "humanStage20": "PENDING"
+  }
 }

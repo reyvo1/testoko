@@ -67,3 +67,13 @@ The mandatory P6B PostgreSQL probe and Browser scanner/manual-weight/raster chec
 passed. Auxiliary PR CI exposed an older prerequisite defect: PostgreSQL client
 was used for SQLite tests and worker transport artifacts were absent. Its
 prerequisite repair remains in verification; no job/test is skipped.
+
+## Final P6B candidate verification boundary
+
+Candidate `12537b96547f9fd88849fa92902a65cf97d3ec7b` passed full local
+verification (1714 tests, lint, six-app build/boot, migration, coverage) and
+[all auxiliary CI jobs](https://github.com/reyvo1/testoko/actions/runs/37363402348).
+The three final official workflows failed to acquire hosted runners and ran zero
+steps during [Actions incident](https://www.githubstatus.com/incidents/3q1yb5m7ltvb).
+Same-source retries have been requested; final runtime closure remains pending.
+P6C/P6D audit/design documents are preparatory only.

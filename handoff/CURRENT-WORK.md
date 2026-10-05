@@ -1,3 +1,13 @@
+## 2026-10-06 — P6B final gate waiting for hosted runner
+
+- User objective persists: continue verified P6A through P6B, P6C and P6D.
+- Final P6B published candidate: `12537b96547f9fd88849fa92902a65cf97d3ec7b`, PR https://github.com/reyvo1/testoko/pull/1. Local full candidate PASS 1714/1714, lint, six-app build/API boot, migration and critical coverage; source fingerprint `0a5cb03bd41ac8f5bdeee4f51795f754ffa8743405297f85398cefbcd1689757`.
+- Exact candidate auxiliary CI https://github.com/reyvo1/testoko/actions/runs/37363402348 PASS in all three jobs. Governance https://github.com/reyvo1/testoko/actions/runs/37363402271 attempt 1 cancelled before any step; annotation says hosted runner could not acquire the job. Failed-job rerun requested. Full System https://github.com/reyvo1/testoko/actions/runs/37363589397 and Full UAT https://github.com/reyvo1/testoko/actions/runs/37363596627 attempt 1 also cancelled with the same hosted-runner annotation and zero steps; failed-job retries requested for both. All three official retries are pending. Confirmed Actions incident: https://www.githubstatus.com/incidents/3q1yb5m7ltvb.
+- Do not turn queued/infrastructure-cancelled jobs into PASS, skip checks, or begin dependent P6C implementation before the final required gates pass. Earlier full green runs are historical evidence on their own commits.
+- Preparatory audit/design is in `docs/P6C-DESIGN.md` and `docs/P6D-ADAPTER-DESIGN.md`. Neither wave is implemented. Deposit account 2105 assumption corrected: 2105 is existing order advance; customer deposits require separately configured liability. Existing public receipt-number access must be secured before expansion.
+- Selected P6D tax/shipping providers and sandbox configuration remain unconfirmed. Public DJP XML templates were inspected for structure/checksum only, with no sample identities retained in source. Samples are not production certification or statutory XSD validation.
+- Human Stage-20 PENDING; productReady=false; canonical product phase P5. Preserve operator database and use isolated TEST for all rehearsal. Next step: inspect exact final GitHub results, resolve any actual regression, record B runtime closure, then activate C with its own work-item branch/design/migration/tests.
+
 # CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
 
 ## P6B retail expansion — 2026-10-06 (active verification)

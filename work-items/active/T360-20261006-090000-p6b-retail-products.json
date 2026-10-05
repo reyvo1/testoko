@@ -61,8 +61,9 @@
     "docs/adr/ADR-T360-20261006-090000-RETAIL-WEIGHT-KIT.md"
   ],
   "createdAt": "2026-10-06T09:00:00+08:00",
-  "updatedAt": "2026-10-05T19:04:47.555Z",
+  "updatedAt": "2026-10-05T19:25:02.554Z",
   "notes": [
+    "Final worker fixture uses isolated clean checkout and preserves caller build state; focused built-context PASS 5/5, actual absent-dist checkout PASS 3/3. Official final local candidate PASS 1714/1714, lint/build/boot/migration/coverage; source 0a5cb03bd41ac8f5bdeee4f51795f754ffa8743405297f85398cefbcd1689757. Full repo, recovery 48/48 and UI audits PASS. Exact final CI runs pending after publish.",
     "Auxiliary CI prerequisite repair passed focused 24/24 and official stable-source local candidate 1714/1714, lint/build/boot/migration/coverage. Source c261a86b8ed639e11c8f9bd88d012771e9d2ed7487fecd76ec019dcd21c87962. Publish repair and require new exact-commit auxiliary CI and full workflows.",
     "Exact P6B business source 3d8e774 passed Governance, Full System Simulation and Full Automated UAT, including new PostgreSQL weighted/kit probe and new browser paths. Auxiliary PR CI prerequisite repair is in verification and must not be ignored. P6C implementation waits for this repair closure.",
     "Official stable-source local candidate PASS: 1714/1714 regression, lint, six-app build, API boot, expand SQLite migration, critical UAT source coverage 12/12. Source bc02270a469f8bd74b8392d8ac82e780a49e5b66dc34a454d650565009bd4573. GitHub PostgreSQL/Browser mandatory next; human acceptance separate.",

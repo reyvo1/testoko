@@ -1,0 +1,81 @@
+{
+  "id": "T360-20261006-090000",
+  "title": "P6B weighted goods, product gallery and kit consumption",
+  "type": "feature",
+  "module": "master-data",
+  "wave": "W2",
+  "phase": "VERIFICATION",
+  "risk": "HIGH",
+  "owner": "openai",
+  "featureFlag": "product metadata retail policy (default disabled)",
+  "dependencies": [
+    "T360-20261005-154000",
+    "inventory",
+    "accounting-core",
+    "manufacturing",
+    "returns"
+  ],
+  "impacts": {
+    "database": "LOW",
+    "inventory": "HIGH",
+    "accounting": "HIGH",
+    "tax": "LOW",
+    "payment": "LOW",
+    "payroll": "NONE",
+    "sync": "MEDIUM",
+    "security": "MEDIUM",
+    "performance": "LOW"
+  },
+  "businessRules": [
+    "Trusted company/branch context; server-authoritative price, tax, weight and BOM.",
+    "Integer stock in smallest base unit; reject lossy quantity conversion.",
+    "Immutable component snapshots preserve sale/return meaning after BOM edits.",
+    "Use existing idempotency, serializable transaction, location inventory and Accounting Core.",
+    "Policies are opt-in; unsupported nested/tracked kits fail closed."
+  ],
+  "acceptanceCriteria": [
+    "Configured scale labels validate checksum and resolve tenant-owned products; exact base-unit quantity reaches sale/return.",
+    "Admin can save opt-in weighing, media gallery and canonical recipe selection with an operation key.",
+    "POS and Storefront display configured media; POS scans configured weighted labels.",
+    "Kit stock and COGS consume canonical components atomically and returns restore historical components.",
+    "Existing tests and UAT remain fail closed; exact-source runtime evidence required before next wave."
+  ],
+  "testPlan": [
+    "Behavioral scale decoder invalid/checksum/zero/tamper tests.",
+    "Real SQLite kit sale/replay/return/BOM-edit and stock/journal invariants.",
+    "Tenant/permission/idempotency denial and ordinary sale/UOM regressions.",
+    "Workflow/repo validation, dependency-free, lint/build, official audits, local candidate UAT and exact GitHub workflows."
+  ],
+  "migrationPlan": "See docs/P6-RETAIL-EXPANSION.md: additive transaction component snapshot only, no historical backfill, isolated TEST rehearsal and production backup prerequisite.",
+  "rollbackPlan": "Disable new product policies and roll back application; preserve snapshots; canonical return/reversal for posted effects.",
+  "monitoringPlan": "Monitor scale rejection, kit shortages/snapshot drift, location inventory drift, journal balance, retries and queue failures.",
+  "securityNotes": "Product update role/permission and trusted tenant context; bounded media URLs without credentials; no card/device secrets; operation-key receipts and audit.",
+  "documentation": [
+    "docs/P6-RETAIL-EXPANSION.md",
+    "handoff/CURRENT-WORK.md",
+    "config/product-completeness.json",
+    "docs/FEATURE-CATALOG.md",
+    "database/migrations/T360-20261006-p6b-retail-products/README.md",
+    "tests/p6b-retail-products.test.mjs",
+    "scripts/ci-p6b-retail-products-probe.mjs",
+    "docs/adr/ADR-T360-20261006-090000-RETAIL-WEIGHT-KIT.md"
+  ],
+  "createdAt": "2026-10-06T09:00:00+08:00",
+  "updatedAt": "2026-10-05T19:25:02.554Z",
+  "notes": [
+    "Final worker fixture uses isolated clean checkout and preserves caller build state; focused built-context PASS 5/5, actual absent-dist checkout PASS 3/3. Official final local candidate PASS 1714/1714, lint/build/boot/migration/coverage; source 0a5cb03bd41ac8f5bdeee4f51795f754ffa8743405297f85398cefbcd1689757. Full repo, recovery 48/48 and UI audits PASS. Exact final CI runs pending after publish.",
+    "Auxiliary CI prerequisite repair passed focused 24/24 and official stable-source local candidate 1714/1714, lint/build/boot/migration/coverage. Source c261a86b8ed639e11c8f9bd88d012771e9d2ed7487fecd76ec019dcd21c87962. Publish repair and require new exact-commit auxiliary CI and full workflows.",
+    "Exact P6B business source 3d8e774 passed Governance, Full System Simulation and Full Automated UAT, including new PostgreSQL weighted/kit probe and new browser paths. Auxiliary PR CI prerequisite repair is in verification and must not be ignored. P6C implementation waits for this repair closure.",
+    "Official stable-source local candidate PASS: 1714/1714 regression, lint, six-app build, API boot, expand SQLite migration, critical UAT source coverage 12/12. Source bc02270a469f8bd74b8392d8ac82e780a49e5b66dc34a454d650565009bd4573. GitHub PostgreSQL/Browser mandatory next; human acceptance separate.",
+    "SQLite behavioral tests PASS 8/8 including concurrency, replay, immutable return, order reservation/cancel, nested/physical parent/inactive BOM denial. Official SQLite rehearsal PASS against P6A HEAD. Stable-source local candidate, exact-source PostgreSQL CI and Browser UAT pending.",
+    "Local inherited RUST_LOG=warn prevents Prisma CLI scratch auto-creation; RUST_LOG=info fixes it. Use explicit /tmp SQLite TEST target for local candidate gate; do not seed/reset operator database."
+  ],
+  "releaseEvidence": {
+    "runtimeCommit": "3d8e774a40faa380dc0ad28255203e4556e53466",
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37358941375",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37358962197",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37358970410",
+    "auxiliaryCiRepair": "pending final source verification",
+    "humanStage20": "PENDING"
+  }
+}

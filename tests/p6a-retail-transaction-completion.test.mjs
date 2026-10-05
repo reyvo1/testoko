@@ -34,7 +34,10 @@ test('P6A payment schema persists immutable tender/accounting snapshot fields on
       assert.match(payment, new RegExp(`\\b${field}\\b`));
     }
   }
-  assert.ok(migrationOrder.migrations.at(-1)?.includes('T360-20261005-p6a-retail-transaction-completion'), 'P6A expand migration must be registered last');
+  const p6aIndex = migrationOrder.migrations.indexOf('T360-20261005-p6a-retail-transaction-completion');
+  assert.ok(p6aIndex >= 0, 'P6A expand migration must stay registered');
+  const p6bIndex = migrationOrder.migrations.indexOf('T360-20261006-p6b-retail-products');
+  assert.ok(p6bIndex > p6aIndex, 'P6B expansion must follow and preserve P6A');
 });
 
 test('P6A tender methods are master-backed and no longer constrained to the legacy four-code enum', () => {

@@ -1394,6 +1394,47 @@ await waitExpression(cdp, `(() => {
     })()`);
     if (!p6aCartCleared) throw new Error('P6A POS UAT gagal membersihkan keranjang setelah verifikasi tender.');
     await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6A POS cart cleanup');
+    const p6bHost = new URL(apiUrl).hostname;
+    if (!['localhost', '127.0.0.1', '::1'].includes(p6bHost) || !/(GITHUB|LOCAL_UAT|STAGING|CI)/i.test(evidence.environment)) throw new Error('P6B browser fixtures require explicit non-production loopback runtime.');
+    const p6bPost = async (route, body) => {
+      const response = await http(`${apiUrl}${route}`, { method: 'POST', headers: { ...staffAuthHeaders, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const parsed = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(`P6B browser fixture ${route} failed (HTTP ${response.status}).`);
+      return parsed;
+    };
+    const p6bStamp = `${Date.now()}-${process.pid}`;
+    const p6bKey = `22${String(Date.now()).slice(-5)}`;
+    const p6bBody = `${p6bKey}00002`;
+    const p6bSum = [...p6bBody].reduce((sum, digit, index) => sum + Number(digit) * (index % 2 ? 3 : 1), 0);
+    const p6bLabel = p6bBody + (10 - p6bSum % 10) % 10;
+    const p6bProduct = await p6bPost('/products', { sku: `P6B-UAT-${p6bStamp}`, name: `P6B Weighed UAT ${p6bStamp}`, unit: uatUnitCode, costPrice: 2, salePrice: 4, productType: 'PHYSICAL', isActive: true });
+    await p6bPost(`/products/${p6bProduct.id}/retail-config`, { operationKey: `p6b-browser-policy-${p6bStamp}`, policy: { weight: { barcodeKey: p6bKey, baseUnitsPerEncodedUnit: 1 }, gallery: [{ url: '/uat/retail-product.png', alt: 'P6B browser raster fixture' }] } });
+    const p6bWarehouseResponse = await http(`${apiUrl}/inventory/warehouses`, { headers: staffAuthHeaders });
+    const p6bWarehouses = await p6bWarehouseResponse.json();
+    const p6bWarehouse = p6bWarehouses.find((row) => row.branchId === loginBody.user.branchId && row.isDefault) ?? p6bWarehouses.find((row) => row.branchId === loginBody.user.branchId);
+    if (!p6bWarehouseResponse.ok || !p6bWarehouse?.id) throw new Error('P6B browser fixture requires active tenant warehouse.');
+    await ensureStockThroughReceiving(apiUrl, staffAuthHeaders, { product: p6bProduct, warehouse: p6bWarehouse, quantity: 4 });
+    evidence.checks.push({ id: 'P6B_BROWSER_WEIGHT_FIXTURE', status: 'PASS', productId: p6bProduct.id, stockPath: 'production-receiving', productionTouched: false });
+
+    await evaluateValue(cdp, `(() => { const input=document.querySelector('input.search'); if(!input)throw new Error('POS barcode input missing'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(p6bLabel)}); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    // Send Enter immediately: the scanner must resolve the server catalog even before
+    // the debounced search has answered. This catches products beyond the first page.
+    await cdp.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await cdp.call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await waitExpression(cdp, `(() => { const item=[...document.querySelectorAll('.items .item')].find((row)=>(row.textContent||'').includes(${JSON.stringify(p6bProduct.name)})); return Boolean(item && item.querySelector('.qty span')?.textContent==='2' && document.querySelector('.cart')?.getAttribute('data-quote-state')==='ready' && Number(document.querySelector('.cart')?.getAttribute('data-quote-total'))===8); })()`, 'P6B immediate scale scan and authoritative quote', 45000);
+    evidence.checks.push({ id: 'P6B_POS_WEIGHT_LABEL_RUNTIME', status: 'PASS', baseQuantity: 2, authoritativeQuoteTotal: 8, scannerSearchRace: 'server-resolved' });
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan')).click(); return true; })()`);
+    await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6B scanner cart cleanup');
+    await evaluateValue(cdp, `(() => { const input=document.querySelector('input.search'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(p6bProduct.sku)}); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await waitExpression(cdp, `(() => { const button=[...document.querySelectorAll('button.productMain')].find((node)=>(node.textContent||'').includes(${JSON.stringify(p6bProduct.name)})); const image=button?.querySelector('img'); return Boolean(button && !button.disabled && image?.complete && image.naturalWidth>0); })()`, 'P6B POS configured gallery raster', 45000);
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button.productMain')].find((node)=>(node.textContent||'').includes(${JSON.stringify(p6bProduct.name)})).click(); return true; })()`);
+    await waitExpression(cdp, `Boolean([...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Berat '+${JSON.stringify(p6bProduct.name)})))`, 'P6B manual weigh form');
+    await evaluateValue(cdp, `(() => { const label=[...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Berat '+${JSON.stringify(p6bProduct.name)})); const input=label.querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'3'); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'')==='Tambahkan berat').click(); return true; })()`);
+    await waitExpression(cdp, `Boolean(document.querySelector('.items .item .qty span')?.textContent==='3' && document.querySelector('.cart')?.getAttribute('data-quote-state')==='ready' && Number(document.querySelector('.cart')?.getAttribute('data-quote-total'))===12)`, 'P6B manual integer base weight quote', 45000);
+    evidence.checks.push({ id: 'P6B_POS_MANUAL_WEIGHT_GALLERY_RUNTIME', status: 'PASS', baseQuantity: 3, authoritativeQuoteTotal: 12, galleryRasterLoaded: true });
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan')).click(); const input=document.querySelector('input.search'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6B final cart cleanup');
     evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });

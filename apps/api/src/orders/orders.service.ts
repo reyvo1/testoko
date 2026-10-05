@@ -11,6 +11,7 @@ import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { resolveLoyaltyTier } from '../common/loyalty-tier';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { resolveSellingUnitLine } from '../common/transaction-uom';
+import { inventoryLines, kitUnitCost, resolveKitSnapshot } from '../common/retail-kit';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { StorefrontCustomerService } from '../storefront-customer/storefront-customer.service';
@@ -264,6 +265,7 @@ export class OrdersService {
         product: (typeof products)[number];
         line: Prisma.Decimal;
         conversion: Awaited<ReturnType<typeof resolveSellingUnitLine>>;
+        inventoryComponents: Awaited<ReturnType<typeof resolveKitSnapshot>>;
       }>;
       const prepared = [] as Array<{
         productId: string;
@@ -281,6 +283,7 @@ export class OrdersService {
         taxAmount: Prisma.Decimal;
         grossSubtotal: Prisma.Decimal;
         taxCodeId?: string;
+        inventoryComponents?: Prisma.InputJsonValue;
       }>;
 
       for (const input of dto.items) {
@@ -293,17 +296,14 @@ export class OrdersService {
           customerIdentity?.customer.customerType ?? 'RETAIL',
           transactionAt,
         );
-        const inventory = await tx.inventory.findUnique({
-          where: { warehouseId_productId: { warehouseId: warehouse.id, productId: product.id } },
-        });
-        if ((!inventory || inventory.available < conversion.baseQuantity) && !product.allowNegativeStock) {
-          throw new BadRequestException(
-            `Stok ${product.name} tidak mencukupi untuk ${conversion.unitQuantity} ${conversion.unitCode} (${conversion.baseQuantity} ${product.unit}).`,
-          );
+        const inventoryComponents = await resolveKitSnapshot(tx, branch.companyId, product);
+        for (const stockLine of inventoryLines({ productId: product.id, quantity: conversion.baseQuantity, inventoryComponents })) {
+          const inventory = await tx.inventory.findUnique({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId: stockLine.productId } } });
+          if ((!inventory || inventory.available < stockLine.quantity) && (inventoryComponents || !product.allowNegativeStock)) throw new BadRequestException(`Stok ${product.name}/komponen tidak mencukupi.`);
         }
         const line = conversion.sellingUnitPrice.mul(conversion.unitQuantity);
         rawSubtotal = rawSubtotal.add(line);
-        raw.push({ input, product, line, conversion });
+        raw.push({ input, product, line, conversion, inventoryComponents });
       }
 
       const promotion = await this.promotions.resolveSalePromotion(
@@ -353,7 +353,8 @@ export class OrdersService {
           sourceBarcode: item.conversion.sourceBarcode,
           quantity: item.conversion.baseQuantity,
           unitPrice: item.conversion.sellingUnitPrice,
-          unitCost: item.product.costPrice,
+          unitCost: item.inventoryComponents ? kitUnitCost(item.inventoryComponents) : item.product.costPrice,
+          ...(item.inventoryComponents ? { inventoryComponents: item.inventoryComponents as unknown as Prisma.InputJsonValue } : {}),
           subtotal: calc.gross,
           netSubtotal: calc.net,
           taxAmount: calc.tax,
@@ -393,7 +394,10 @@ export class OrdersService {
       }
 
       const reservationQuantities = new Map<string, number>();
-      for (const item of prepared) reservationQuantities.set(item.productId, (reservationQuantities.get(item.productId) ?? 0) + item.quantity);
+      for (const item of prepared) {
+        if (!item.inventoryComponents) reservationQuantities.set(item.productId, (reservationQuantities.get(item.productId) ?? 0) + item.quantity);
+        else for (const stockLine of inventoryLines(item)) reservationQuantities.set(stockLine.productId, (reservationQuantities.get(stockLine.productId) ?? 0) + stockLine.quantity);
+      }
       for (const [productId, quantity] of reservationQuantities) {
         await reserveLocationStock(tx, { warehouseId: warehouse.id, productId, quantity, sourceType: 'Order', sourceId: order.id });
         const reserved_ = await tx.inventory.updateMany({
@@ -838,9 +842,9 @@ export class OrdersService {
       const costTotal = order.items.reduce((sum, item) => sum.add(new Prisma.Decimal(item.unitCost).mul(item.quantity)), new Prisma.Decimal(0));
       const taxGroups = new Map<string, { base: Prisma.Decimal; tax: Prisma.Decimal }>();
       const fulfillmentQuantities = new Map<string, { quantity: number; productName: string }>();
-      for (const item of order.items) {
-        const current = fulfillmentQuantities.get(item.productId);
-        fulfillmentQuantities.set(item.productId, { quantity: (current?.quantity ?? 0) + item.quantity, productName: item.product.name });
+      for (const item of order.items) for (const stockLine of inventoryLines(item)) {
+        const current = fulfillmentQuantities.get(stockLine.productId);
+        fulfillmentQuantities.set(stockLine.productId, { quantity: (current?.quantity ?? 0) + stockLine.quantity, productName: item.product.name });
       }
       for (const [productId, value] of fulfillmentQuantities) {
         const allocations = await consumeLocationReservations(tx, { sourceType: 'Order', sourceId: order.id, warehouseId: order.warehouseId, productId, quantity: value.quantity });
@@ -856,8 +860,8 @@ export class OrdersService {
         } });
       }
       for (const item of order.items) {
-        if (item.product.trackBatch) await this.consumeBatches(tx, order.warehouseId, item.productId, item.quantity);
-        if (item.product.trackSerial) {
+        if (!item.inventoryComponents && item.product.trackBatch) await this.consumeBatches(tx, order.warehouseId, item.productId, item.quantity);
+        if (!item.inventoryComponents && item.product.trackSerial) {
           const serials = await tx.inventorySerial.findMany({ where: { warehouseId: order.warehouseId, productId: item.productId, status: 'RESERVED', referenceType: 'Shipment', referenceId: shipment.id }, take: item.quantity + 1 });
           if (serials.length !== item.quantity) throw new BadRequestException(`Serial ${item.product.name} harus discan tepat ${item.quantity} unit sebelum shipment.`);
           const serialUpdate = await tx.inventorySerial.updateMany({ where: { id: { in: serials.map((row) => row.id) }, status: 'RESERVED', referenceType: 'Shipment', referenceId: shipment.id }, data: { status: 'SOLD' } });
@@ -938,9 +942,9 @@ export class OrdersService {
       if (claim.count !== 1) throw new BadRequestException('Status order berubah saat pembatalan. Muat ulang lalu coba lagi.');
 
       const releaseQuantities = new Map<string, { quantity: number; productName: string }>();
-      for (const item of order.items) {
-        const current = releaseQuantities.get(item.productId);
-        releaseQuantities.set(item.productId, { quantity: (current?.quantity ?? 0) + item.quantity, productName: item.product.name });
+      for (const item of order.items) for (const stockLine of inventoryLines(item)) {
+        const current = releaseQuantities.get(stockLine.productId);
+        releaseQuantities.set(stockLine.productId, { quantity: (current?.quantity ?? 0) + stockLine.quantity, productName: item.product.name });
       }
       for (const [productId, value] of releaseQuantities) {
         await releaseLocationReservations(tx, { sourceType: 'Order', sourceId: order.id, warehouseId: order.warehouseId, productId, quantity: value.quantity });

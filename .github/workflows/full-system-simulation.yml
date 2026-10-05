@@ -323,6 +323,10 @@ jobs:
         continue-on-error: true
         run: npm run ci:p2a:multi-uom-probe
 
+      - name: Exercise P6B weighted goods and historical kit inventory accounting
+        id: p6b_retail_products
+        run: npm run ci:p6b:probe
+
       - name: Exercise P2 payroll methods split-period accounting and recovery lifecycle
         id: p2_payroll
         continue-on-error: true

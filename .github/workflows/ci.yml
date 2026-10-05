@@ -32,6 +32,12 @@ jobs:
         env:
           DATABASE_PROFILE: postgresql
           DATABASE_URL: postgresql://toko360:toko360@127.0.0.1:5432/toko360_typecheck?schema=public
+      - name: Restore SQLite Prisma Client for isolated runtime tests
+        run: npm run db:local:generate
+        env:
+          DATABASE_PROFILE: sqlite
+      - name: Build worker transport artifacts before regression tests
+        run: npm run build -w @toko360/worker
       - run: npm test
       - run: npm run prisma:validate:sqlite -w @toko360/api
       - name: Validate CI-only Docker Compose

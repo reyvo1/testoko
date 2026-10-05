@@ -46,7 +46,7 @@ function newCheckoutOperationKey() {
   return uuid ? `storefront-order:${uuid}` : `storefront-order:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
-type Product = {
+type Product = { retailAvailabilityError?: string | null; retailPolicy?: { gallery: Array<{url:string;alt:string}> };
   id: string;
   sku: string;
   name: string;
@@ -570,7 +570,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
       <section>
         <div className="sectionTitle"><div><span className="eyebrow">PILIHAN TOKO</span><h2>Produk untuk mulai belanja</h2></div><button type="button" className="textAction" onClick={() => navigate('catalog')}>Lihat semua <ArrowRight size={15} /></button></div>
         <div className="productGrid compactGrid">
-          {products.slice(0, 3).map((product) => { const option = defaultSellingOption(product); const stock = maxUnitQuantity(product, option.quantityFactor); return <article className="productCard" key={product.id}><div className="productImage" aria-hidden="true">{product.name.slice(0,1).toUpperCase()}</div><div className="body"><small>{product.sku}</small><h3>{product.name}</h3><div className="priceRow"><strong>{rupiah(option.unitPrice)}</strong><span>Stok {stock} {option.unitCode}</span></div><button type="button" onClick={() => openProduct(product)}>Lihat produk</button></div></article>; })}
+          {products.slice(0, 3).map((product) => { const option = defaultSellingOption(product); const stock = maxUnitQuantity(product, option.quantityFactor); return <article className="productCard" key={product.id}><div className="productImage">{product.retailPolicy?.gallery[0] ? <img src={product.retailPolicy.gallery[0].url} alt={product.retailPolicy.gallery[0].alt} loading="lazy" width={320} height={240} style={{width:"100%",height:"100%",objectFit:"contain"}}/> : product.name.slice(0,1).toUpperCase()}</div><div className="body"><small>{product.sku}</small><h3>{product.name}</h3><div className="priceRow"><strong>{rupiah(option.unitPrice)}</strong><span>Stok {stock} {option.unitCode}</span></div><button type="button" onClick={() => openProduct(product)}>Lihat produk</button></div></article>; })}
           {!loading && !products.length && <div className="emptyState"><h4>Katalog belum tersedia</h4><p>Produk akan tampil setelah cabang mengaktifkan katalog.</p></div>}
         </div>
       </section>
@@ -590,8 +590,8 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
             const option = defaultSellingOption(product);
             const stock = maxUnitQuantity(product, option.quantityFactor);
             return <article className="productCard" key={product.id}>
-              <div className="productImage" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</div>
-              <div className="body"><small>{product.sku}</small><h3>{product.name}</h3><p>{product.description?.trim() || 'Detail produk belum tersedia.'}</p><div className="priceRow"><strong>{rupiah(option.unitPrice)}</strong><span>Stok {stock} {option.unitCode}</span></div><div className="cardActions"><button type="button" className="secondary" onClick={() => openProduct(product)}>Lihat detail</button><button disabled={stock <= 0} onClick={() => add(product, option)}>{stock > 0 ? `Tambah ${option.unitCode}` : 'Stok habis'}</button></div><button type="button" className="favoriteAction secondary" onClick={() => void toggleFavorite(product.id)}><Heart size={15} fill={favoriteIds.includes(product.id) ? 'currentColor' : 'none'} />{favoriteIds.includes(product.id) ? 'Favorit' : 'Simpan favorit'}</button></div>
+              <div className="productImage">{product.retailPolicy?.gallery[0] ? <img src={product.retailPolicy.gallery[0].url} alt={product.retailPolicy.gallery[0].alt} loading="lazy" width={320} height={240} style={{width:"100%",height:"100%",objectFit:"contain"}}/> : product.name.slice(0, 1).toUpperCase()}</div>
+              <div className="body"><small>{product.sku}</small><h3>{product.name}</h3><p>{product.description?.trim() || 'Detail produk belum tersedia.'}</p>{product.retailAvailabilityError && <p role="status">Produk sementara belum dapat dijual.</p>}<div className="priceRow"><strong>{rupiah(option.unitPrice)}</strong><span>Stok {stock} {option.unitCode}</span></div><div className="cardActions"><button type="button" className="secondary" onClick={() => openProduct(product)}>Lihat detail</button><button disabled={stock <= 0} onClick={() => add(product, option)}>{stock > 0 ? `Tambah ${option.unitCode}` : 'Stok habis'}</button></div><button type="button" className="favoriteAction secondary" onClick={() => void toggleFavorite(product.id)}><Heart size={15} fill={favoriteIds.includes(product.id) ? 'currentColor' : 'none'} />{favoriteIds.includes(product.id) ? 'Favorit' : 'Simpan favorit'}</button></div>
             </article>;
           })}
         </div>
@@ -602,7 +602,7 @@ export function StorefrontApp({ initialView = 'home' }: { initialView?: Storefro
       <section>
         <div className="sectionTitle"><div><span className="eyebrow">DETAIL PRODUK</span><h2>{selectedProduct?.name ?? 'Pilih produk dari katalog'}</h2></div><button type="button" className="secondary compact" onClick={() => navigate('catalog')}>Kembali ke katalog</button></div>
         {selectedProduct ? <div className="productDetail">
-          <div className="productDetailVisual" aria-hidden="true">{selectedProduct.name.slice(0,1).toUpperCase()}</div>
+          <div className="productDetailVisual">{selectedProduct.retailPolicy?.gallery.length ? <div>{selectedProduct.retailPolicy.gallery.map((image) => <img key={image.url} src={image.url} alt={image.alt} loading="lazy" width={320} height={240} style={{maxWidth:"100%",height:"auto",objectFit:"contain"}}/>)}</div> : selectedProduct.name.slice(0,1).toUpperCase()}</div>
           <div className="productDetailBody">
             <span className="productSku">{selectedProduct.sku}</span>
             <h3>{selectedProduct.name}</h3>

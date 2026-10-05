@@ -1034,6 +1034,7 @@ model SaleItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   subtotal  Decimal @db.Decimal(18, 2)
   netSubtotal Decimal @default(0) @db.Decimal(18, 2)
   taxAmount Decimal @default(0) @db.Decimal(18, 2)
@@ -1096,6 +1097,7 @@ model OrderItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity  Int
   unitPrice Decimal @db.Decimal(18, 2)
   unitCost  Decimal @db.Decimal(18, 2)
@@ -1899,6 +1901,7 @@ model OrderReturnItem {
   unitQuantity  Int?
   quantityFactor Int      @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity      Int
   condition     String   @default("GOOD")
   restock       Boolean  @default(true)
@@ -1949,6 +1952,7 @@ model SaleReturnItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity  Int
   condition String     @default("GOOD")
   restock   Boolean    @default(true)

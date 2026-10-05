@@ -1,5 +1,16 @@
 # CURRENT WORK — Toko360 (WAJIB BACA BLOK INI DULU)
 
+## P6B retail expansion — 2026-10-06 (active verification)
+
+- User authorized continuation through P6D. Recovered official P6A operator package defines P6B weight/media/kit, P6C exchange/customer deposits/communications, P6D tax adapters/shipping/provider certification. Do not invent other wave scope.
+- Baseline local/main/origin: `d07446c6edac764aa32a3231b42faafa17913a63`; exact GitHub Governance, Full System Simulation and Full Automated UAT PASS. URLs in `docs/P6-RETAIL-EXPANSION.md`. This supersedes stale claims that this checkout has no Git metadata.
+- Active item `T360-20261006-090000`, branch `feature/T360-20261006-090000-p6b-retail-products`. P6B implemented opt-in weighing labels and raster gallery; virtual kit uses canonical BOM + immutable transaction snapshots and existing inventory/accounting/return/reservation paths. No global stock decimal migration.
+- Additive SQLite/PostgreSQL snapshot migration and official SQLite rehearsal PASS. Real SQLite behavioral tests PASS 8/8 (checksum/tamper, idempotency, tenant, concurrent kit sale, historical return, reservation/cancel, physical-parent/nested/stale-BOM denial and manufacturing rollback). Runtime/permission/probe source checks continue.
+- New required P6B PostgreSQL probe in both full GitHub workflows; new Browser UAT tests immediate scanner search, authoritative quote, manual weight and gallery. These are pending executed evidence. No fake PASS.
+- Full local candidate first attempt completed builds/boot but source changed during test, invalidating final evidence. Re-run on stable staged source with explicit scratch target only: `npm run uat:pre-github:local` with a process-only SQLite TEST target under `/tmp`, synthetic demo fixtures and RUST_LOG at info level. Inherited RUST_LOG=warn broke Prisma scratch initialization; operator .env/database untouched.
+- Stable-source official local candidate PASS: 1714/1714 regression, lint, six-app build, boot, migration and critical source coverage 12/12, fingerprint `bc02270a469f8bd74b8392d8ac82e780a49e5b66dc34a454d650565009bd4573`. Exact-source GitHub PostgreSQL/Browser UAT and then P6C remain next. Canonical P5 / productReady=false / Human Stage-20=PENDING remain unchanged. Physical scale device and external provider certification not claimed.
+
+
 ## Backend/frontend contract parity root fix — 2026-10-04
 
 - Source authority: uploaded full-local audit ZIP and GitHub `main` were identical at `c1f232da583b61d822f756143d73e966cb0cbf9c` before this repair.

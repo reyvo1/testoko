@@ -1,3 +1,4 @@
+import { readRetailPolicy } from '../common/retail-policy';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
@@ -547,6 +548,7 @@ export class AdvancedInventoryService {
       const opnameProductIds = [...new Set(opname.items.map((item) => item.productId))];
       const products = await tx.product.findMany({ where: { id: { in: opnameProductIds }, companyId: scope.companyId } });
       if (products.length !== opnameProductIds.length) return this.denyTenantAccess(tx, user, scope, 'StockOpnameProduct', opname.id);
+      if (products.some((product) => readRetailPolicy(product.metadata).kitRecipeId)) throw new BadRequestException('Opname kit virtual dilakukan pada stok komponennya, bukan parent.');
       const costMap = new Map(products.map((product) => [product.id, new Prisma.Decimal(product.costPrice)]));
       let gainValue = new Prisma.Decimal(0); let lossValue = new Prisma.Decimal(0);
       for (const item of opname.items) {

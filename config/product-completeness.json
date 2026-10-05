@@ -103,7 +103,7 @@
       "id": "feature:sales_return",
       "kind": "FEATURE",
       "key": "sales_return",
-      "title": "POS request → inspection → refund/restock/accounting/loyalty correction",
+      "title": "POS request \u2192 inspection \u2192 refund/restock/accounting/loyalty correction",
       "default": "on",
       "sourceMaturity": "implemented-core-workflow",
       "status": "IMPLEMENTED_RUNTIME_PENDING",
@@ -610,6 +610,18 @@
       "operatorSurfaceRequired": true,
       "evidence": [],
       "notes": "P6A source implements master-backed tender policy, immutable payment snapshots, canonical Accounting Core settlement/MDR posting, exact split tender, explicit customer AR/on-account settlement and original-tender refund allocation. This engineering label does not advance canonical currentPhase; P5/Human Stage-20 remain pending until their own acceptance authority is satisfied."
+    },
+    {
+      "id": "feature:retail_weight_media_kit",
+      "kind": "FEATURE",
+      "key": "retail_weight_media_kit",
+      "title": "Weighted goods, product gallery and virtual kits",
+      "default": "Opt-in per-product retail policy; disabled by default",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "P6B engineering wave under T360-20261006-090000. Integer smallest-unit weight labels, gallery, canonical BOM component snapshots, sale/order reservation/cancellation and historical returns. New exact-source PostgreSQL/browser evidence required. Physical serial-port scale certification remains external; canonical P5/Human Stage-20 unchanged."
     }
   ],
   "legacyFunctionalPhases": [

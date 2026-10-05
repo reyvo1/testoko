@@ -1,3 +1,4 @@
+import { inventoryLines } from '../common/retail-kit';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, TaxTransactionDirection } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
@@ -436,6 +437,7 @@ export class ReturnsService {
         taxAmount,
         grossAmount,
         taxCodeId: original.taxCodeId,
+        ...(original.inventoryComponents != null ? { inventoryComponents: original.inventoryComponents as Prisma.InputJsonValue } : {}),
         metadata: { saleItemId: original.id, sourceBaseQuantity: original.quantity, sourceUnitQuantity: original.unitQuantity ?? null },
       };
     });
@@ -508,27 +510,29 @@ export class ReturnsService {
       const warehouse = await this.assertWarehouse(tx, user, scope, row.warehouseId);
       await this.assertReturnTaxCodes(tx, user, scope, row.items.map((item) => item.taxCodeId));
       for (const item of row.items.filter((item) => item.restock && item.condition === 'GOOD')) {
-        const locationStock = await depositLocationStock(tx, { warehouseId: row.warehouseId, productId: item.productId, quantity: item.quantity });
+        for (const stockLine of inventoryLines(item)) {
+        const locationStock = await depositLocationStock(tx, { warehouseId: row.warehouseId, productId: stockLine.productId, quantity: stockLine.quantity });
         const inventory = await tx.inventory.upsert({
-          where: { warehouseId_productId: { warehouseId: row.warehouseId, productId: item.productId } },
+          where: { warehouseId_productId: { warehouseId: row.warehouseId, productId: stockLine.productId } },
           create: {
             warehouseId: row.warehouseId,
-            productId: item.productId,
-            quantity: item.quantity,
-            available: item.quantity,
+            productId: stockLine.productId,
+            quantity: stockLine.quantity,
+            available: stockLine.quantity,
           },
-          update: { quantity: { increment: item.quantity }, available: { increment: item.quantity } },
+          update: { quantity: { increment: stockLine.quantity }, available: { increment: stockLine.quantity } },
         });
         await tx.inventoryMovement.create({ data: {
           warehouseId: row.warehouseId,
-          productId: item.productId,
+          productId: stockLine.productId,
           locationId: locationStock.locationId,
           type: 'SALE_RETURN',
-          quantity: item.quantity,
+          quantity: stockLine.quantity,
           balanceAfter: inventory.quantity,
           referenceType: 'SaleReturn',
           referenceId: row.id,
         } });
+        }
       }
       const net = row.items.reduce((sum, item) => sum.add(item.netAmount), new Prisma.Decimal(0));
       const tax = row.items.reduce((sum, item) => sum.add(item.taxAmount), new Prisma.Decimal(0));
@@ -1092,7 +1096,7 @@ export class ReturnsService {
         orderItemId: string; productId: string; variantId: string | null; productUnitId: string | null; unitCode: string | null;
         unitQuantity: number; quantityFactor: number; sourceBarcode: string | null; quantity: number; condition: string; restock: boolean;
         unitAmount: Prisma.Decimal; unitCost: Prisma.Decimal; netAmount: Prisma.Decimal; taxAmount: Prisma.Decimal;
-        grossAmount: Prisma.Decimal; taxCodeId: string | null;
+        grossAmount: Prisma.Decimal; taxCodeId: string | null; inventoryComponents?: Prisma.InputJsonValue;
       }>;
       for (const [orderItemId, requestedUnitQty] of requestedNow) {
         const original = order.items.find((item) => item.id === orderItemId);
@@ -1117,6 +1121,7 @@ export class ReturnsService {
         orderAllocation.set(original.id, allocation);
         rows.push({
           orderItemId: original.id,
+          ...(original.inventoryComponents != null ? { inventoryComponents: original.inventoryComponents as Prisma.InputJsonValue } : {}),
           productId: original.productId,
           variantId: original.variantId ?? null,
           productUnitId: original.productUnitId ?? null,
@@ -1252,13 +1257,15 @@ export class ReturnsService {
         if (restock) restockableItemIds.push(item.id);
         await tx.orderReturnItem.update({ where: { id: item.id }, data: { condition: restock ? 'GOOD' : damaged > 0 ? 'DAMAGED' : 'UNSELLABLE', restock } });
         if (restock) {
-          const locationStock = await depositLocationStock(tx, { warehouseId: row.warehouseId, productId: item.productId, quantity: item.quantity });
+          for (const stockLine of inventoryLines(item)) {
+          const locationStock = await depositLocationStock(tx, { warehouseId: row.warehouseId, productId: stockLine.productId, quantity: stockLine.quantity });
           const inventory = await tx.inventory.upsert({
-            where: { warehouseId_productId: { warehouseId: row.warehouseId, productId: item.productId } },
-            create: { warehouseId: row.warehouseId, productId: item.productId, quantity: item.quantity, available: item.quantity },
-            update: { quantity: { increment: item.quantity }, available: { increment: item.quantity } },
+            where: { warehouseId_productId: { warehouseId: row.warehouseId, productId: stockLine.productId } },
+            create: { warehouseId: row.warehouseId, productId: stockLine.productId, quantity: stockLine.quantity, available: stockLine.quantity },
+            update: { quantity: { increment: stockLine.quantity }, available: { increment: stockLine.quantity } },
           });
-          await tx.inventoryMovement.create({ data: { warehouseId: row.warehouseId, productId: item.productId, locationId: locationStock.locationId, type: 'SALE_RETURN', quantity: item.quantity, balanceAfter: inventory.quantity, referenceType: 'OrderReturn', referenceId: row.id } });
+          await tx.inventoryMovement.create({ data: { warehouseId: row.warehouseId, productId: stockLine.productId, locationId: locationStock.locationId, type: 'SALE_RETURN', quantity: stockLine.quantity, balanceAfter: inventory.quantity, referenceType: 'OrderReturn', referenceId: row.id } });
+          }
         }
       }
       await this.assertReturnTaxCodes(tx, user, scope, row.items.map((item) => item.taxCodeId));

@@ -57,17 +57,22 @@
   "monitoringPlan": "Monitor sale/payment validation failures, split-total mismatch, on-account outstanding/receipt bounds, refund allocation errors, journal-balance guards, offline replay conflicts and settlement/MDR read-model discrepancies.",
   "securityNotes": "All P6A mutations remain authenticated and tenant/company/branch scoped, use existing permission/idempotency/audit boundaries, never store card credentials, and treat provider/reference values as business metadata only.",
   "documentation": [
-    "02-HANDOFF-P6A.md",
-    "03-P6A-SCOPE-AND-GATES.md",
     "database/migrations/T360-20261005-p6a-retail-transaction-completion/README.md",
     "handoff/CURRENT-WORK.md",
     "config/product-completeness.json",
     "docs/FEATURE-CATALOG.md",
-    "tests/p6a-retail-transaction-completion.test.mjs"
+    "tests/p6a-retail-transaction-completion.test.mjs",
+    "docs/P6-RETAIL-EXPANSION.md"
   ],
   "createdAt": "2026-10-05T15:40:00+08:00",
-  "updatedAt": "2026-10-05T19:00:00+08:00",
+  "updatedAt": "2026-10-06T09:00:00+08:00",
   "notes": [
-    "Governance record for the P6A engineering wave that began from exact automated-green baseline eb320e931f898acdcce4b705ca4dd6e51059d156. It intentionally does not advance canonical currentPhase while P5/Human Stage-20 acceptance remains pending."
+    "Governance record for the P6A engineering wave that began from exact automated-green baseline eb320e931f898acdcce4b705ca4dd6e51059d156. It intentionally does not advance canonical currentPhase while P5/Human Stage-20 acceptance remains pending.",
+    "2026-10-06: all three automated GitHub workflows PASS on exact commit d07446c6edac764aa32a3231b42faafa17913a63. Human Stage-20 remains PENDING; source changes after this baseline need new evidence."
+  ],
+  "releaseEvidence": [
+    "https://github.com/reyvo1/testoko/actions/runs/37325983846",
+    "https://github.com/reyvo1/testoko/actions/runs/37325984046",
+    "https://github.com/reyvo1/testoko/actions/runs/37325983813"
   ]
 }

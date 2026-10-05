@@ -7,6 +7,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { BulkImportProductsDto, BulkProductRowDto } from './dto/bulk-products.dto';
+import { RetailProductDto } from './dto/retail-product.dto';
+import { decodeWeightBarcode, normalizeRetailPolicy, readRetailPolicy } from '../common/retail-policy';
+import { resolveKitSnapshot } from '../common/retail-kit';
+import { beginIdempotent, completeIdempotent } from '../common/idempotency';
+import { serializableTx } from '../common/serializable-tx';
 
 type DbClient = Prisma.TransactionClient | PrismaService;
 type ProductCursor = { name: string; id: string };
@@ -117,6 +122,21 @@ export class ProductsService {
     };
   }
 
+  private async catalogInventory(scope: TenantScope, product: { id: string; metadata?: Prisma.JsonValue | null; trackBatch?: boolean; trackSerial?: boolean; trackExpiry?: boolean; inventories: Array<{ available: number; warehouseId: string; warehouse: { id: string; name: string } }> }) {
+    let snapshot: Awaited<ReturnType<typeof resolveKitSnapshot>>;
+    try { snapshot = await resolveKitSnapshot(this.prisma, scope.companyId, product); }
+    catch (error) {
+      // A stale/inactive BOM must keep the product editable. Persistence/network
+      // failures still propagate; only a known domain rejection is represented.
+      if (error instanceof BadRequestException) return { inventories: [], retailAvailabilityError: error.message };
+      throw error;
+    }
+    if (!snapshot) return { inventories: product.inventories, retailAvailabilityError: null };
+    const rows = await this.prisma.inventory.findMany({ where: { ...this.inventoryScope(scope), productId: { in: snapshot.components.map((item) => item.productId) } }, include: { warehouse: { select: { id: true, name: true } } } });
+    const warehouses = new Map(rows.map((row) => [row.warehouseId, row.warehouse]));
+    return { inventories: [...warehouses].map(([warehouseId, warehouse]) => ({ warehouseId, warehouse, available: Math.max(0, Math.min(...snapshot.components.map((component) => Math.floor((rows.find((row) => row.warehouseId === warehouseId && row.productId === component.productId)?.available ?? 0) / component.quantityPerUnit)))) })), retailAvailabilityError: null };
+  }
+
   private normalizeRequiredUnit(value: string | undefined | null, label = 'Base unit') {
     const unit = value?.trim().toUpperCase() ?? '';
     if (!unit) throw new BadRequestException(`${label} wajib dipilih dari master UNIT aktif.`);
@@ -191,7 +211,13 @@ export class ProductsService {
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<ProductCursor>(cursorValue);
     const filters: Prisma.ProductWhereInput[] = [];
-    const query = search?.trim();
+    let query = search?.trim();
+    let scaleLabel: ReturnType<typeof decodeWeightBarcode> = null;
+    if (query) {
+      const exactBarcode = /^2\d{12}$/.test(query) ? await this.prisma.productBarcode.findFirst({ where: { code: query, product: { companyId: scope.companyId, isActive: true } }, select: { id: true } }) : null;
+      try { scaleLabel = exactBarcode ? null : decodeWeightBarcode(query); } catch (error) { throw new BadRequestException((error as Error).message); }
+      if (scaleLabel) query = scaleLabel.barcodeKey;
+    }
     const canManageProducts = Boolean(user?.roles.some((role) => ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(role)));
     const includeInactive = includeInactiveValue === 'true' && canManageProducts;
 
@@ -238,6 +264,9 @@ export class ProductsService {
     const page = toCursorPage(rows, limit, (item) => ({ name: item.name, id: item.id }));
     const pricedItems = await Promise.all(page.items.map(async (item) => ({
       ...item,
+      retailPolicy: readRetailPolicy(item.metadata),
+      ...await this.catalogInventory(scope, item),
+      ...(scaleLabel ? { scaleQuantity: readRetailPolicy(item.metadata).weight?.barcodeKey === scaleLabel.barcodeKey ? scaleLabel.encodedQuantity * readRetailPolicy(item.metadata).weight!.baseUnitsPerEncodedUnit : null } : {}),
       effectiveSalePrice: await resolveProductUnitPrice(this.prisma, {
         companyId: scope.companyId, branchId: scope.branchId, product: item, quantity: 1, segmentCode: 'RETAIL', unitCode: item.unit,
       }),
@@ -292,6 +321,37 @@ export class ProductsService {
         },
       });
       return product;
+    });
+  }
+
+  async configureRetail(id: string, dto: RetailProductDto, user: AuthUser) {
+    const scope = this.requireTenantScope(user);
+    const key = dto.operationKey?.trim();
+    if (!key) throw new BadRequestException('Operation key wajib diisi.');
+    let policy: ReturnType<typeof normalizeRetailPolicy>;
+    try { policy = normalizeRetailPolicy(dto.policy); } catch (error) { throw new BadRequestException((error as Error).message); }
+    return serializableTx(this.prisma, async (tx) => {
+      const product = await tx.product.findFirst({ where: { id, companyId: scope.companyId } });
+      if (!product) return this.denyTenantAccess(tx, user, scope, 'Product', id);
+      const receiptScope = `product-retail:${scope.branchId}:${user.sub}:${id}`;
+      const receipt = await beginIdempotent(tx, { companyId: scope.companyId, scope: receiptScope, key, payload: policy });
+      if (receipt.replay) return receipt.response;
+      if ((policy.weight || policy.kitRecipeId) && (product.productType !== 'PHYSICAL' || product.trackSerial || product.trackBatch || product.trackExpiry)) throw new BadRequestException('Weighing/kit hanya mendukung produk fisik non-tracked.');
+      const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata) ? product.metadata : {};
+      const nextMetadata = { ...metadata, retail: policy } as unknown as Prisma.InputJsonValue;
+      if (policy.kitRecipeId) await resolveKitSnapshot(tx, scope.companyId, { ...product, metadata: nextMetadata as Prisma.JsonValue });
+      const oldWeight = readRetailPolicy(product.metadata).weight;
+      if (oldWeight && oldWeight.barcodeKey !== policy.weight?.barcodeKey) await tx.productBarcode.deleteMany({ where: { productId: id, code: oldWeight.barcodeKey, isPrimary: false, productUnitId: null } });
+      if (policy.weight) {
+        const alias = await tx.productBarcode.findUnique({ where: { code: policy.weight.barcodeKey } });
+        if (alias && (alias.productId !== id || alias.productUnitId || alias.variantId || !new Prisma.Decimal(alias.quantityFactor).equals(1))) throw new BadRequestException('Key timbangan sudah dipakai produk/unit lain.');
+        if (!alias) await tx.productBarcode.create({ data: { productId: id, code: policy.weight.barcodeKey, unitCode: product.unit, quantityFactor: 1, isPrimary: false } });
+      }
+      await tx.product.update({ where: { id }, data: { metadata: nextMetadata } });
+      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'CONFIGURE_RETAIL_PRODUCT', entityType: 'Product', entityId: id, payload: { branchId: scope.branchId, weighing: Boolean(policy.weight), kitRecipeId: policy.kitRecipeId, galleryCount: policy.gallery.length } } });
+      const response = { productId: id, retailPolicy: policy };
+      await completeIdempotent(tx, { companyId: scope.companyId, scope: receiptScope, key, resourceType: 'Product', resourceId: id, response });
+      return response;
     });
   }
 
@@ -503,7 +563,7 @@ export class ProductsService {
           variantSalePrice: unit.variant?.salePrice ? new Prisma.Decimal(unit.variant.salePrice).mul(Number(unit.quantityFactor)) : undefined,
         }),
       })));
-      const pricedProduct = { ...product, units, effectiveSalePrice };
+      const pricedProduct = { ...product, units, effectiveSalePrice, retailPolicy: readRetailPolicy(product.metadata), ...await this.catalogInventory(scope, product) };
       if (user) return pricedProduct;
       const { companyId: _companyId, ...publicProduct } = pricedProduct;
       return publicProduct;

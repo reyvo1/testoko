@@ -31,6 +31,12 @@ export interface OperationalTaxLineInput {
   metadata?: Prisma.InputJsonValue;
 }
 
+export interface OperationalJournalLineInput {
+  accountCode: string;
+  side: 'DEBIT' | 'CREDIT';
+  amount: Prisma.Decimal.Value;
+}
+
 export interface PostOperationalEventInput {
   companyId: string;
   branchId: string;
@@ -42,6 +48,7 @@ export interface PostOperationalEventInput {
   currency?: string;
   amounts: Record<string, Prisma.Decimal.Value>;
   accountCodes?: Record<string, string>;
+  additionalJournalLines?: OperationalJournalLineInput[];
   lines?: OperationalEventLineInput[];
   taxLines?: OperationalTaxLineInput[];
   context?: Prisma.InputJsonValue;
@@ -722,12 +729,22 @@ export class AccountingCoreService {
       const amount = amounts[line.amountKey] ?? new Prisma.Decimal(0);
       return !(line.skipIfZero ?? true) || !amount.isZero();
     });
-    if (!usable.length) throw new BadRequestException(`Aturan ${rule.code} tidak menghasilkan jurnal.`);
-    const resolvedLines = usable.map((line) => {
+    const resolvedRuleLines = usable.map((line) => {
       const accountCode = line.accountCodeKey ? input.accountCodes?.[line.accountCodeKey] : line.accountCode;
       if (!accountCode) throw new BadRequestException(`Account code untuk baris ${line.amountKey} belum dikonfigurasi.`);
-      return { ...line, accountCode };
+      const amount = amounts[line.amountKey] ?? new Prisma.Decimal(0);
+      if (amount.lessThan(0)) throw new BadRequestException(`Nilai ${line.amountKey} tidak boleh negatif.`);
+      return { accountCode, side: line.side, amount };
     });
+    const resolvedAdditionalLines = (input.additionalJournalLines ?? []).map((line) => {
+      const accountCode = line.accountCode.trim().toUpperCase();
+      if (!accountCode) throw new BadRequestException('Account code additional journal line wajib diisi.');
+      const amount = new Prisma.Decimal(line.amount).toDecimalPlaces(2);
+      if (amount.lessThan(0)) throw new BadRequestException('Nilai additional journal line tidak boleh negatif.');
+      return { accountCode, side: line.side, amount };
+    }).filter((line) => !line.amount.isZero());
+    const resolvedLines = [...resolvedRuleLines, ...resolvedAdditionalLines];
+    if (!resolvedLines.length) throw new BadRequestException(`Aturan ${rule.code} tidak menghasilkan jurnal.`);
     const codes = [...new Set(resolvedLines.map((line) => line.accountCode))];
     const accounts = await client.account.findMany({ where: { branchId: input.branchId, code: { in: codes }, isActive: true } });
     const accountMap = new Map(accounts.map((account) => [account.code, account]));
@@ -737,8 +754,7 @@ export class AccountingCoreService {
     let debitTotal = new Prisma.Decimal(0);
     let creditTotal = new Prisma.Decimal(0);
     const journalLines = resolvedLines.map((line) => {
-      const amount = amounts[line.amountKey] ?? new Prisma.Decimal(0);
-      if (amount.lessThan(0)) throw new BadRequestException(`Nilai ${line.amountKey} tidak boleh negatif.`);
+      const amount = line.amount;
       if (line.side === 'DEBIT') debitTotal = debitTotal.add(amount); else creditTotal = creditTotal.add(amount);
       return {
         accountId: accountMap.get(line.accountCode)!.id,

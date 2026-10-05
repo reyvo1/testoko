@@ -29,7 +29,7 @@ type SupplierPayable = {
   outstandingAmount: string | number; availableToPay: string | number;
 };
 type SupplierRefund = { purchaseReturnId: string; purchaseReturnNumber: string; supplierId: string; supplierName: string; creditNoteNumber?: string | null; receivableAmount: string | number; receivedAmount: string | number; pendingAmount: string | number; outstandingAmount: string | number; availableToReceive: string | number };
-type CustomerReceivable = { orderId: string; orderNumber: string; customerName: string; customerPhone?: string | null; paymentMethod: string; receivableAccountCode: string; grossAmount: string | number; receivedAmount: string | number; pendingAmount: string | number; outstandingAmount: string | number; availableToReceive: string | number; orderStatus: string };
+type CustomerReceivable = { referenceType: 'Order' | 'Sale'; referenceId: string; documentNumber: string; orderId?: string; orderNumber?: string; saleId?: string; saleNumber?: string; customerName: string; customerPhone?: string | null; paymentMethod: string; receivableAccountCode: string; grossAmount: string | number; receivedAmount: string | number; pendingAmount: string | number; outstandingAmount: string | number; availableToReceive: string | number; sourceStatus: string };
 type FinanceType = 'OPERATING_EXPENSE' | 'OTHER_INCOME' | 'TAX_PAYMENT' | 'SUPPLIER_PAYMENT' | 'SUPPLIER_REFUND' | 'CUSTOMER_RECEIPT' | 'CASH_TRANSFER';
 type FiscalPeriod = { id: string; name: string; startDate: string; endDate: string; status: 'OPEN' | 'SOFT_CLOSED' | 'CLOSED'; closedAt?: string | null };
 /**
@@ -227,7 +227,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
         bankSettlementAccount: pickAccount(current.bankSettlementAccount, 'ASSET', '1102'),
         supplierPayableKey: current.supplierPayableKey || (() => { const row = ap.find((item) => Number(item.availableToPay) > 0); return row ? `${row.referenceType}:${row.referenceId}` : ''; })(),
         purchaseReturnId: current.purchaseReturnId || sr.find((row) => Number(row.availableToReceive) > 0)?.purchaseReturnId || '',
-        customerOrderId: current.customerOrderId || cr.find((row) => Number(row.availableToReceive) > 0)?.orderId || '',
+        customerOrderId: current.customerOrderId || (() => { const row=cr.find((item) => Number(item.availableToReceive) > 0); return row ? `${row.referenceType}:${row.referenceId}` : ''; })(),
       }));
       // Bank mutasStatements: pilih dari akun kas/bank yang benar-benar ada. Template lama mengunci
       // '1102' — perusahaan tanpa akun itu akan mendapat rekening pertama secara diam-diam.
@@ -248,7 +248,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
     try {
       const payable = payables.find((row) => `${row.referenceType}:${row.referenceId}` === form.supplierPayableKey);
       const supplierRefund = supplierRefunds.find((row) => row.purchaseReturnId === form.purchaseReturnId);
-      const customerReceivable = customerReceivables.find((row) => row.orderId === form.customerOrderId);
+      const customerReceivable = customerReceivables.find((row) => `${row.referenceType}:${row.referenceId}` === form.customerOrderId);
       if (form.type === 'SUPPLIER_PAYMENT' && !payable) throw new Error('Pilih utang supplier yang akan dibayar.');
       if (form.type === 'SUPPLIER_REFUND' && !supplierRefund) throw new Error('Pilih piutang refund supplier yang akan diterima.');
       if (form.type === 'CUSTOMER_RECEIPT' && !customerReceivable) throw new Error('Pilih piutang pelanggan yang akan diterima.');
@@ -272,7 +272,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
               : form.type === 'SUPPLIER_REFUND'
                 ? { ...common, type: form.type, description: form.description || `Refund ${supplierRefund!.supplierName} ${supplierRefund!.purchaseReturnNumber}`, debitAccountCode: form.settlementAccount, creditAccountCode: roleAccount(form.supplierRefundAccount, 'akun pembelian/retur', 'ASSET')!, counterpartyType: 'Supplier', counterpartyId: supplierRefund!.supplierId, counterpartyName: supplierRefund!.supplierName, paymentMethod: form.settlementAccount === '1102' ? 'BANK_TRANSFER' : 'CASH', referenceType: 'PurchaseReturn', referenceId: supplierRefund!.purchaseReturnId }
                 : form.type === 'CUSTOMER_RECEIPT'
-                  ? { ...common, type: form.type, description: form.description || `Penerimaan ${customerReceivable!.orderNumber} ${customerReceivable!.customerName}`, debitAccountCode: form.settlementAccount, creditAccountCode: customerReceivable!.receivableAccountCode, counterpartyType: 'Customer', counterpartyName: customerReceivable!.customerName, paymentMethod: form.settlementAccount === '1102' ? 'BANK_TRANSFER' : 'CASH', referenceType: 'Order', referenceId: customerReceivable!.orderId }
+                  ? { ...common, type: form.type, description: form.description || `Penerimaan ${customerReceivable!.documentNumber} ${customerReceivable!.customerName}`, debitAccountCode: form.settlementAccount, creditAccountCode: customerReceivable!.receivableAccountCode, counterpartyType: 'Customer', counterpartyName: customerReceivable!.customerName, paymentMethod: form.settlementAccount === '1102' ? 'BANK_TRANSFER' : 'CASH', referenceType: customerReceivable!.referenceType, referenceId: customerReceivable!.referenceId }
                   : { ...common, type: form.type, description: form.description || 'Transfer internal kas/bank', debitAccountCode: form.transferTargetAccount, creditAccountCode: form.settlementAccount, paymentMethod: 'INTERNAL_TRANSFER' };
       await api('/finance-operations', { method: 'POST', body: JSON.stringify(payload) });
       requestKey.current = newRequestKey(); setMessage(form.requireApproval ? 'Transaksi keuangan menunggu approval. Setelah disetujui, posting diperlukan agar jurnal terbentuk.' : 'Transaksi keuangan tersimpan sebagai draft. Posting diperlukan agar jurnal terbentuk.'); await refresh();
@@ -495,7 +495,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
   const refundOptions = supplierRefunds.filter((row) => Number(row.availableToReceive) > 0);
   const selectedRefund = supplierRefunds.find((row) => row.purchaseReturnId === form.purchaseReturnId);
   const customerOptions = customerReceivables.filter((row) => Number(row.availableToReceive) > 0);
-  const selectedCustomer = customerReceivables.find((row) => row.orderId === form.customerOrderId);
+  const selectedCustomer = customerReceivables.find((row) => `${row.referenceType}:${row.referenceId}` === form.customerOrderId);
   const assetAccounts = accounts.filter((row) => row.type === 'ASSET' && row.isActive);
   // Dropdown peran akun harus menampilkan akun yang BENAR-BENAR ada di branch aktif. Tiga akun
   // pajak yang dulu tertanam sebagai <option value="2201|2202|2103"> membuat kasir tidak bisa
@@ -617,8 +617,8 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
         <Panel eyebrow="REFUND SUPPLIER" title="Piutang Refund Supplier" badge={`${supplierRefunds.filter((row) => Number(row.outstandingAmount) > 0).length} terbuka`}>
           <Table head={['Supplier / Retur', 'Credit Note', 'Piutang', 'Diterima', 'Pending', 'Sisa']} rows={supplierRefunds.filter((row) => Number(row.outstandingAmount) > 0).map((row) => [<><strong>{row.supplierName}</strong><small className="mutedText">{row.purchaseReturnNumber}</small></>, row.creditNoteNumber ?? '-', rupiah(Number(row.receivableAmount)), rupiah(Number(row.receivedAmount)), rupiah(Number(row.pendingAmount)), <strong>{rupiah(Number(row.outstandingAmount))}</strong>])} empty="Tidak ada refund supplier terbuka." />
         </Panel>
-        <Panel eyebrow="PIUTANG PELANGGAN" title="COD / Invoice" badge={`${customerReceivables.filter((row) => Number(row.outstandingAmount) > 0).length} terbuka`}>
-          <Table head={['Order', 'Pelanggan', 'Metode', 'Piutang', 'Diterima', 'Sisa']} rows={customerReceivables.filter((row) => Number(row.outstandingAmount) > 0).map((row) => [<strong>{row.orderNumber}</strong>, row.customerName, row.paymentMethod, rupiah(Number(row.grossAmount)), rupiah(Number(row.receivedAmount)), <strong>{rupiah(Number(row.outstandingAmount))}</strong>])} empty="Tidak ada piutang pelanggan terbuka." />
+        <Panel eyebrow="PIUTANG PELANGGAN" title="Order / POS On-Account" badge={`${customerReceivables.filter((row) => Number(row.outstandingAmount) > 0).length} terbuka`}>
+          <Table head={['Dokumen', 'Pelanggan', 'Metode', 'Piutang', 'Diterima', 'Sisa']} rows={customerReceivables.filter((row) => Number(row.outstandingAmount) > 0).map((row) => [<><strong>{row.documentNumber}</strong><small className="mutedText">{row.referenceType}</small></>, row.customerName, row.paymentMethod, rupiah(Number(row.grossAmount)), rupiah(Number(row.receivedAmount)), <strong>{rupiah(Number(row.outstandingAmount))}</strong>])} empty="Tidak ada piutang pelanggan terbuka." />
         </Panel>
       </section>}
 
@@ -634,7 +634,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
             </select></label>
             : form.type === 'SUPPLIER_PAYMENT' ? <label>Utang / Dokumen<select required value={form.supplierPayableKey} onChange={(e) => { const row = payables.find((x) => `${x.referenceType}:${x.referenceId}` === e.target.value); setForm({ ...form, supplierPayableKey: e.target.value, amount: Number(row?.availableToPay ?? 0), description: row ? `Pembayaran ${row.supplierName} ${row.documentNumber}` : '' }); }}><option value="">Pilih utang supplier</option>{payableOptions.map((row) => <option key={`${row.referenceType}:${row.referenceId}`} value={`${row.referenceType}:${row.referenceId}`}>{row.supplierName} · {row.documentNumber} · {rupiah(Number(row.availableToPay))}</option>)}</select></label>
               : form.type === 'SUPPLIER_REFUND' ? <label>Refund / Purchase Return<select required value={form.purchaseReturnId} onChange={(e) => { const row = supplierRefunds.find((x) => x.purchaseReturnId === e.target.value); setForm({ ...form, purchaseReturnId: e.target.value, amount: Number(row?.availableToReceive ?? 0), description: row ? `Refund ${row.supplierName} ${row.purchaseReturnNumber}` : '' }); }}><option value="">Pilih refund supplier</option>{refundOptions.map((row) => <option key={row.purchaseReturnId} value={row.purchaseReturnId}>{row.supplierName} · {row.purchaseReturnNumber} · {rupiah(Number(row.availableToReceive))}</option>)}</select></label>
-                : form.type === 'CUSTOMER_RECEIPT' ? <label>Piutang / Order<select required value={form.customerOrderId} onChange={(e) => { const row = customerReceivables.find((x) => x.orderId === e.target.value); setForm({ ...form, customerOrderId: e.target.value, amount: Number(row?.availableToReceive ?? 0), description: row ? `Penerimaan ${row.orderNumber} ${row.customerName}` : '' }); }}><option value="">Pilih piutang pelanggan</option>{customerOptions.map((row) => <option key={row.orderId} value={row.orderId}>{row.orderNumber} · {row.customerName} · {rupiah(Number(row.availableToReceive))}</option>)}</select></label>
+                : form.type === 'CUSTOMER_RECEIPT' ? <label>Piutang / Dokumen<select required value={form.customerOrderId} onChange={(e) => { const row = customerReceivables.find((x) => `${x.referenceType}:${x.referenceId}` === e.target.value); setForm({ ...form, customerOrderId: e.target.value, amount: Number(row?.availableToReceive ?? 0), description: row ? `Penerimaan ${row.documentNumber} ${row.customerName}` : '' }); }}><option value="">Pilih piutang pelanggan</option>{customerOptions.map((row) => <option key={`${row.referenceType}:${row.referenceId}`} value={`${row.referenceType}:${row.referenceId}`}>{row.referenceType} · {row.documentNumber} · {row.customerName} · {rupiah(Number(row.availableToReceive))}</option>)}</select></label>
                   : <label>Keterangan<input required={form.type !== 'CASH_TRANSFER'} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>}
           {/* Akun-akun lawas jurnal. Sebelum ini dikodekan di source sebagai '6101'/'4103'/'2101'/
               '1202', jadi kasir tidak pernah bisa memilih dan jurnal masuk ke akun milik template,

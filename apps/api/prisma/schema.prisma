@@ -1117,9 +1117,16 @@ model Payment {
   saleId        String?
   orderId       String?
   method        String
+  methodName    String?
+  methodReferenceId String?
+  methodSnapshot Json?
   provider      String?
   externalRef   String?
   amount        Decimal
+  settlementAccountCode String?
+  settlementBehavior String?
+  feeAmount     Decimal       @default(0)
+  feeAccountCode String?
   status        PaymentStatus @default(PENDING)
   paidAt        DateTime?
   accountingEventId String?
@@ -1919,6 +1926,7 @@ model SaleReturn {
   reason       String?
   refundMethod String?
   refundAmount Decimal      @default(0)
+  refundDetails Json?
   createdById  String?
   approvedById String?
   inspectionId String?

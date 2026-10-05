@@ -6,7 +6,7 @@ import { Search, ScanBarcode, ShoppingCart, Trash2, Minus, Plus, CreditCard, Use
 import { PosShell, PosWorkspace } from './pos-shell';
 import { ModalPortal, useEscapeToClose, useModalFocus } from './modal-portal';
 import { T360ThemeToggle } from './theme-client';
-import { calculateOfflineQuote, getOrCreateDeviceCode, loadOfflineQueue, loadOfflineSnapshot, nextOfflineSequence, OfflineQueueItem, OfflineTaxCode, reservedOfflineQuantity, persistOfflineSnapshot, saveOfflineQueue } from '../lib/offline';
+import { calculateOfflineQuote, getOrCreateDeviceCode, loadOfflineQueue, loadOfflineSnapshot, nextOfflineSequence, OfflineQueueItem, OfflineTaxCode, OfflineTenderMethod, reservedOfflineQuantity, persistOfflineSnapshot, saveOfflineQueue } from '../lib/offline';
 import { asCatalogFetcher, loadCatalog, loadCatalogPage, searchCatalog } from '../lib/catalog';
 import { isOfflineStoreAvailable } from '../lib/offline-store';
 import { createBarcodeListener, fuzzyRank } from '../lib/barcode';
@@ -25,13 +25,13 @@ type CartItem = { product: Product; quantity: number; unitCode: string; quantity
 type CustomerOption = { id: string; name: string; phone?: string | null };
 type CashierShift = { id: string; openingCash: string | number; openedAt: string; status: 'OPEN' | 'CLOSED'; expectedCash?: string | number; closingCash?: string | number | null; difference?: string | number | null };
 type CashMovement = { id: string; cashierShiftId: string; type: 'CASH_IN' | 'CASH_OUT' | string; amount: string | number; reason: string; createdAt: string };
-type ShiftRecap = { shift: { id: string; openedAt: string; closedAt?: string | null; status: string; cashier: string }; openingCash: number; closingCash: number | null; expectedCash: number | null; difference: number | null; sales: { count: number; total: number; tax: number; cogs: number }; payments: Record<string, number>; refunds: { count: number; cashTotal: number }; cashMovements: { cashIn: number; cashOut: number } };
+type ShiftRecap = { shift: { id: string; openedAt: string; closedAt?: string | null; status: string; cashier: string }; openingCash: number; closingCash: number | null; expectedCash: number | null; difference: number | null; sales: { count: number; total: number; tax: number; cogs: number }; payments: Record<string, number>; paymentBreakdown?: Array<{ method: string; methodName: string; settlementAccountCode: string; settlementBehavior: string; grossAmount: number; feeAmount: number; netSettlementAmount: number; feeAccountCode: string | null }>; refunds: { count: number; cashTotal: number }; cashMovements: { cashIn: number; cashOut: number } };
 type SaleQuote = { subtotal: string | number; discount: string | number; promoDiscount?: string | number; appliedPromo?: { id: string; code: string; name: string; type: string } | null; loyaltyDiscount: string | number; totalDiscount: string | number; net: string | number; tax: string | number; total: string | number; redeemPoints: number; items?: Array<{ productId: string; barcodeCode?: string | null; variantId?: string | null; unitCode: string; unitQuantity: number; quantityFactor: number; baseQuantity: number; sellingUnitPrice: string | number; baseUnitPrice: string | number; lineSubtotal: string | number }> };
-type SplitPayment = { method: 'CASH' | 'QRIS' | 'TRANSFER' | 'CARD'; amount: number };
+type SplitPayment = { method: string; amount: number; provider?: string; externalRef?: string };
 type RecentSale = { id: string; number: string; warehouseId: string; subtotal: string | number; discount: string | number; tax: string | number; total: string | number; createdAt: string; items: Array<{ id: string; productId: string; quantity: number; unitPrice: string | number; netSubtotal: string | number; product: { name: string; sku?: string } }> };
 type SaleReturnRow = { id: string; number: string; saleId: string; status: string; refundMethod?: string | null; refundAmount: string | number; inspectionId?: string | null; createdAt: string };
-type HeldSale = { id: string; cashierSub: string; label: string; createdAt: string; warehouseId: string; customerId: string; discount: number; redeemPoints: number; promoCode: string; paymentMethod: string; items: Array<{ productId: string; quantity: number; productUnitId?: string; variantId?: string; barcodeCode?: string }> };
-type OfflineConfig = { serverTime: string; branchId: string; shift: CashierShift | null; taxCodes: OfflineTaxCode[]; policy: { paymentMethods: string[]; loyaltyRedeemAllowed: boolean; maxOfflineAgeMinutes: number; note: string } };
+type HeldSale = { id: string; cashierSub: string; label: string; createdAt: string; warehouseId: string; customerId: string; discount: number; serviceFee?: number; redeemPoints: number; promoCode: string; paymentMethod: string; paymentProvider?: string; paymentReference?: string; splitEnabled?: boolean; splitPayments?: SplitPayment[]; onAccountAmount?: number; items: Array<{ productId: string; quantity: number; productUnitId?: string; variantId?: string; barcodeCode?: string }> };
+type OfflineConfig = { serverTime: string; branchId: string; shift: CashierShift | null; taxCodes: OfflineTaxCode[]; tenderMethods: OfflineTenderMethod[]; policy: { paymentMethods: string[]; loyaltyRedeemAllowed: boolean; maxOfflineAgeMinutes: number; note: string } };
 type OfflineReplayResult = { localId: string; sequence: number; status: 'APPLIED' | 'CONFLICT' | 'FAILED' | 'PENDING'; reason?: string; number?: string; saleId?: string };
 type OfflineReplayResponse = { deviceId: string | null; applied: number; conflicts: number; failed: number; remaining: number; results: OfflineReplayResult[] };
 
@@ -106,6 +106,10 @@ export default function PosPage() {
   const [serverMatches, setServerMatches] = useState<Product[] | null>(null);
   const [serverSearchBusy, setServerSearchBusy] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentProvider, setPaymentProvider] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [tenderMethods, setTenderMethods] = useState<OfflineTenderMethod[]>([]);
+  const [onAccountAmount, setOnAccountAmount] = useState(0);
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([{ method: 'CASH', amount: 0 }, { method: 'QRIS', amount: 0 }]);
   const [discount, setDiscount] = useState(0);
@@ -192,7 +196,7 @@ export default function PosPage() {
   const [returnSaleId, setReturnSaleId] = useState('');
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
   const [returnReason, setReturnReason] = useState('');
-  const [returnRefundMethod, setReturnRefundMethod] = useState<'CASH' | 'QRIS' | 'TRANSFER' | 'CARD'>('CASH');
+  const [returnRefundMethod, setReturnRefundMethod] = useState('ORIGINAL');
   const [returnBusy, setReturnBusy] = useState(false);
   const [quote, setQuote] = useState<SaleQuote | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -246,7 +250,7 @@ export default function PosPage() {
       void (async () => {
       const snapshot = await loadOfflineSnapshot<Product, Warehouse, CustomerOption, CashierShift, RuntimeManifest>();
       if (snapshot) {
-        setProducts(snapshot.products); setWarehouses(snapshot.warehouses); setCustomers(snapshot.customers); setShift(snapshot.shift); setManifest(snapshot.manifest); setTaxCodes(snapshot.taxCodes); setOfflineConfigSyncedAt(snapshot.savedAt); setOfflineMaxAgeMinutes(snapshot.offlineMaxAgeMinutes ?? 1440); setOfflineClockOffsetMs(snapshot.clockOffsetMs ?? 0); setCatalogReady(true);
+        setProducts(snapshot.products); setWarehouses(snapshot.warehouses); setCustomers(snapshot.customers); setShift(snapshot.shift); setManifest(snapshot.manifest); setTaxCodes(snapshot.taxCodes); setTenderMethods(snapshot.tenderMethods ?? []); setPaymentMethod((current) => snapshot.tenderMethods?.some((item) => item.code === current) ? current : snapshot.tenderMethods?.[0]?.code ?? ''); setOfflineConfigSyncedAt(snapshot.savedAt); setOfflineMaxAgeMinutes(snapshot.offlineMaxAgeMinutes ?? 1440); setOfflineClockOffsetMs(snapshot.clockOffsetMs ?? 0); setCatalogReady(true);
         setWarehouseId((current) => current || snapshot.warehouses[0]?.id || '');
       }
       })();
@@ -384,13 +388,13 @@ export default function PosPage() {
       const serverTimeMs = new Date(offlineConfig.serverTime).getTime();
       const clockOffsetMs = Number.isFinite(serverTimeMs) ? serverTimeMs - Date.now() : 0;
       const syncedAt = Number.isFinite(serverTimeMs) ? new Date(serverTimeMs).toISOString() : new Date().toISOString();
-      setProducts(productData.items); setCatalogCursor(catalog.nextCursor); setCatalogHasMore(catalog.hasMore); setWarehouses(warehouseData); setManifest(runtime); setCustomers(customerData); setShift(offlineConfig.shift); setTaxCodes(offlineConfig.taxCodes); setOfflineConfigSyncedAt(syncedAt); setOfflineMaxAgeMinutes(offlineConfig.policy.maxOfflineAgeMinutes); setOfflineClockOffsetMs(clockOffsetMs); setCatalogReady(true);
+      setProducts(productData.items); setCatalogCursor(catalog.nextCursor); setCatalogHasMore(catalog.hasMore); setWarehouses(warehouseData); setManifest(runtime); setCustomers(customerData); setShift(offlineConfig.shift); setTaxCodes(offlineConfig.taxCodes); setTenderMethods(offlineConfig.tenderMethods); setPaymentMethod((current) => offlineConfig.tenderMethods.some((item) => item.code === current) ? current : offlineConfig.tenderMethods[0]?.code ?? ''); setOfflineConfigSyncedAt(syncedAt); setOfflineMaxAgeMinutes(offlineConfig.policy.maxOfflineAgeMinutes); setOfflineClockOffsetMs(clockOffsetMs); setCatalogReady(true);
       setWarehouseId((current) => current || warehouseData[0]?.id || '');
       // IndexedDB replaces the old single-key localStorage blob. The outcome is REPORTED, never
       // thrown: a full disk must leave the till selling online, with the operator told that offline
       // is degraded — not a screen that failed to load.
       const stored = await persistOfflineSnapshot<Product, Warehouse, CustomerOption, CashierShift, RuntimeManifest>({
-        savedAt: syncedAt, products: productData.items, warehouses: warehouseData, customers: customerData, shift: offlineConfig.shift, manifest: runtime, taxCodes: offlineConfig.taxCodes, offlineMaxAgeMinutes: offlineConfig.policy.maxOfflineAgeMinutes, clockOffsetMs,
+        savedAt: syncedAt, products: productData.items, warehouses: warehouseData, customers: customerData, shift: offlineConfig.shift, manifest: runtime, taxCodes: offlineConfig.taxCodes, tenderMethods: offlineConfig.tenderMethods, offlineMaxAgeMinutes: offlineConfig.policy.maxOfflineAgeMinutes, clockOffsetMs,
       });
       if (!stored.ok) {
         setMessage(`Data online berhasil dimuat, tetapi cache offline tidak tersimpan: ${stored.reason ?? 'penyimpanan browser tidak tersedia.'} Transaksi tetap bisa dilakukan selama online.`);
@@ -399,7 +403,7 @@ export default function PosPage() {
     } catch (error) {
       const snapshot = await loadOfflineSnapshot<Product, Warehouse, CustomerOption, CashierShift, RuntimeManifest>();
       if (snapshot && error instanceof PosApiError && error.network) {
-        setProducts(snapshot.products); setWarehouses(snapshot.warehouses); setManifest(snapshot.manifest); setCustomers(snapshot.customers); setShift(snapshot.shift); setTaxCodes(snapshot.taxCodes); setOfflineConfigSyncedAt(snapshot.savedAt); setOfflineMaxAgeMinutes(snapshot.offlineMaxAgeMinutes ?? 1440); setOfflineClockOffsetMs(snapshot.clockOffsetMs ?? 0);
+        setProducts(snapshot.products); setWarehouses(snapshot.warehouses); setManifest(snapshot.manifest); setCustomers(snapshot.customers); setShift(snapshot.shift); setTaxCodes(snapshot.taxCodes); setTenderMethods(snapshot.tenderMethods ?? []); setPaymentMethod((current) => snapshot.tenderMethods?.some((item) => item.code === current) ? current : snapshot.tenderMethods?.[0]?.code ?? ''); setOfflineConfigSyncedAt(snapshot.savedAt); setOfflineMaxAgeMinutes(snapshot.offlineMaxAgeMinutes ?? 1440); setOfflineClockOffsetMs(snapshot.clockOffsetMs ?? 0);
         setWarehouseId((current) => current || snapshot.warehouses[0]?.id || '');
         setMessage('Server tidak terjangkau. Data cache lokal dipakai untuk operasi offline yang aman.');
       } else { setCatalogReady(true); setMessage(error instanceof Error ? error.message : 'Gagal memuat data.'); }
@@ -533,9 +537,6 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   function salePayload() {
     return {
       warehouseId,
-      ...(splitEnabled
-        ? { payments: splitPayments.filter((item) => item.amount > 0).map((item) => ({ method: item.method, amount: Number(item.amount.toFixed(2)) })) }
-        : { paymentMethod }),
       discount,
       // The server clamps this to the settlement and posts it to its own income account, so the
       // cashier cannot turn it into a discount with a negative value.
@@ -552,7 +553,10 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     const estimatedServerNow = Date.now() + offlineClockOffsetMs;
     const configAgeMinutes = offlineConfigSyncedAt ? (estimatedServerNow - new Date(offlineConfigSyncedAt).getTime()) / 60000 : Number.POSITIVE_INFINITY;
     if (!Number.isFinite(configAgeMinutes) || configAgeMinutes > offlineMaxAgeMinutes) return { quote: null as SaleQuote | null, error: `Cache harga/pajak sudah lebih dari ${offlineMaxAgeMinutes} menit. Hubungkan POS ke server sebelum menerima transaksi offline baru.` };
-    if (splitEnabled || paymentMethod !== 'CASH') return { quote: null as SaleQuote | null, error: 'Mode offline hanya mengizinkan satu pembayaran tunai.' };
+    const offlineTender = tenderMethods.find((item) => item.code === paymentMethod);
+    if (splitEnabled || onAccountAmount > 0 || !offlineTender?.allowOffline) return { quote: null as SaleQuote | null, error: 'Mode offline hanya mengizinkan satu tender yang ditandai boleh offline pada konfigurasi server.' };
+    if (offlineTender.requiresProvider && !paymentProvider.trim()) return { quote: null as SaleQuote | null, error: `Tender ${offlineTender.name} mewajibkan provider.` };
+    if (offlineTender.requiresReference && !paymentReference.trim()) return { quote: null as SaleQuote | null, error: `Tender ${offlineTender.name} mewajibkan referensi eksternal.` };
     if (cart.some((item) => item.quantityFactor !== 1 || item.barcodeCode)) return { quote: null as SaleQuote | null, error: 'Penjualan unit/kemasan hasil scan membutuhkan server online agar konversi dan harga divalidasi authoritative.' };
     if (promoCode.trim()) return { quote: null as SaleQuote | null, error: 'Promo membutuhkan koneksi server.' };
     if (redeemPoints > 0) return { quote: null as SaleQuote | null, error: 'Penukaran poin membutuhkan koneksi server.' };
@@ -565,7 +569,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     } catch (error) {
       return { quote: null as SaleQuote | null, error: error instanceof Error ? error.message : 'Cache offline tidak cukup untuk menghitung transaksi.' };
     }
-  }, [apiOnline, cart, discount, promoCode, splitEnabled, paymentMethod, redeemPoints, taxCodes, offlineConfigSyncedAt, offlineMaxAgeMinutes, offlineClockOffsetMs]);
+  }, [apiOnline, cart, discount, promoCode, splitEnabled, paymentMethod, paymentProvider, paymentReference, onAccountAmount, redeemPoints, taxCodes, tenderMethods, offlineConfigSyncedAt, offlineMaxAgeMinutes, offlineClockOffsetMs]);
 
   function persistOfflineQueue(next: OfflineQueueItem[]): boolean {
     try { saveOfflineQueue(next); setOfflineQueue(next); return true; }
@@ -593,7 +597,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
       };
       if (!persistOfflineQueue([...offlineQueue, item])) return;
       pendingPaymentRef.current = null;
-      setCart([]); setDiscount(0); setServiceFee(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false); setQuote(null);
+      setCart([]); setDiscount(0); setServiceFee(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false); setOnAccountAmount(0); setPaymentProvider(''); setPaymentReference(''); setQuote(null);
       setMessage(`${note} Antrean offline #${item.sequence} tersimpan sebesar ${money(expectedTotal)} dan akan disinkronkan otomatis.`);
     } catch {
       setMessage('Penyimpanan lokal gagal. Transaksi BELUM masuk antrean offline dan keranjang tetap dipertahankan.');
@@ -749,11 +753,11 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     const id = newIdempotencyKey();
     const next: HeldSale = {
       id, cashierSub, label: `Hold ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`, createdAt: new Date().toISOString(),
-      warehouseId, customerId, discount, redeemPoints, promoCode, paymentMethod,
+      warehouseId, customerId, discount, serviceFee, redeemPoints, promoCode, paymentMethod, paymentProvider, paymentReference, splitEnabled, splitPayments, onAccountAmount,
       items: cart.map((item) => ({ productId: item.product.id, quantity: item.quantity, ...(item.variantId ? { variantId: item.variantId } : {}), ...(item.productUnitId ? { productUnitId: item.productUnitId } : {}), ...(item.barcodeCode ? { barcodeCode: item.barcodeCode } : {}) })),
     };
     if (!persistHeldSales([next, ...heldSales])) return;
-    setCart([]); setCustomerId(''); setDiscount(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false);
+    setCart([]); setCustomerId(''); setDiscount(0); setServiceFee(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false); setOnAccountAmount(0); setPaymentProvider(''); setPaymentReference('');
     setMessage(`${next.label} tersimpan. Keranjang siap untuk transaksi berikutnya.`);
   }
 
@@ -778,7 +782,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
       const safeUnitQuantity = Math.min(line.quantity, Math.floor(safeAvailable / factor));
       return safeUnitQuantity > 0 ? [{ product, quantity: safeUnitQuantity, unitCode: (directUnit?.unitCode || barcode?.unitCode || product.unit).trim().toUpperCase(), quantityFactor: factor, ...(line.productUnitId ? { productUnitId: line.productUnitId } : {}), ...(line.variantId ? { variantId: line.variantId } : {}), ...(line.barcodeCode ? { barcodeCode: line.barcodeCode } : {}) }] : [];
     }).filter((item) => item.quantity > 0);
-    setWarehouseId(targetWarehouseId); setCart(restored); setCustomerId(held.customerId); setDiscount(held.discount); setRedeemPoints(held.redeemPoints); setPromoCode(held.promoCode); setPaymentMethod(held.paymentMethod || 'CASH'); setSplitEnabled(false);
+    setWarehouseId(targetWarehouseId); setCart(restored); setCustomerId(held.customerId); setDiscount(held.discount); setServiceFee(held.serviceFee ?? 0); setRedeemPoints(held.redeemPoints); setPromoCode(held.promoCode); setPaymentMethod(held.paymentMethod || tenderMethods[0]?.code || ''); setPaymentProvider(held.paymentProvider ?? ''); setPaymentReference(held.paymentReference ?? ''); setSplitEnabled(Boolean(held.splitEnabled)); setSplitPayments(held.splitPayments?.length ? held.splitPayments : [{ method: tenderMethods[0]?.code ?? '', amount: 0 }, { method: tenderMethods[1]?.code ?? tenderMethods[0]?.code ?? '', amount: 0 }]); setOnAccountAmount(held.onAccountAmount ?? 0);
     persistHeldSales(heldSales.filter((item) => item.id !== id));
     setMessage(`${held.label} dipanggil kembali${restored.length !== held.items.length ? '; beberapa produk tidak lagi tersedia' : ''}.`);
   }
@@ -919,11 +923,20 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     if (!token || !shift || !activeQuote || quoteLoading || activeQuoteError || paying || !cart.length) return;
     if (splitEnabled) {
       const splitTotalNow = splitPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-      if (Math.abs(splitTotalNow - Number(activeQuote.total)) >= 0.01) { setMessage('Total split payment harus sama persis dengan total transaksi.'); return; }
-      if (!splitPayments.some((item) => item.amount > 0)) { setMessage('Split payment belum memiliki nominal pembayaran.'); return; }
+      const splitTargetNow = Math.max(0, Number(activeQuote.total) - Math.min(Math.max(0, Number(onAccountAmount) || 0), Number(activeQuote.total)));
+      if (Math.abs(splitTotalNow - splitTargetNow) >= 0.01) { setMessage('Total split tender harus sama persis dengan bagian transaksi yang tidak menjadi piutang.'); return; }
+      if (splitTargetNow > 0 && !splitPayments.some((item) => item.amount > 0)) { setMessage('Split payment belum memiliki nominal pembayaran.'); return; }
     }
     const offlineEnabled = manifest?.features.pos_offline?.enabled === true;
-    const basePayload = { ...salePayload(), cashierShiftId: shift.id };
+    const normalizedOnAccount = Math.min(Math.max(0, Number(onAccountAmount) || 0), Number(activeQuote.total));
+    if (normalizedOnAccount > 0 && !customerId) { setMessage('Pilih pelanggan sebelum mencatat sebagian atau seluruh transaksi sebagai piutang.'); return; }
+    const tenderDue = Math.max(0, Number((Number(activeQuote.total) - normalizedOnAccount).toFixed(2)));
+    const settlement = splitEnabled
+      ? { payments: splitPayments.filter((item) => item.amount > 0).map((item) => ({ method: item.method, amount: Number(item.amount.toFixed(2)), ...(item.provider?.trim() ? { provider: item.provider.trim() } : {}), ...(item.externalRef?.trim() ? { externalRef: item.externalRef.trim() } : {}) })) }
+      : tenderDue > 0
+        ? { payments: [{ method: paymentMethod, amount: tenderDue, ...(paymentProvider.trim() ? { provider: paymentProvider.trim() } : {}), ...(paymentReference.trim() ? { externalRef: paymentReference.trim() } : {}) }] }
+        : {};
+    const basePayload = { ...salePayload(), ...settlement, ...(normalizedOnAccount > 0 ? { onAccount: true, onAccountAmount: normalizedOnAccount } : {}), cashierShiftId: shift.id };
     const fingerprint = JSON.stringify(basePayload);
     const pending = pendingPaymentRef.current;
     const idempotencyKey = pending?.fingerprint === fingerprint ? pending.key : newIdempotencyKey();
@@ -936,7 +949,8 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     if (!apiOnline) {
       if (!offlineEnabled) { setMessage('Mode offline belum diaktifkan untuk POS ini.'); return; }
       if (serviceFee > 0) { setMessage('Biaya layanan tidak dapat dicatat saat offline. Selesaikan transaksi saat online.'); return; }
-      if (splitEnabled || paymentMethod !== 'CASH') { setMessage('Pembayaran offline hanya boleh satu metode tunai. Split payment, QRIS, kartu, dan transfer membutuhkan server online.'); return; }
+      const activeTender = tenderMethods.find((item) => item.code === paymentMethod);
+      if (splitEnabled || normalizedOnAccount > 0 || !activeTender?.allowOffline) { setMessage('Pembayaran offline hanya boleh memakai satu tender yang diizinkan konfigurasi server dan tidak boleh membentuk piutang.'); return; }
       if (redeemPoints > 0) { setMessage('Penukaran poin tidak boleh dilakukan saat offline.'); return; }
       queueSaleOffline(replayPayload, Number(activeQuote.total), 'Server sedang offline.');
       return;
@@ -952,10 +966,10 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
       const earnNote = sale.loyaltyEarned ? ` Dapat ${sale.loyaltyEarned} poin baru.` : '';
       setLastReceipt({ number: sale.number, total: Number(sale.total) });
       setMessage(`Transaksi ${sale.number} berhasil sebesar ${money(sale.total)}.${loyaltyNote}${earnNote} Stok dan jurnal telah diperbarui.`);
-      setCart([]); setDiscount(0); setServiceFee(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false); setQuote(null);
+      setCart([]); setDiscount(0); setServiceFee(0); setRedeemPoints(0); setPromoCode(''); setSplitEnabled(false); setOnAccountAmount(0); setPaymentProvider(''); setPaymentReference(''); setQuote(null);
       await loadData(token);
     } catch (error) {
-      if (error instanceof PosApiError && error.network && offlineEnabled && !splitEnabled && paymentMethod === 'CASH' && redeemPoints === 0 && !promoCode.trim()) {
+      if (error instanceof PosApiError && error.network && offlineEnabled && !splitEnabled && normalizedOnAccount === 0 && tenderMethods.some((item) => item.code === paymentMethod && item.allowOffline) && redeemPoints === 0 && !promoCode.trim()) {
         // Hasil request bisa saja sudah commit sebelum koneksi putus. Idempotency key yang
         // sama disimpan ke antrean sehingga replay tidak pernah menggandakan sale.
         queueSaleOffline(replayPayload, Number(activeQuote.total), 'Koneksi terputus saat pembayaran; status server belum pasti.');
@@ -991,8 +1005,11 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   const foreignOfflineCount = offlineQueue.length - ownedOfflineQueue.length;
   const hasOfflineConflict = ownedOfflineQueue.some((item) => item.status === 'CONFLICT');
   const ownedHeldSales = heldSales.filter((item) => item.cashierSub === currentCashierSub);
+  const selectedTender = tenderMethods.find((item) => item.code === paymentMethod);
+  const normalizedOnAccountDisplay = Math.min(Math.max(0, Number(onAccountAmount) || 0), Number(displayTotal));
+  const tenderTarget = Math.max(0, Number(displayTotal) - normalizedOnAccountDisplay);
   const splitTotal = splitPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const splitReady = !splitEnabled || Math.abs(splitTotal - Number(displayTotal)) < 0.01;
+  const splitReady = !splitEnabled || Math.abs(splitTotal - tenderTarget) < 0.01;
   const selectedReturnSale = recentSales.find((sale) => sale.id === returnSaleId);
   const pendingSaleReturns = saleReturns.filter((item) => ['REQUESTED','APPROVED'].includes(item.status));
 
@@ -1063,9 +1080,12 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
           {activeQuoteError && <p className="quoteError">{activeQuoteError}</p>}
           {serviceFee > 0 && <div><span>Biaya layanan</span><strong>{money(serviceFee)}</strong></div>}
           <div className="grand"><span>TOTAL</span><strong style={{ fontSize: 22 }}>{money(displayTotal)}</strong></div>
-          <div className="paymentModeHeader"><strong><CreditCard size={13} style={{verticalAlign:'-2px'}} /> Pembayaran</strong><button type="button" className="clear" disabled={!apiOnline} onClick={() => { const next = !splitEnabled; setSplitEnabled(next); if (next) setSplitPayments([{ method: 'CASH', amount: Number(displayTotal) }, { method: 'QRIS', amount: 0 }]); }}>{splitEnabled ? 'SATU METODE' : 'SPLIT PAYMENT'}</button></div>
-          {!splitEnabled ? <label>Metode pembayaran{!apiOnline ? ' · offline hanya tunai' : ''}<select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="CASH">Tunai</option><option value="QRIS">QRIS</option><option value="TRANSFER">Transfer</option><option value="CARD">Kartu</option></select></label>
-            : <div className="splitPayments">{splitPayments.map((entry, index) => <div className="splitRow" key={`${index}-${entry.method}`}><select value={entry.method} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { ...item, method: e.target.value as SplitPayment['method'] } : item))}><option value="CASH">Tunai</option><option value="QRIS">QRIS</option><option value="TRANSFER">Transfer</option><option value="CARD">Kartu</option></select><input type="number" min="0" value={entry.amount} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Math.max(0, Number(e.target.value) || 0) } : item))} />{splitPayments.length > 2 && <button className="clear iconOnly" aria-label="Hapus metode pembayaran" onClick={() => setSplitPayments((current) => current.filter((_, i) => i !== index))}><X size={16} /></button>}</div>)}<button className="clear inlineIcon" onClick={() => setSplitPayments((current) => [...current, { method: 'TRANSFER', amount: 0 }])}><Plus size={15} />Metode</button><small className={splitReady ? '' : 'fieldWarning'}>Terbagi {money(splitTotal)} dari {money(displayTotal)}{splitReady ? '' : ' · harus sama persis'}</small></div>}
+          <div className="paymentModeHeader"><strong><CreditCard size={13} style={{verticalAlign:'-2px'}} /> Pembayaran</strong><button type="button" className="clear" disabled={!apiOnline || tenderTarget <= 0} onClick={() => { const next = !splitEnabled; setSplitEnabled(next); if (next) setSplitPayments([{ method: tenderMethods[0]?.code ?? '', amount: tenderTarget }, { method: tenderMethods[1]?.code ?? tenderMethods[0]?.code ?? '', amount: 0 }]); }}>{splitEnabled ? 'SATU METODE' : 'SPLIT PAYMENT'}</button></div>
+          <label>Piutang pelanggan{!apiOnline ? ' · hanya online' : ''}<input type="number" min="0" max={Number(displayTotal)} disabled={!apiOnline || !customerId} value={onAccountAmount} onChange={(e) => setOnAccountAmount(Math.min(Number(displayTotal), Math.max(0, Number(e.target.value) || 0)))} /></label>
+          {onAccountAmount > 0 && !customerId && <small className="fieldWarning">Pilih pelanggan untuk menggunakan piutang.</small>}
+          {tenderTarget > 0 && (!splitEnabled ? <><label>Metode pembayaran{!apiOnline ? ' · sesuai kebijakan offline server' : ''}<select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setPaymentProvider(''); setPaymentReference(''); }}>{tenderMethods.map((item) => <option key={item.code} value={item.code} disabled={!apiOnline && !item.allowOffline}>{item.name} · {item.code}{!apiOnline && !item.allowOffline ? ' (online)' : ''}</option>)}</select></label>{selectedTender?.requiresProvider&&<label>Provider<input required value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} placeholder="Provider pembayaran" /></label>}{selectedTender?.requiresReference&&<label>Referensi eksternal<input required value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Nomor/reference provider" /></label>}{selectedTender&&<small>{selectedTender.kind==='CASH'?'Kas fisik':selectedTender.settlementBehavior==='CLEARING'?'Masuk akun clearing':'Settlement langsung'} · akun {selectedTender.settlementAccountCode}{selectedTender.feeRatePercent>0?` · fee ${selectedTender.feeRatePercent}%`:''}</small>}</>
+            : <div className="splitPayments">{splitPayments.map((entry, index) => { const tender=tenderMethods.find((item)=>item.code===entry.method); return <div className="splitRow" key={`${index}-${entry.method}`}><select value={entry.method} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { method: e.target.value, amount:item.amount } : item))}>{tenderMethods.map((item)=><option key={item.code} value={item.code}>{item.name} · {item.code}</option>)}</select><input type="number" min="0" value={entry.amount} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Math.max(0, Number(e.target.value) || 0) } : item))} />{tender?.requiresProvider&&<input value={entry.provider??''} onChange={(e)=>setSplitPayments((current)=>current.map((item,i)=>i===index?{...item,provider:e.target.value}:item))} placeholder="Provider"/>}{tender?.requiresReference&&<input value={entry.externalRef??''} onChange={(e)=>setSplitPayments((current)=>current.map((item,i)=>i===index?{...item,externalRef:e.target.value}:item))} placeholder="Referensi"/>}{splitPayments.length > 2 && <button className="clear iconOnly" aria-label="Hapus metode pembayaran" onClick={() => setSplitPayments((current) => current.filter((_, i) => i !== index))}><X size={16} /></button>}</div>;})}<button className="clear inlineIcon" onClick={() => setSplitPayments((current) => [...current, { method: tenderMethods[0]?.code ?? '', amount: 0 }])}><Plus size={15} />Metode</button><small className={splitReady ? '' : 'fieldWarning'}>Tender {money(splitTotal)} dari {money(tenderTarget)}{normalizedOnAccountDisplay>0?` · piutang ${money(normalizedOnAccountDisplay)}`:''}{splitReady ? '' : ' · harus sama persis'}</small></div>)}
+          {tenderTarget <= 0 && <small>Seluruh total dicatat sebagai piutang pelanggan; tidak ada tender yang dibebankan sekarang.</small>}
           <button className="pay" disabled={!cart.length || !warehouseId || !shift || !activeQuote || quoteLoading || !!activeQuoteError || paying || !splitReady} onClick={pay}>{paying ? 'MEMPROSES...' : shift ? (apiOnline ? 'BAYAR' : 'SIMPAN TRANSAKSI OFFLINE') : 'BUKA SHIFT DULU'}</button>
         </div>
       </aside>
@@ -1082,7 +1102,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     <section className="shiftControlGrid">
       <article className="shiftPanel">
         <div className="cartTitle"><div><small>SHIFT RECAP</small><h2>{shiftRecap ? `${shiftRecap.shift.cashier} · ${shiftRecap.shift.status}` : 'Ringkasan shift'}</h2></div><button type="button" className="clear" disabled={!apiOnline || shiftControlLoading} onClick={() => void loadShiftControl()}>{shiftControlLoading ? 'MEMUAT…' : 'REFRESH'}</button></div>
-        {shiftRecap ? <div className="shiftRecapGrid"><div><span>Penjualan</span><strong>{money(shiftRecap.sales.total)}</strong><small>{shiftRecap.sales.count} transaksi</small></div><div><span>Expected cash</span><strong>{money(shiftRecap.expectedCash ?? 0)}</strong><small>Opening {money(shiftRecap.openingCash)}</small></div><div><span>Kas masuk / keluar</span><strong>{money(shiftRecap.cashMovements.cashIn)} / {money(shiftRecap.cashMovements.cashOut)}</strong><small>Refund tunai {money(shiftRecap.refunds.cashTotal)}</small></div><div><span>Selisih</span><strong>{shiftRecap.difference == null ? '-' : money(shiftRecap.difference)}</strong><small>{Object.entries(shiftRecap.payments).map(([method,total]) => `${method} ${money(total)}`).join(' · ') || 'Belum ada pembayaran'}</small></div></div> : <div className="syncEmpty"><Store size={20}/><span>Belum ada recap shift yang dapat ditampilkan.</span></div>}
+        {shiftRecap ? <div className="shiftRecapGrid"><div><span>Penjualan</span><strong>{money(shiftRecap.sales.total)}</strong><small>{shiftRecap.sales.count} transaksi</small></div><div><span>Expected cash</span><strong>{money(shiftRecap.expectedCash ?? 0)}</strong><small>Opening {money(shiftRecap.openingCash)}</small></div><div><span>Kas masuk / keluar</span><strong>{money(shiftRecap.cashMovements.cashIn)} / {money(shiftRecap.cashMovements.cashOut)}</strong><small>Refund tunai {money(shiftRecap.refunds.cashTotal)}</small></div><div><span>Selisih</span><strong>{shiftRecap.difference == null ? '-' : money(shiftRecap.difference)}</strong><small>{(shiftRecap.paymentBreakdown?.length ? shiftRecap.paymentBreakdown.map((item) => `${item.methodName} ${money(item.grossAmount)} → ${item.settlementAccountCode}/${item.settlementBehavior}${item.feeAmount > 0 ? ` · MDR ${money(item.feeAmount)}` : ''}`).join(' · ') : Object.entries(shiftRecap.payments).map(([method,total]) => `${method} ${money(total)}`).join(' · ')) || 'Belum ada pembayaran'}</small></div></div> : <div className="syncEmpty"><Store size={20}/><span>Belum ada recap shift yang dapat ditampilkan.</span></div>}
       </article>
       <article className="shiftPanel">
         <div className="cartTitle"><div><small>CASH MOVEMENT</small><h2>Kas masuk / keluar shift aktif</h2></div><span>{cashMovements.length} movement</span></div>
@@ -1098,7 +1118,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
         <label>Transaksi asal<select value={returnSaleId} onChange={(e) => { setReturnSaleId(e.target.value); setReturnQty({}); }}><option value="">Pilih transaksi terbaru</option>{recentSales.map((sale) => <option key={sale.id} value={sale.id}>{sale.number} · {new Date(sale.createdAt).toLocaleString('id-ID')} · {money(sale.total)}</option>)}</select></label>
         {selectedReturnSale && <div className="returnItems">{selectedReturnSale.items.map((item) => <label key={item.id}>{item.product.name} · dibeli {item.quantity}<input type="number" min="0" max={item.quantity} value={returnQty[item.id] ?? 0} onChange={(e) => setReturnQty((current) => ({ ...current, [item.id]: Math.min(item.quantity, Math.max(0, Math.floor(Number(e.target.value) || 0))) }))} /></label>)}</div>}
         <label>Alasan retur<input value={returnReason} maxLength={240} onChange={(e) => setReturnReason(e.target.value)} placeholder="Contoh: barang rusak / salah item" /></label>
-        <label>Metode refund<select value={returnRefundMethod} onChange={(e) => setReturnRefundMethod(e.target.value as typeof returnRefundMethod)}><option value="CASH">Tunai</option><option value="QRIS">QRIS</option><option value="TRANSFER">Transfer</option><option value="CARD">Kartu</option></select></label>
+        <label>Metode refund<select value={returnRefundMethod} onChange={(e) => setReturnRefundMethod(e.target.value)}><option value="ORIGINAL">Ikuti tender/piutang asal</option><option value="RECEIVABLE">Kurangi piutang</option>{tenderMethods.filter((item)=>item.refundBehavior!=='DISABLED').map((item)=><option key={item.code} value={item.code}>{item.name} · {item.code}</option>)}</select></label>
         <button disabled={returnBusy || !returnSaleId || !returnReason.trim()} onClick={() => void submitSaleReturn()}>{returnBusy ? 'MEMPROSES...' : 'AJUKAN RETUR'}</button>
         {saleReturns.slice(0, 5).map((row) => <small key={row.id}>{row.number} · {money(row.refundAmount)} · {row.status}</small>)}
       </div>}

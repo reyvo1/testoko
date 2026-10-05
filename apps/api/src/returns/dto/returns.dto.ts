@@ -12,7 +12,7 @@ export class CreateSaleReturnDto {
   @ApiProperty() @IsString() saleId!: string;
   @ApiProperty() @IsString() warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
-  @ApiPropertyOptional({ default: 'CASH' }) @IsOptional() @IsString() refundMethod?: string;
+  @ApiPropertyOptional({ default: 'ORIGINAL', description: 'ORIGINAL memakai snapshot tender transaksi; atau kode PAYMENT_METHOD aktif yang diizinkan untuk refund.' }) @IsOptional() @IsString() @MaxLength(60) refundMethod?: string;
   @ApiProperty({ type: [SaleReturnItemDto] }) @IsArray() @ValidateNested({ each: true }) @Type(() => SaleReturnItemDto) items!: SaleReturnItemDto[];
 }
 

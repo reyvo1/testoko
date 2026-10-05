@@ -907,6 +907,23 @@ async function main() {
     const uatUnitCode = String(activeUnit.code).trim().toUpperCase();
     evidence.checks.push({ id: 'DYNAMIC_UNIT_MASTER_RUNTIME', status: 'PASS', unitCode: uatUnitCode });
 
+    const tenderResponse = await http(`${apiUrl}/master-data/references?type=PAYMENT_METHOD`, { headers: staffAuthHeaders });
+    const tenderRows = await tenderResponse.json().catch(() => null);
+    if (!tenderResponse.ok) throw new Error(`Master PAYMENT_METHOD UAT gagal dibaca (HTTP ${tenderResponse.status}).`);
+    const activeTenderRows = (Array.isArray(tenderRows) ? tenderRows : []).filter((item) => item?.type === 'PAYMENT_METHOD' && item?.isActive !== false && (!item?.branchId || item.branchId === loginBody.user?.branchId) && String(item?.code || '').trim());
+    if (!activeTenderRows.length) throw new Error('Browser UAT membutuhkan minimal satu master PAYMENT_METHOD aktif.');
+    const uatTenderCodes = activeTenderRows.map((item) => String(item.code).trim().toUpperCase());
+    const fixtureTender = activeTenderRows.find((item) => String(item?.code || '').trim().toUpperCase() === 'CASH') ?? activeTenderRows.find((item) => {
+      const metadata = item?.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {};
+      return metadata.requiresProvider !== true && metadata.requiresReference !== true;
+    }) ?? activeTenderRows[0];
+    const fixtureTenderCode = String(fixtureTender.code).trim().toUpperCase();
+    const fixtureTenderMetadata = fixtureTender?.metadata && typeof fixtureTender.metadata === 'object' && !Array.isArray(fixtureTender.metadata) ? fixtureTender.metadata : {};
+    if (fixtureTenderMetadata.requiresProvider === true || fixtureTenderMetadata.requiresReference === true) {
+      throw new Error('Browser UAT tidak menemukan PAYMENT_METHOD aktif tanpa provider/reference wajib untuk fixture penjualan deterministik.');
+    }
+    evidence.checks.push({ id: 'P6A_TENDER_MASTER_RUNTIME', status: 'PASS', tenderCodes: uatTenderCodes, fixtureTenderCode });
+
     const memoKey = `browser-uat-memo:${Date.now()}:${process.pid}`;
     const memoTitle = `Browser UAT memo ${process.pid}`;
     const createMemoResponse = await http(`${apiUrl}/staff-memos`, {
@@ -1042,7 +1059,7 @@ async function main() {
           body: JSON.stringify({
             warehouseId: warehouse.id,
             items: [{ productId: product.id, quantity }],
-            payments: [{ method: 'CASH', amount: price * quantity }],
+            payments: [{ method: fixtureTenderCode, amount: price * quantity }],
             // Field yang benar adalah idempotencyKey, bukan `note` - `note` tidak ada di
             // CreateSaleDto dan ditolak 400 ("property note should not exist").
             // idempotencyKey juga memberi jaminan retry aman: kalau POST terputus di tengah,
@@ -1327,6 +1344,21 @@ await waitExpression(cdp, `(() => {
     }
     await waitExpression(cdp, `Boolean(document.querySelector('[data-staff-memo-surface=\"pos\"]'))`, 'POS staff memo surface', 45000);
     evidence.checks.push({ id: 'POS_AUTHENTICATED_RUNTIME', status: 'PASS', assertions: ['cashier shell', 'warehouse selector', 'server online', 'offline config/data bootstrap'] });
+    const p6aPosTenderRuntime = await evaluateValue(cdp, `(() => {
+      const paymentLabel=[...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Metode pembayaran'));
+      const select=paymentLabel?.querySelector('select');
+      return {
+        options: select ? [...select.options].map((option)=>String(option.value||'').trim().toUpperCase()).filter(Boolean) : [],
+        hasSplit: (document.body?.innerText||'').includes('SPLIT PAYMENT'),
+        hasOnAccount: (document.body?.innerText||'').includes('Piutang pelanggan'),
+      };
+    })()`);
+    const expectedTenderCodes = uatTenderCodes;
+    const missingTenderCodes = expectedTenderCodes.filter((code) => !p6aPosTenderRuntime?.options?.includes(code));
+    if (missingTenderCodes.length || !p6aPosTenderRuntime?.hasSplit || !p6aPosTenderRuntime?.hasOnAccount) {
+      throw new Error(`P6A POS runtime tidak memuat kontrak tender dinamis/split/piutang. missing=${missingTenderCodes.join(',') || '<none>'}`);
+    }
+    evidence.checks.push({ id: 'P6A_POS_TENDER_RUNTIME', status: 'PASS', tenderCodes: p6aPosTenderRuntime.options, splitPayment: true, onAccount: true });
     evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });

@@ -318,31 +318,83 @@ export class FinanceOperationsService {
     client: DbClient,
     user: AuthUser,
     scope: TenantScope,
-    orderId: string,
+    referenceType: 'Order' | 'Sale',
+    referenceId: string,
     excludeFinanceTransactionId?: string,
   ) {
-    const order = await client.order.findFirst({
-      where: {
-        id: orderId,
-        branchId: scope.branchId,
-        branch: { companyId: scope.companyId },
-        status: { in: ['SHIPPED','COMPLETED'] },
-      },
-      include: { payments: true },
-    });
-    if (!order) return this.denyTenantAccess(client, user, scope, 'Order', orderId);
-    const payment = order.payments[0];
-    if (!payment || !['COD','INVOICE'].includes(payment.method)) {
-      throw new BadRequestException('Order bukan transaksi piutang COD/INVOICE.');
+    let payment: any;
+    let documentNumber = '';
+    let customerName = '';
+    let customerPhone: string | null = null;
+    let customerId: string | null = null;
+    let gross = new Prisma.Decimal(0);
+    let documentDate = new Date();
+    let sourceStatus = '';
+    let receivableAccountCode = '1201';
+
+    if (referenceType === 'Order') {
+      const order = await client.order.findFirst({
+        where: {
+          id: referenceId,
+          branchId: scope.branchId,
+          branch: { companyId: scope.companyId },
+          status: { in: ['SHIPPED','COMPLETED'] },
+        },
+        include: { payments: true },
+      });
+      if (!order) return this.denyTenantAccess(client, user, scope, 'Order', referenceId);
+      payment = order.payments[0];
+      if (!payment || !['COD','INVOICE'].includes(payment.method)) throw new BadRequestException('Order bukan transaksi piutang COD/INVOICE.');
+      if (!order.accountingEventId) throw new BadRequestException('Order belum mempunyai posting fulfillment/piutang.');
+      gross = new Prisma.Decimal(order.total);
+      receivableAccountCode = payment.method === 'COD' ? '1203' : '1201';
+      documentNumber = order.number;
+      customerName = order.customerName;
+      customerPhone = order.customerPhone ?? null;
+      customerId = order.customerId ?? null;
+      documentDate = payment.createdAt;
+      sourceStatus = order.status;
+    } else {
+      const sale = await client.sale.findFirst({
+        where: { id: referenceId, branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED' },
+        include: { payments: true, customer: true },
+      });
+      if (!sale) return this.denyTenantAccess(client, user, scope, 'Sale', referenceId);
+      payment = sale.payments.find((item) => item.method === 'ON_ACCOUNT');
+      if (!payment) throw new BadRequestException('Sale bukan transaksi piutang pelanggan.');
+      if (!sale.accountingEventId) throw new BadRequestException('Sale belum mempunyai posting accounting/piutang.');
+      const returns = await client.saleReturn.findMany({
+        where: { saleId: sale.id, status: 'COMPLETED' },
+        select: { refundDetails: true },
+      });
+      let receivableReturns = new Prisma.Decimal(0);
+      for (const row of returns) {
+        if (!Array.isArray(row.refundDetails)) continue;
+        for (const value of row.refundDetails) {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+          const item = value as Record<string, unknown>;
+          if (item.sourcePaymentId !== payment.id || item.kind !== 'RECEIVABLE') continue;
+          receivableReturns = receivableReturns.add(typeof item.amount === 'string' || typeof item.amount === 'number' ? item.amount : 0);
+        }
+      }
+      const receivableAfterReturns = new Prisma.Decimal(payment.amount).sub(receivableReturns);
+      gross = receivableAfterReturns.greaterThan(0) ? receivableAfterReturns : new Prisma.Decimal(0);
+      receivableAccountCode = payment.settlementAccountCode ?? '1201';
+      documentNumber = sale.number;
+      customerName = sale.customer?.name ?? 'Pelanggan';
+      customerPhone = sale.customer?.phone ?? null;
+      customerId = sale.customerId ?? null;
+      documentDate = payment.createdAt;
+      sourceStatus = sale.status;
     }
-    if (!order.accountingEventId) throw new BadRequestException('Order belum mempunyai posting fulfillment/piutang.');
+
     const receipts = await client.operationalFinanceTransaction.findMany({
       where: {
         companyId: scope.companyId,
         branchId: scope.branchId,
         type: 'CUSTOMER_RECEIPT',
-        referenceType: 'Order',
-        referenceId: order.id,
+        referenceType,
+        referenceId,
         status: { not: 'CANCELLED' },
         ...(excludeFinanceTransactionId ? { id: { not: excludeFinanceTransactionId } } : {}),
       },
@@ -354,13 +406,11 @@ export class FinanceOperationsService {
       if (['POSTED','PAID'].includes(receipt.status)) received = received.add(receipt.grossAmount);
       else if (['DRAFT','WAITING_APPROVAL','APPROVED'].includes(receipt.status)) pending = pending.add(receipt.grossAmount);
     }
-    const gross = new Prisma.Decimal(order.total);
     const rawOutstanding = gross.sub(received);
     const outstanding = rawOutstanding.greaterThan(0) ? rawOutstanding : new Prisma.Decimal(0);
     const rawAvailable = outstanding.sub(pending);
     const available = rawAvailable.greaterThan(0) ? rawAvailable : new Prisma.Decimal(0);
-    const receivableAccountCode = payment.method === 'COD' ? '1203' : '1201';
-    return { order, payment, gross, received, pending, outstanding, available, receivableAccountCode };
+    return { referenceType, referenceId, documentNumber, customerName, customerPhone, customerId, payment, gross, received, pending, outstanding, available, receivableAccountCode, documentDate, sourceStatus };
   }
 
   private async payrollLiabilitySnapshot(
@@ -445,32 +495,44 @@ export class FinanceOperationsService {
 
   async listCustomerReceivables(user: AuthUser) {
     const scope = this.requireTenantScope(user);
-    const orders = await this.prisma.order.findMany({
-      where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: { in: ['SHIPPED','COMPLETED'] }, payments: { some: { method: { in: ['COD','INVOICE'] } } } },
-      include: { payments: true },
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: 500,
-    });
-    const result = [];
+    const [orders, sales] = await Promise.all([
+      this.prisma.order.findMany({
+        where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: { in: ['SHIPPED','COMPLETED'] }, payments: { some: { method: { in: ['COD','INVOICE'] } } } },
+        select: { id: true },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: 500,
+      }),
+      this.prisma.sale.findMany({
+        where: { branchId: scope.branchId, branch: { companyId: scope.companyId }, status: 'COMPLETED', payments: { some: { method: 'ON_ACCOUNT' } } },
+        select: { id: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 500,
+      }),
+    ]);
+    const result: Array<Record<string, unknown>> = [];
     for (const order of orders) {
-      const snapshot = await this.customerReceivableSnapshot(this.prisma, user, scope, order.id);
+      const snapshot = await this.customerReceivableSnapshot(this.prisma, user, scope, 'Order', order.id);
       result.push({
-        orderId: order.id,
-        orderNumber: order.number,
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        paymentMethod: snapshot.payment.method,
-        receivableAccountCode: snapshot.receivableAccountCode,
-        grossAmount: snapshot.gross.toFixed(2),
-        receivedAmount: snapshot.received.toFixed(2),
-        pendingAmount: snapshot.pending.toFixed(2),
-        outstandingAmount: snapshot.outstanding.toFixed(2),
-        availableToReceive: snapshot.available.toFixed(2),
-        documentDate: snapshot.payment.createdAt,
-        orderStatus: order.status,
+        referenceType: 'Order', referenceId: order.id, documentNumber: snapshot.documentNumber,
+        orderId: order.id, orderNumber: snapshot.documentNumber,
+        customerName: snapshot.customerName, customerPhone: snapshot.customerPhone, customerId: snapshot.customerId,
+        paymentMethod: snapshot.payment.method, receivableAccountCode: snapshot.receivableAccountCode,
+        grossAmount: snapshot.gross.toFixed(2), receivedAmount: snapshot.received.toFixed(2), pendingAmount: snapshot.pending.toFixed(2),
+        outstandingAmount: snapshot.outstanding.toFixed(2), availableToReceive: snapshot.available.toFixed(2), documentDate: snapshot.documentDate, sourceStatus: snapshot.sourceStatus,
       });
     }
-    return result;
+    for (const sale of sales) {
+      const snapshot = await this.customerReceivableSnapshot(this.prisma, user, scope, 'Sale', sale.id);
+      result.push({
+        referenceType: 'Sale', referenceId: sale.id, documentNumber: snapshot.documentNumber,
+        saleId: sale.id, saleNumber: snapshot.documentNumber,
+        customerName: snapshot.customerName, customerPhone: snapshot.customerPhone, customerId: snapshot.customerId,
+        paymentMethod: snapshot.payment.method, receivableAccountCode: snapshot.receivableAccountCode,
+        grossAmount: snapshot.gross.toFixed(2), receivedAmount: snapshot.received.toFixed(2), pendingAmount: snapshot.pending.toFixed(2),
+        outstandingAmount: snapshot.outstanding.toFixed(2), availableToReceive: snapshot.available.toFixed(2), documentDate: snapshot.documentDate, sourceStatus: snapshot.sourceStatus,
+      });
+    }
+    return result.sort((left, right) => new Date(String(right.documentDate)).getTime() - new Date(String(left.documentDate)).getTime()).slice(0, 500);
   }
 
   async listSupplierPayables(user: AuthUser, supplierId?: string) {
@@ -633,11 +695,16 @@ export class FinanceOperationsService {
     const scope = this.requireTenantScope(user);
     const asOf = await this.parseAsOf(scope.companyId, asOfValue);
     const rows = (await this.listCustomerReceivables(user))
-      .filter((row) => new Prisma.Decimal(row.outstandingAmount).greaterThan(0))
+      .filter((row) => new Prisma.Decimal(String(row.outstandingAmount ?? 0)).greaterThan(0))
       .map((row) => {
-        const documentDate = new Date(row.documentDate);
+        const documentDate = new Date(String(row.documentDate));
         const ageDays = this.agingDays(documentDate, asOf);
-        return { ...row, ageDays, agingBucket: this.agingBucket(ageDays) };
+        return {
+          ...row,
+          outstandingAmount: String(row.outstandingAmount ?? 0),
+          ageDays,
+          agingBucket: this.agingBucket(ageDays),
+        };
       });
     return { asOf: asOf.toISOString(), ...this.summarizeAging(rows), rows };
   }
@@ -798,13 +865,13 @@ export class FinanceOperationsService {
       if (gate.replay && gate.status === 'COMPLETED') return gate.response as never;
 
       if (dto.type === 'CUSTOMER_RECEIPT') {
-        if (dto.referenceType !== 'Order' || !dto.referenceId) {
-          throw new BadRequestException('Penerimaan pelanggan wajib mereferensikan Order yang sudah dikirim.');
+        if (!dto.referenceId || !dto.referenceType || !['Order', 'Sale'].includes(dto.referenceType)) {
+          throw new BadRequestException('Penerimaan pelanggan wajib mereferensikan Order terkirim atau Sale piutang yang sudah diposting.');
         }
         if (dto.taxCodeId || dto.taxAccountCode || !taxAmount.isZero()) {
           throw new BadRequestException('Penerimaan piutang pelanggan tidak membuat pajak baru; tax code tidak boleh diisi.');
         }
-        const receivable = await this.customerReceivableSnapshot(tx, user, scope, dto.referenceId);
+        const receivable = await this.customerReceivableSnapshot(tx, user, scope, dto.referenceType as 'Order' | 'Sale', dto.referenceId);
         if (dto.creditAccountCode !== receivable.receivableAccountCode) {
           throw new BadRequestException(`Penerimaan ${receivable.payment.method} wajib mengkredit akun ${receivable.receivableAccountCode}.`);
         }
@@ -1072,9 +1139,11 @@ export class FinanceOperationsService {
       const isPayrollLiabilityPayment = row.type === 'PAYROLL_LIABILITY_PAYMENT';
       let customerReceivable: any = null;
       if (isCustomerReceipt) {
-        if (row.referenceType !== 'Order' || !row.referenceId) throw new BadRequestException('Penerimaan pelanggan kehilangan referensi Order.');
-        customerReceivable = await this.customerReceivableSnapshot(tx, user, scope, row.referenceId, row.id);
-        if (row.creditAccountCode !== customerReceivable.receivableAccountCode) throw new BadRequestException('Akun piutang penerimaan pelanggan tidak sesuai metode order.');
+        if (!row.referenceId || !row.referenceType || !['Order', 'Sale'].includes(row.referenceType)) {
+          throw new BadRequestException('Penerimaan pelanggan kehilangan referensi Order/Sale yang valid.');
+        }
+        customerReceivable = await this.customerReceivableSnapshot(tx, user, scope, row.referenceType as 'Order' | 'Sale', row.referenceId, row.id);
+        if (row.creditAccountCode !== customerReceivable.receivableAccountCode) throw new BadRequestException('Akun piutang penerimaan pelanggan tidak sesuai dokumen sumber.');
         if (row.grossAmount.greaterThan(customerReceivable.available)) {
           throw new BadRequestException(`Penerimaan pelanggan melebihi piutang tersedia saat posting (${customerReceivable.available.toFixed(2)}).`);
         }

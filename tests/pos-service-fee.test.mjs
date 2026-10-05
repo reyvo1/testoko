@@ -27,9 +27,10 @@ test('the fee is stored on the sale, not folded into the total', () => {
   for (const [name, text] of schemas) {
     assert.match(text, /serviceFee\s+Decimal\s+@default\(0\)/, `${name} is missing Sale.serviceFee`);
   }
-  // `total: total.add(serviceFee)` keeps the two separable. `total: total` with the fee added
-  // elsewhere would make the receipt and the ledger disagree about what was charged.
-  assert.match(sales, /serviceFee, total: total\.add\(serviceFee\)/);
+  // The final charged total is named once, while serviceFee remains a separate persisted column.
+  // Reusing that named value prevents payment validation, receipt total, and accounting from drifting.
+  assert.match(sales, /const saleTotal = total\.add\(serviceFee\)\.toDecimalPlaces\(2\)/);
+  assert.match(sales, /serviceFee, total: saleTotal/);
 });
 
 test('the fee reaches the customer as a separate line, not a silent total increase', () => {

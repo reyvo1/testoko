@@ -35,7 +35,9 @@ test('dynamic UOM schema requires explicit product base unit and StaffMemo parit
 test('dynamic UOM + memo migration is registered, expand-only, and PostgreSQL removes legacy Product.unit default', () => {
   const order = JSON.parse(read('config/expand-migration-order.json'));
   const name = 'T360-20261004-dynamic-uom-staff-memo';
-  assert.equal(order.migrations.at(-1), name);
+  const index = order.migrations.indexOf(name);
+  assert.ok(index >= 0, 'migration dynamic UOM + memo harus tetap terdaftar');
+  assert.ok(order.migrations.slice(index + 1).includes('T360-20261005-p6a-retail-transaction-completion'), 'migration P6A harus berada setelah dynamic UOM + memo, bukan menggantikannya');
   const sqlite = read(`database/migrations/${name}/sqlite-expand.sql`);
   const postgres = read(`database/migrations/${name}/postgresql-expand.sql`);
   const docs = read(`database/migrations/${name}/README.md`);

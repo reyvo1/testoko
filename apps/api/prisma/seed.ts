@@ -167,18 +167,18 @@ async function main() {
 
   // Akun kasir contoh hanya dibuat pada seed lokal/demo.
   const masterRefs = [
-    ['UNIT','PCS','Pieces',null],
-    ['PAYMENT_METHOD','CASH','Tunai',null],
-    ['PAYMENT_METHOD','QRIS','QRIS',null],
-    ['PAYMENT_METHOD','TRANSFER','Transfer Bank',null],
-    ['PAYMENT_METHOD','CARD','Kartu',null],
-    ['COURIER','PICKUP','Ambil di Toko',null],
+    ['UNIT','PCS','Pieces',null,null],
+    ['PAYMENT_METHOD','CASH','Tunai',null,{ kind: 'CASH', settlementAccountCode: '1101', settlementBehavior: 'IMMEDIATE', requiresProvider: false, requiresReference: false, refundBehavior: 'CASH', refundAccountCode: '1101', allowOffline: true, allowCashChange: true, feeRatePercent: 0 }],
+    ['PAYMENT_METHOD','QRIS','QRIS',null,{ kind: 'SETTLEMENT', settlementAccountCode: '1102', settlementBehavior: 'CLEARING', requiresProvider: false, requiresReference: false, refundBehavior: 'SETTLEMENT', allowOffline: false, allowCashChange: false, feeRatePercent: 0 }],
+    ['PAYMENT_METHOD','TRANSFER','Transfer Bank',null,{ kind: 'SETTLEMENT', settlementAccountCode: '1102', settlementBehavior: 'IMMEDIATE', requiresProvider: false, requiresReference: false, refundBehavior: 'SETTLEMENT', allowOffline: false, allowCashChange: false, feeRatePercent: 0 }],
+    ['PAYMENT_METHOD','CARD','Kartu',null,{ kind: 'SETTLEMENT', settlementAccountCode: '1102', settlementBehavior: 'CLEARING', requiresProvider: false, requiresReference: false, refundBehavior: 'SETTLEMENT', allowOffline: false, allowCashChange: false, feeRatePercent: 0 }],
+    ['COURIER','PICKUP','Ambil di Toko',null,null],
   ] as const;
-  for (const [type, code, name, refBranchId] of masterRefs) {
+  for (const [type, code, name, refBranchId, metadata] of masterRefs) {
     await prisma.masterReference.upsert({
       where: { companyId_type_code: { companyId: company.id, type, code } },
-      update: { name, isActive: true },
-      create: { companyId: company.id, branchId: refBranchId, type, code, name },
+      update: { name, metadata: metadata ?? undefined, isActive: true },
+      create: { companyId: company.id, branchId: refBranchId, type, code, name, metadata: metadata ?? undefined },
     });
   }
   const starterUnitCode = masterRefs.find(([type]) => type === 'UNIT')?.[1];

@@ -6,6 +6,7 @@ import { nextDocumentNumber } from '../common/numbering';
 import { consumeAvailableLocationStock, depositLocationStock } from '../common/location-inventory';
 import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { serializableTx } from '../common/serializable-tx';
+import { normalizeTenderPolicy, TenderPolicy } from '../common/tender-policy';
 import { OperationsControlService } from '../operations-control/operations-control.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfirmReturnDto, CreatePurchaseReturnDto, CreateSaleReturnDto } from './dto/returns.dto';
@@ -15,6 +16,16 @@ import { StorefrontCustomerService } from '../storefront-customer/storefront-cus
 type DbClient = Prisma.TransactionClient | PrismaService;
 type TenantScope = { companyId: string; branchId: string };
 type HistoricalReturnState = { quantity: number; net: Prisma.Decimal; tax: Prisma.Decimal; gross: Prisma.Decimal };
+type RefundAllocation = {
+  sourcePaymentId?: string;
+  method: string;
+  methodName: string;
+  amount: string;
+  accountCode: string;
+  kind: 'CASH' | 'SETTLEMENT' | 'RECEIVABLE';
+  behavior: string;
+  methodSnapshot?: Prisma.JsonValue;
+};
 
 function zeroHistoricalReturnState(): HistoricalReturnState {
   return { quantity: 0, net: new Prisma.Decimal(0), tax: new Prisma.Decimal(0), gross: new Prisma.Decimal(0) };
@@ -179,6 +190,144 @@ export class ReturnsService {
     }
   }
 
+  private paymentPolicy(payment: { method: string; methodSnapshot?: Prisma.JsonValue | null; settlementAccountCode?: string | null }): TenderPolicy | null {
+    if (payment.method === 'ON_ACCOUNT') return null;
+    const snapshot = payment.methodSnapshot;
+    if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+      const policy = (snapshot as Record<string, unknown>).policy;
+      if (policy && typeof policy === 'object' && !Array.isArray(policy)) {
+        try { return normalizeTenderPolicy(payment.method, policy as Record<string, unknown>); } catch { /* legacy fallback below */ }
+      }
+    }
+    return normalizeTenderPolicy(payment.method, payment.settlementAccountCode ? { settlementAccountCode: payment.settlementAccountCode } : undefined);
+  }
+
+  private refundDestination(policy: TenderPolicy) {
+    if (policy.refundBehavior === 'DISABLED') return null;
+    if (policy.refundBehavior === 'RECEIVABLE') return { accountCode: '1201', kind: 'RECEIVABLE' as const };
+    if (policy.refundBehavior === 'CASH') return { accountCode: policy.refundAccountCode ?? '1101', kind: 'CASH' as const };
+    return { accountCode: policy.settlementAccountCode, kind: policy.kind === 'CASH' ? 'CASH' as const : 'SETTLEMENT' as const };
+  }
+
+  private async saleReceivableCapacity(
+    client: DbClient,
+    scope: TenantScope,
+    saleId: string,
+    payment: { id: string; amount: Prisma.Decimal },
+    priorRefunded: Prisma.Decimal,
+  ) {
+    const receipts = await client.operationalFinanceTransaction.findMany({
+      where: {
+        companyId: scope.companyId,
+        branchId: scope.branchId,
+        type: 'CUSTOMER_RECEIPT',
+        referenceType: 'Sale',
+        referenceId: saleId,
+        status: { in: ['DRAFT', 'WAITING_APPROVAL', 'APPROVED', 'POSTED', 'PAID'] },
+      },
+      select: { grossAmount: true },
+    });
+    const committedReceipts = receipts.reduce((sum, row) => sum.add(row.grossAmount), new Prisma.Decimal(0));
+    const capacity = new Prisma.Decimal(payment.amount).sub(committedReceipts).sub(priorRefunded);
+    return capacity.greaterThan(0) ? capacity : new Prisma.Decimal(0);
+  }
+
+  private async resolveSaleRefundAllocations(
+    client: DbClient,
+    scope: TenantScope,
+    saleId: string,
+    refundAmount: Prisma.Decimal,
+    requestedMethod: string,
+  ) {
+    const sale = await client.sale.findFirst({
+      where: { id: saleId, branchId: scope.branchId, branch: { companyId: scope.companyId } },
+      include: { payments: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+    });
+    if (!sale) throw new BadRequestException('Penjualan asal retur tidak tersedia pada cabang ini.');
+    const previousReturns = await client.saleReturn.findMany({
+      where: { saleId, status: 'COMPLETED' },
+      select: { id: true, refundDetails: true, refundAmount: true },
+    });
+    const priorByPayment = new Map<string, Prisma.Decimal>();
+    let hasLegacyUnallocatedRefund = false;
+    for (const previous of previousReturns) {
+      if (!Array.isArray(previous.refundDetails)) {
+        if (new Prisma.Decimal(previous.refundAmount).greaterThan(0)) hasLegacyUnallocatedRefund = true;
+        continue;
+      }
+      for (const value of previous.refundDetails) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+        const item = value as Record<string, unknown>;
+        if (typeof item.sourcePaymentId !== 'string') continue;
+        const amount = new Prisma.Decimal(typeof item.amount === 'string' || typeof item.amount === 'number' ? item.amount : 0);
+        priorByPayment.set(item.sourcePaymentId, (priorByPayment.get(item.sourcePaymentId) ?? new Prisma.Decimal(0)).add(amount));
+      }
+    }
+
+    const method = requestedMethod.trim().toUpperCase();
+    if (method === 'ORIGINAL') {
+      if (hasLegacyUnallocatedRefund) {
+        throw new BadRequestException('Refund ORIGINAL tidak dapat ditentukan aman karena ada retur historis tanpa snapshot alokasi. Pilih metode refund eksplisit.');
+      }
+      let remaining = refundAmount.toDecimalPlaces(2);
+      const allocations: RefundAllocation[] = [];
+      const receivable = sale.payments.find((payment) => payment.method === 'ON_ACCOUNT');
+      if (receivable && remaining.greaterThan(0)) {
+        const prior = priorByPayment.get(receivable.id) ?? new Prisma.Decimal(0);
+        const capacity = await this.saleReceivableCapacity(client, scope, sale.id, receivable, prior);
+        const amount = Prisma.Decimal.min(remaining, capacity).toDecimalPlaces(2);
+        if (amount.greaterThan(0)) {
+          allocations.push({ sourcePaymentId: receivable.id, method: 'ON_ACCOUNT', methodName: receivable.methodName ?? 'Piutang Pelanggan', amount: amount.toFixed(2), accountCode: '1201', kind: 'RECEIVABLE', behavior: 'RECEIVABLE', methodSnapshot: receivable.methodSnapshot ?? undefined });
+          remaining = remaining.sub(amount);
+        }
+      }
+      for (const payment of sale.payments.filter((item) => item.method !== 'ON_ACCOUNT')) {
+        if (!remaining.greaterThan(0)) break;
+        const prior = priorByPayment.get(payment.id) ?? new Prisma.Decimal(0);
+        const capacity = new Prisma.Decimal(payment.amount).sub(prior);
+        if (!capacity.greaterThan(0)) continue;
+        const policy = this.paymentPolicy(payment);
+        if (!policy) continue;
+        const destination = this.refundDestination(policy);
+        if (!destination) continue;
+        const amount = Prisma.Decimal.min(remaining, capacity).toDecimalPlaces(2);
+        allocations.push({ sourcePaymentId: payment.id, method: payment.method, methodName: payment.methodName ?? payment.method, amount: amount.toFixed(2), accountCode: destination.accountCode, kind: destination.kind, behavior: policy.refundBehavior, methodSnapshot: payment.methodSnapshot ?? undefined });
+        remaining = remaining.sub(amount);
+      }
+      if (remaining.greaterThan(0)) throw new BadRequestException(`Refund ORIGINAL tidak memiliki saldo tender/piutang yang dapat direversal sebesar ${remaining.toFixed(2)}.`);
+      return { sale, allocations, priorByPayment };
+    }
+
+    if (method === 'RECEIVABLE') {
+      const receivable = sale.payments.find((payment) => payment.method === 'ON_ACCOUNT');
+      if (!receivable) throw new BadRequestException('Penjualan ini tidak memiliki piutang pelanggan yang dapat dikurangi.');
+      const prior = priorByPayment.get(receivable.id) ?? new Prisma.Decimal(0);
+      const capacity = await this.saleReceivableCapacity(client, scope, sale.id, receivable, prior);
+      if (refundAmount.greaterThan(capacity)) throw new BadRequestException(`Refund ke piutang melebihi saldo piutang tersedia ${capacity.toFixed(2)}.`);
+      const allocations: RefundAllocation[] = [{ sourcePaymentId: receivable.id, method: 'ON_ACCOUNT', methodName: receivable.methodName ?? 'Piutang Pelanggan', amount: refundAmount.toFixed(2), accountCode: '1201', kind: 'RECEIVABLE', behavior: 'RECEIVABLE', methodSnapshot: receivable.methodSnapshot ?? undefined }];
+      return { sale, allocations, priorByPayment };
+    }
+
+    const reference = await client.masterReference.findFirst({
+      where: { companyId: scope.companyId, type: 'PAYMENT_METHOD', code: method, isActive: true, OR: [{ branchId: null }, { branchId: scope.branchId }] },
+    });
+    if (!reference) throw new BadRequestException(`Metode refund ${method} tidak aktif/diizinkan pada cabang ini.`);
+    const policy = normalizeTenderPolicy(reference.code, reference.metadata);
+    const destination = this.refundDestination(policy);
+    if (!destination) throw new BadRequestException(`Metode ${method} tidak mengizinkan refund.`);
+    if (destination.kind === 'RECEIVABLE') {
+      const receivable = sale.payments.find((payment) => payment.method === 'ON_ACCOUNT');
+      if (!receivable) throw new BadRequestException('Metode refund ini membutuhkan piutang pelanggan pada transaksi asal.');
+      const prior = priorByPayment.get(receivable.id) ?? new Prisma.Decimal(0);
+      const capacity = await this.saleReceivableCapacity(client, scope, sale.id, receivable, prior);
+      if (refundAmount.greaterThan(capacity)) throw new BadRequestException(`Refund ke piutang melebihi saldo piutang tersedia ${capacity.toFixed(2)}.`);
+      const allocations: RefundAllocation[] = [{ sourcePaymentId: receivable.id, method: reference.code, methodName: reference.name, amount: refundAmount.toFixed(2), accountCode: destination.accountCode, kind: destination.kind, behavior: policy.refundBehavior, methodSnapshot: { version: 1, referenceId: reference.id, code: reference.code, name: reference.name, policy: policy as unknown as Prisma.JsonValue } }];
+      return { sale, allocations, priorByPayment };
+    }
+    const allocations: RefundAllocation[] = [{ method: reference.code, methodName: reference.name, amount: refundAmount.toFixed(2), accountCode: destination.accountCode, kind: destination.kind, behavior: policy.refundBehavior, methodSnapshot: { version: 1, referenceId: reference.id, code: reference.code, name: reference.name, policy: policy as unknown as Prisma.JsonValue } }];
+    return { sale, allocations, priorByPayment };
+  }
+
   async listSaleReturns(user: AuthUser) {
     const scope = this.requireTenantScope(user);
     const warehouseIds = await this.tenantWarehouseIds(this.prisma, scope);
@@ -206,7 +355,7 @@ export class ReturnsService {
     if (!dto.items.length) throw new BadRequestException('Retur penjualan harus memiliki item.');
     const sale = await this.prisma.sale.findFirst({
       where: { id: dto.saleId, branchId: scope.branchId, branch: { companyId: scope.companyId } },
-      include: { items: true, branch: true },
+      include: { items: true, branch: true, payments: true },
     });
     if (!sale) return this.denyTenantAccess(this.prisma, user, scope, 'Sale', dto.saleId);
     await this.assertWarehouse(this.prisma, user, scope, dto.warehouseId);
@@ -292,6 +441,17 @@ export class ReturnsService {
     });
     await this.assertReturnTaxCodes(this.prisma, user, scope, rows.map((row) => row.taxCodeId));
     const refund = rows.reduce((sum, item) => sum.add(item.grossAmount), new Prisma.Decimal(0));
+    const refundMethod = (dto.refundMethod ?? 'ORIGINAL').trim().toUpperCase();
+    if (refundMethod === 'RECEIVABLE' && !sale.payments.some((payment) => payment.method === 'ON_ACCOUNT')) {
+      throw new BadRequestException('Refund RECEIVABLE hanya tersedia untuk penjualan yang memiliki piutang pelanggan.');
+    }
+    if (!['ORIGINAL', 'RECEIVABLE'].includes(refundMethod)) {
+      const reference = await this.prisma.masterReference.findFirst({
+        where: { companyId: scope.companyId, type: 'PAYMENT_METHOD', code: refundMethod, isActive: true, OR: [{ branchId: null }, { branchId: scope.branchId }] },
+      });
+      if (!reference) throw new BadRequestException(`Metode refund ${refundMethod} tidak aktif/diizinkan pada cabang ini.`);
+      if (!this.refundDestination(normalizeTenderPolicy(reference.code, reference.metadata))) throw new BadRequestException(`Metode ${refundMethod} tidak mengizinkan refund.`);
+    }
     const created = await this.prisma.saleReturn.create({
       data: {
         number: await nextDocumentNumber(this.prisma, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'SALE_RETURN', prefix: 'SRT' }),
@@ -299,7 +459,7 @@ export class ReturnsService {
         warehouseId: dto.warehouseId,
         status: 'REQUESTED',
         reason: dto.reason,
-        refundMethod: dto.refundMethod ?? 'CASH',
+        refundMethod,
         refundAmount: refund,
         createdById: user.sub,
         items: { create: rows },
@@ -376,7 +536,8 @@ export class ReturnsService {
       const cogs = row.items
         .filter((item) => item.restock && item.condition === 'GOOD')
         .reduce((sum, item) => sum.add(item.unitCost.mul(item.quantity)), new Prisma.Decimal(0));
-      const settlement = ['TRANSFER','CARD','QRIS'].includes(row.refundMethod ?? '') ? '1102' : '1101';
+      const refundResolution = await this.resolveSaleRefundAllocations(tx, scope, row.saleId, gross, row.refundMethod ?? 'ORIGINAL');
+      const refundAllocations = refundResolution.allocations;
       const taxLines = row.items
         .filter((item) => item.taxCodeId && !item.taxAmount.isZero())
         .map((item) => ({
@@ -393,10 +554,13 @@ export class ReturnsService {
         sourceType: 'SaleReturn',
         sourceId: row.id,
         idempotencyKey: `sale-return:${row.id}`,
-        amounts: { net, outputTax: tax, gross, cogs, inventory: cogs },
-        accountCodes: { returns: '4102', outputTax: '2201', settlement, inventory: '1301', cogs: '5101' },
+        // `gross` sengaja tidak dikirim: rule legacy SALE_RETURN akan melewati settlement line,
+        // sedangkan refund destination berasal dari immutable tender snapshot di additional lines.
+        amounts: { net, outputTax: tax, cogs, inventory: cogs },
+        accountCodes: { returns: '4102', outputTax: '2201', inventory: '1301', cogs: '5101' },
+        additionalJournalLines: refundAllocations.map((item) => ({ accountCode: item.accountCode, side: 'CREDIT' as const, amount: item.amount })),
         taxLines,
-        context: { inspectionId, confirmationId, notes: dto.notes },
+        context: { inspectionId, confirmationId, notes: dto.notes, refundMethod: row.refundMethod ?? 'ORIGINAL', refundAllocations },
       });
       await tx.eventOutbox.create({ data: {
         companyId: scope.companyId,
@@ -461,6 +625,7 @@ export class ReturnsService {
           inspectionId,
           confirmationId,
           accountingEventId: event.id,
+          refundDetails: refundAllocations as unknown as Prisma.InputJsonValue,
           postedAt: new Date(),
         },
         include: { items: true },

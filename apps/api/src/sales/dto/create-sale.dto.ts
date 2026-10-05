@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
 class SaleItemDto {
   @ApiProperty() @IsString() productId!: string;
   @ApiProperty({ example: 1, description: 'Jumlah unit jual. Tanpa productUnitId/barcodeCode berarti base unit produk.' }) @IsInt() @Min(1) quantity!: number;
@@ -11,7 +11,7 @@ class SaleItemDto {
 }
 
 export class SalePaymentDto {
-  @ApiProperty({ enum: ['CASH','QRIS','TRANSFER','CARD'] }) @IsString() @IsIn(['CASH','QRIS','TRANSFER','CARD']) method!: string;
+  @ApiProperty({ description: 'Kode PAYMENT_METHOD aktif dari master data.' }) @IsString() @MaxLength(60) method!: string;
   @ApiProperty({ example: 50000 }) @IsNumber() @Min(0.01) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) provider?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(160) externalRef?: string;
@@ -21,8 +21,10 @@ export class CreateSaleDto {
   @ApiProperty() @IsString() warehouseId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() customerId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() cashierShiftId?: string;
-  @ApiPropertyOptional({ default: 'CASH', enum: ['CASH','QRIS','TRANSFER','CARD'], description: 'Kompatibilitas transaksi satu metode. Jangan kirim bersamaan dengan payments.' }) @IsOptional() @IsString() @IsIn(['CASH','QRIS','TRANSFER','CARD']) paymentMethod?: string;
-  @ApiPropertyOptional({ type: [SalePaymentDto], description: 'Split payment. Total amount wajib sama persis dengan total transaksi.' }) @IsOptional() @IsArray() @ArrayMaxSize(8) @ValidateNested({ each: true }) @Type(() => SalePaymentDto) payments?: SalePaymentDto[];
+  @ApiPropertyOptional({ default: 'CASH', description: 'Kompatibilitas transaksi satu metode. Nilai adalah kode PAYMENT_METHOD aktif; jangan kirim bersamaan dengan payments.' }) @IsOptional() @IsString() @MaxLength(60) paymentMethod?: string;
+  @ApiPropertyOptional({ type: [SalePaymentDto], description: 'Split/partial tender. Pembayaran + onAccountAmount wajib sama persis dengan total transaksi.' }) @IsOptional() @IsArray() @ArrayMaxSize(8) @ValidateNested({ each: true }) @Type(() => SalePaymentDto) payments?: SalePaymentDto[];
+  @ApiPropertyOptional({ description: 'Bagian transaksi yang menjadi piutang pelanggan (AR). Customer wajib dipilih dan nilai ini eksplisit; tidak pernah dihasilkan diam-diam.' }) @IsOptional() @IsNumber() @Min(0.01) onAccountAmount?: number;
+  @ApiPropertyOptional({ default: false, description: 'Menegaskan bahwa transaksi sengaja memiliki saldo piutang. Wajib true bila onAccountAmount dikirim.' }) @IsOptional() @IsBoolean() onAccount?: boolean;
   @ApiPropertyOptional({ description: 'Kode promo aktif yang diterapkan server.' }) @IsOptional() @IsString() @MaxLength(64) promoCode?: string;
   @ApiPropertyOptional({ default: 0 }) @IsOptional() @IsNumber() @Min(0) discount?: number;
   @ApiPropertyOptional({ description: 'Grant persetujuan supervisor; wajib bila diskon manual di atas 20% dari subtotal.' }) @IsOptional() @IsString() @MaxLength(160) supervisorApprovalId?: string;

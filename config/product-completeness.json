@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "TOKO360 Canonical Product Completeness Matrix",
-  "updatedAt": "2026-10-04T21:00:00+08:00",
+  "updatedAt": "2026-10-05T19:00:00+08:00",
   "authoritative": true,
   "productReady": false,
   "humanStage20": "PENDING",
@@ -598,6 +598,18 @@
       "operatorSurfaceRequired": true,
       "evidence": [],
       "notes": "JWT user/company/branch scoped memo with idempotent create and audit; exact-runtime evidence required before status can advance."
+    },
+    {
+      "id": "feature:retail_transaction_completion",
+      "kind": "FEATURE",
+      "key": "retail_transaction_completion",
+      "title": "Retail Transaction Completion",
+      "default": "Dynamic tender, exact split payment, on-account AR and tender-safe refund/accounting",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "P6A source implements master-backed tender policy, immutable payment snapshots, canonical Accounting Core settlement/MDR posting, exact split tender, explicit customer AR/on-account settlement and original-tender refund allocation. This engineering label does not advance canonical currentPhase; P5/Human Stage-20 remain pending until their own acceptance authority is satisfied."
     }
   ],
   "legacyFunctionalPhases": [

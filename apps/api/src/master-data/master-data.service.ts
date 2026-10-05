@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
+import { normalizeTenderPolicy, tenderPolicyMetadata } from '../common/tender-policy';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateBranchDto, CreateCategoryDto, CreateCustomerDto, CreateProductBarcodeDto, CreateProductPriceDto, CreateProductUnitDto, CreateProductVariantDto,
@@ -334,8 +335,13 @@ export class MasterDataService {
     if (type === 'UNIT' && dto.branchId) throw new BadRequestException('Master UNIT berlaku untuk seluruh perusahaan dan tidak boleh dibatasi ke satu cabang.');
     if (dto.branchId) await this.branch(this.prisma, user, dto.branchId);
     return this.prisma.$transaction(async (tx) => {
+      let metadata = dto.metadata === undefined ? undefined : json(dto.metadata);
+      if (type === 'PAYMENT_METHOD') {
+        try { metadata = tenderPolicyMetadata(normalizeTenderPolicy(code, dto.metadata)); }
+        catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Konfigurasi payment method tidak valid.'); }
+      }
       const row = await tx.masterReference.create({
-        data: { companyId: scope.companyId, branchId: type === 'UNIT' ? null : dto.branchId, type, code, name: dto.name.trim(), metadata: dto.metadata === undefined ? undefined : json(dto.metadata) },
+        data: { companyId: scope.companyId, branchId: type === 'UNIT' ? null : dto.branchId, type, code, name: dto.name.trim(), metadata },
       });
       await this.audit(tx, user, 'CREATE_MASTER_REFERENCE', 'MasterReference', row.id, { type: row.type, code: row.code });
       return row;
@@ -352,12 +358,17 @@ export class MasterDataService {
       if (existing.type === 'UNIT' && dto.isActive === false && existing.isActive) {
         await this.assertUnitReferenceCanDeactivate(tx, scope.companyId, existing.code);
       }
+      let metadata = dto.metadata === undefined ? undefined : json(dto.metadata);
+      if (existing.type === 'PAYMENT_METHOD' && dto.metadata !== undefined) {
+        try { metadata = tenderPolicyMetadata(normalizeTenderPolicy(existing.code, dto.metadata)); }
+        catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Konfigurasi payment method tidak valid.'); }
+      }
       const row = await tx.masterReference.update({
         where: { id },
         data: {
           ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
           ...(dto.branchId !== undefined ? { branchId: existing.type === 'UNIT' ? null : dto.branchId || null } : {}),
-          ...(dto.metadata !== undefined ? { metadata: json(dto.metadata) } : {}),
+          ...(dto.metadata !== undefined ? { metadata } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         },
       });

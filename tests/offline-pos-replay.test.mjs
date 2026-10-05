@@ -29,7 +29,8 @@ test('offline replay is tenant/device scoped and uses an atomic processing lease
 });
 
 test('offline sales preserve original business time and reject unsafe payment assumptions', () => {
-  assert.match(sales, /\(normalizedPayload\.paymentMethod \?\? 'CASH'\) !== 'CASH'/);
+  assert.match(sales, /const offlineMethod = \(offlinePayments\[0\]\?\.method \?\? normalizedPayload\.paymentMethod \?\? 'CASH'\)/);
+  assert.match(sales, /!offlineTender \|\| !offlineTender\.policy\.allowOffline/);
   assert.match(sales, /OFFLINE_LOYALTY_REDEEM_NOT_ALLOWED/);
   assert.match(sales, /createdAt: occurredAt/);
   assert.match(sales, /paidAt: occurredAt/);

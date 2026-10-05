@@ -42,8 +42,8 @@ test('seed provides a real CASHIER account while POS does not prefill demo crede
 });
 
 test('cash drawer expected value counts cash settlement, manual cash movement, and cash refunds', () => {
-  assert.match(sales, /cashSales: paymentTotals\.get\('CASH'\) \?\? 0/);
-  assert.match(sales, /refundMethod: 'CASH'/);
+  assert.match(sales, /if \(this\.paymentIsCash\(payment\)\) cashSales \+= Number\(payment\.amount\)/);
+  assert.match(sales, /this\.refundCashAmount\(row\.refundDetails, row\.refundMethod, row\.refundAmount\)/);
   assert.match(sales, /cashMovements\.filter\(\(item\) => item\.type === 'CASH_IN'\)/);
   assert.match(sales, /cashMovements\.filter\(\(item\) => item\.type === 'CASH_OUT'\)/);
   assert.match(sales, /const expected = Number\(shift\.openingCash\) \+ summary\.cashSales \+ summary\.cashIn - summary\.cashOut - summary\.cashRefunds/);

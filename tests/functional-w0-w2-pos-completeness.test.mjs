@@ -26,17 +26,18 @@ test('W2 POS: promo server diterapkan ke quote dan transaksi nyata', () => {
 
 test('W2 POS: split payment divalidasi dan diposting ke jurnal split', () => {
   assert.match(saleDto, /payments\?: SalePaymentDto\[\]/);
-  assert.match(sales, /Total pembayaran .* tidak sama dengan total transaksi/);
+  assert.match(sales, /Total tender .* piutang .* tidak sama dengan total transaksi/);
+  assert.match(sales, /resolveSalePayments\(tx, scope, rawRequestedPayments\)/);
   assert.match(sales, /SALE_SPLIT/);
-  assert.match(sales, /cashSettlement/);
-  assert.match(sales, /bankSettlement/);
+  assert.match(sales, /additionalJournalLines: settlementJournalLines/);
   assert.match(seed, /code: 'SALE-SPLIT'/);
 });
 
 test('W2 POS: transaksi offline menolak promo dan split payment', () => {
   assert.match(sales, /OFFLINE_PROMO_NOT_ALLOWED/);
-  assert.match(sales, /Split payment atau pembayaran non-tunai tidak boleh direkam saat offline/);
-  assert.match(pos, /Mode offline hanya mengizinkan satu pembayaran tunai/);
+  assert.match(sales, /Split payment dan piutang pelanggan tidak boleh direkam saat offline/);
+  assert.match(sales, /!offlineTender \|\| !offlineTender\.policy\.allowOffline/);
+  assert.match(pos, /tender yang diizinkan konfigurasi server/);
 });
 
 test('W2 POS: cash movement menjadi bagian expected cash shift', () => {

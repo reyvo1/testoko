@@ -110,6 +110,25 @@ async function seed() {
   for (const [code, name] of [['BATANG', 'Batang'], ['BUNGKUS', 'Bungkus'], ['SLOP', 'Slop'], ['KARTON', 'Karton'], ['PECAAN', 'Pecahan']]) {
     await ensureUnitMaster(code, name);
   }
+  await prisma.masterReference.upsert({
+    where: { companyId_type_code: { companyId: COMPANY, type: 'PAYMENT_METHOD', code: 'CASH' } },
+    update: {
+      name: 'Tunai', isActive: true,
+      metadata: {
+        kind: 'CASH', settlementAccountCode: '1101', settlementBehavior: 'IMMEDIATE',
+        requiresProvider: false, requiresReference: false, refundBehavior: 'CASH', refundAccountCode: '1101',
+        allowOffline: true, allowCashChange: true, feeRatePercent: 0,
+      },
+    },
+    create: {
+      companyId: COMPANY, branchId: null, type: 'PAYMENT_METHOD', code: 'CASH', name: 'Tunai', isActive: true,
+      metadata: {
+        kind: 'CASH', settlementAccountCode: '1101', settlementBehavior: 'IMMEDIATE',
+        requiresProvider: false, requiresReference: false, refundBehavior: 'CASH', refundAccountCode: '1101',
+        allowOffline: true, allowCashChange: true, feeRatePercent: 0,
+      },
+    },
+  });
   await prisma.product.upsert({
     where: { id: PRODUCT },
     update: { unit: 'BATANG', costPrice: 1000, salePrice: SALE_PRICE_PER_BATANG },

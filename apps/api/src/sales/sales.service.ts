@@ -7,6 +7,7 @@ import { consumeAvailableLocationStock } from '../common/location-inventory';
 import { serializableTx } from '../common/serializable-tx';
 import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { normalizeTenderPolicy, TenderPolicy } from '../common/tender-policy';
 import { resolveSellingUnitLine } from '../common/transaction-uom';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -18,6 +19,16 @@ type TenantScope = { companyId: string; branchId: string };
 type SaleCreateOptions = {
   occurredAt?: Date;
   offline?: { transactionId: string; deviceId: string; localId: string; sequence: number };
+};
+type TenderDefinition = { id: string; code: string; name: string; policy: TenderPolicy };
+type ResolvedSalePayment = {
+  method: string;
+  amount: Prisma.Decimal;
+  provider?: string;
+  externalRef?: string;
+  tender: TenderDefinition;
+  feeAmount: Prisma.Decimal;
+  settlementAmount: Prisma.Decimal;
 };
 
 function stableJson(value: unknown): string {
@@ -97,6 +108,96 @@ export class SalesService {
     occurredAt?: Date,
   ) {
     return resolveSellingUnitLine(client, scope, product, input, segmentCode, occurredAt);
+  }
+
+  private async tenderDefinitions(client: Prisma.TransactionClient | PrismaService, scope: TenantScope, activeOnly = true) {
+    const rows = await client.masterReference.findMany({
+      where: {
+        companyId: scope.companyId,
+        type: 'PAYMENT_METHOD',
+        ...(activeOnly ? { isActive: true } : {}),
+        OR: [{ branchId: null }, { branchId: scope.branchId }],
+      },
+      orderBy: [{ name: 'asc' }, { code: 'asc' }],
+    });
+    return rows.map((row) => ({ id: row.id, code: row.code.trim().toUpperCase(), name: row.name, policy: normalizeTenderPolicy(row.code, row.metadata) }));
+  }
+
+  private tenderSnapshot(tender: TenderDefinition): Prisma.InputJsonValue {
+    return {
+      version: 1,
+      referenceId: tender.id,
+      code: tender.code,
+      name: tender.name,
+      policy: tender.policy as unknown as Prisma.InputJsonValue,
+    };
+  }
+
+  private paymentIsCash(payment: { method: string; methodSnapshot?: Prisma.JsonValue | null }) {
+    const snapshot = payment.methodSnapshot;
+    if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+      const policy = (snapshot as Record<string, unknown>).policy;
+      if (policy && typeof policy === 'object' && !Array.isArray(policy) && (policy as Record<string, unknown>).kind === 'CASH') return true;
+    }
+    return payment.method === 'CASH';
+  }
+
+  private refundCashAmount(details: Prisma.JsonValue | null, fallbackMethod: string | null | undefined, fallbackAmount: Prisma.Decimal) {
+    if (Array.isArray(details)) {
+      return details.reduce<number>((sum, item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return sum;
+        const row = item as Record<string, unknown>;
+        if (row.kind !== 'CASH') return sum;
+        const amount = Number(row.amount ?? 0);
+        return Number.isFinite(amount) ? sum + amount : sum;
+      }, 0);
+    }
+    return fallbackMethod === 'CASH' ? Number(fallbackAmount) : 0;
+  }
+
+  private async resolveSalePayments(
+    client: Prisma.TransactionClient | PrismaService,
+    scope: TenantScope,
+    requested: Array<{ method: string; amount: Prisma.Decimal; provider?: string; externalRef?: string }>,
+  ): Promise<ResolvedSalePayment[]> {
+    const tenders = await this.tenderDefinitions(client, scope);
+    const tenderMap = new Map(tenders.map((item) => [item.code, item]));
+    const resolved = requested.map((item) => {
+      const method = item.method.trim().toUpperCase();
+      const tender = tenderMap.get(method);
+      if (!tender) throw new BadRequestException(`Tender ${method} tidak aktif/diizinkan pada cabang ini.`);
+      const provider = item.provider?.trim() || undefined;
+      const externalRef = item.externalRef?.trim() || undefined;
+      if (tender.policy.requiresProvider && !provider) throw new BadRequestException(`Tender ${method} mewajibkan provider.`);
+      if (tender.policy.requiresReference && !externalRef) throw new BadRequestException(`Tender ${method} mewajibkan reference pembayaran.`);
+      const amount = item.amount.toDecimalPlaces(2);
+      const feeAmount = amount.mul(tender.policy.feeRatePercent).div(100).toDecimalPlaces(2);
+      const settlementAmount = amount.sub(feeAmount);
+      if (settlementAmount.isNegative()) throw new BadRequestException(`Fee tender ${method} melebihi nominal pembayaran.`);
+      return { method, amount, provider, externalRef, tender, feeAmount, settlementAmount };
+    });
+
+    const settlementCodes = [...new Set(resolved.map((item) => item.tender.policy.settlementAccountCode))];
+    const feeCodes = [...new Set(resolved.map((item) => item.tender.policy.feeAccountCode).filter((value): value is string => Boolean(value)))];
+    const accounts = await client.account.findMany({
+      where: {
+        branchId: scope.branchId,
+        code: { in: [...new Set([...settlementCodes, ...feeCodes])] },
+        isActive: true,
+        branch: { companyId: scope.companyId },
+      },
+      select: { code: true, type: true },
+    });
+    const accountMap = new Map(accounts.map((account) => [account.code, account.type]));
+    for (const item of resolved) {
+      if (accountMap.get(item.tender.policy.settlementAccountCode) !== 'ASSET') {
+        throw new BadRequestException(`Akun settlement tender ${item.method} (${item.tender.policy.settlementAccountCode}) harus berupa akun aset aktif pada cabang.`);
+      }
+      if (item.feeAmount.greaterThan(0) && (!item.tender.policy.feeAccountCode || accountMap.get(item.tender.policy.feeAccountCode) !== 'EXPENSE')) {
+        throw new BadRequestException(`Akun fee tender ${item.method} harus berupa akun beban aktif pada cabang.`);
+      }
+    }
+    return resolved;
   }
 
   private async denyTenantAccess(user: AuthUser, scope: TenantScope, entityType: string, entityId?: string): Promise<never> {
@@ -255,7 +356,7 @@ export class SalesService {
             },
           },
         },
-        select: { method: true, amount: true },
+        select: { method: true, methodName: true, methodSnapshot: true, amount: true, settlementAccountCode: true, settlementBehavior: true, feeAmount: true, feeAccountCode: true },
       }),
       client.warehouse.findMany({
         where: { branchId: scope.branchId, branch: { companyId: scope.companyId } },
@@ -267,29 +368,44 @@ export class SalesService {
       }),
     ]);
     const paymentTotals = new Map<string, number>();
+    const paymentBreakdown = new Map<string, { method: string; methodName: string; settlementAccountCode: string; settlementBehavior: string; grossAmount: number; feeAmount: number; netSettlementAmount: number; feeAccountCode: string | null }>();
+    let cashSales = 0;
     for (const payment of payments) {
       const method = payment.method || 'UNKNOWN';
       paymentTotals.set(method, (paymentTotals.get(method) ?? 0) + Number(payment.amount));
+      if (this.paymentIsCash(payment)) cashSales += Number(payment.amount);
+      const fallbackPolicy = normalizeTenderPolicy(method, payment.settlementAccountCode ? { settlementAccountCode: payment.settlementAccountCode, settlementBehavior: payment.settlementBehavior ?? undefined, feeAccountCode: payment.feeAccountCode ?? undefined } : undefined);
+      const settlementAccountCode = payment.settlementAccountCode ?? fallbackPolicy.settlementAccountCode;
+      const settlementBehavior = payment.settlementBehavior ?? fallbackPolicy.settlementBehavior;
+      const feeAmount = Number(payment.feeAmount ?? 0);
+      const key = [method, settlementAccountCode, settlementBehavior, payment.feeAccountCode ?? ''].join('|');
+      const current = paymentBreakdown.get(key) ?? { method, methodName: payment.methodName ?? method, settlementAccountCode, settlementBehavior, grossAmount: 0, feeAmount: 0, netSettlementAmount: 0, feeAccountCode: payment.feeAccountCode ?? null };
+      current.grossAmount += Number(payment.amount);
+      current.feeAmount += feeAmount;
+      current.netSettlementAmount += Number(payment.amount) - feeAmount;
+      paymentBreakdown.set(key, current);
     }
     const warehouseIds = warehouseRows.map((row) => row.id);
-    const cashRefunds = warehouseIds.length ? await client.saleReturn.aggregate({
+    const completedReturns = warehouseIds.length ? await client.saleReturn.findMany({
       where: {
         warehouseId: { in: warehouseIds },
         status: 'COMPLETED',
-        refundMethod: 'CASH',
         approvedById: shift.userId,
         postedAt: { gte: shift.openedAt, lte: end },
       },
-      _sum: { refundAmount: true },
-      _count: true,
-    }) : null;
+      select: { refundDetails: true, refundMethod: true, refundAmount: true },
+    }) : [];
+    const cashRefundRows = completedReturns
+      .map((row) => this.refundCashAmount(row.refundDetails, row.refundMethod, row.refundAmount))
+      .filter((amount) => amount > 0);
     const cashIn = cashMovements.filter((item) => item.type === 'CASH_IN').reduce((sum, item) => sum + Number(item.amount), 0);
     const cashOut = cashMovements.filter((item) => item.type === 'CASH_OUT').reduce((sum, item) => sum + Number(item.amount), 0);
     return {
       paymentTotals,
-      cashSales: paymentTotals.get('CASH') ?? 0,
-      cashRefunds: Number(cashRefunds?._sum.refundAmount ?? 0),
-      cashRefundCount: cashRefunds?._count ?? 0,
+      paymentBreakdown: [...paymentBreakdown.values()],
+      cashSales,
+      cashRefunds: cashRefundRows.reduce((sum, amount) => sum + amount, 0),
+      cashRefundCount: cashRefundRows.length,
       cashIn,
       cashOut,
     };
@@ -376,6 +492,7 @@ export class SalesService {
         cogs: Number(salesAgg._sum.costTotal ?? 0),
       },
       payments: Object.fromEntries(summary.paymentTotals.entries()),
+      paymentBreakdown: summary.paymentBreakdown,
       refunds: { count: summary.cashRefundCount, cashTotal: summary.cashRefunds },
       cashMovements: { cashIn: summary.cashIn, cashOut: summary.cashOut },
       expectedCashFormula: {
@@ -516,24 +633,26 @@ export class SalesService {
     const scope = this.requireTenantScope(user);
     const configuredMaxAge = Number(process.env.POS_OFFLINE_MAX_CACHE_MINUTES ?? 1440);
     const maxOfflineAgeMinutes = Number.isFinite(configuredMaxAge) ? Math.min(Math.max(Math.floor(configuredMaxAge), 30), 10080) : 1440;
-    const [taxCodes, shift] = await Promise.all([
+    const [taxCodes, shift, tenderMethods] = await Promise.all([
       this.prisma.taxCode.findMany({
         where: { companyId: scope.companyId, scope: 'SALE', status: 'ACTIVE' },
         select: { id: true, code: true, rate: true, inclusive: true, updatedAt: true },
         orderBy: [{ code: 'asc' }, { id: 'asc' }],
       }),
       this.currentShift(user),
+      this.tenderDefinitions(this.prisma, scope),
     ]);
     return {
       serverTime: new Date().toISOString(),
       branchId: scope.branchId,
       shift,
       taxCodes,
+      tenderMethods: tenderMethods.map((item) => ({ code: item.code, name: item.name, ...item.policy })),
       policy: {
-        paymentMethods: ['CASH'],
+        paymentMethods: tenderMethods.filter((item) => item.policy.allowOffline).map((item) => item.code),
         loyaltyRedeemAllowed: false,
         maxOfflineAgeMinutes,
-        note: 'Transaksi offline hanya menerima tunai; total divalidasi ulang server saat replay.',
+        note: 'Transaksi offline hanya menerima tender yang diizinkan konfigurasi dan tetap divalidasi ulang server saat replay.',
       },
     };
   }
@@ -574,6 +693,7 @@ export class SalesService {
     });
 
     const ordered = [...dto.transactions].sort((left, right) => left.sequence - right.sequence);
+    const offlineTenderMap = new Map((await this.tenderDefinitions(this.prisma, scope)).map((item) => [item.code, item]));
     const results: Array<Record<string, unknown>> = [];
     let blocked = false;
 
@@ -686,8 +806,20 @@ export class SalesService {
       }
 
       const offlinePayments = normalizedPayload.payments ?? [];
-      if (offlinePayments.length > 0 || (normalizedPayload.paymentMethod ?? 'CASH') !== 'CASH') {
-        await registerConflict('OFFLINE_PAYMENT_NOT_ALLOWED', 'Split payment atau pembayaran non-tunai tidak boleh direkam saat offline.');
+      if (offlinePayments.length > 1 || normalizedPayload.onAccount || normalizedPayload.onAccountAmount) {
+        await registerConflict('OFFLINE_PAYMENT_NOT_ALLOWED', 'Split payment dan piutang pelanggan tidak boleh direkam saat offline.');
+        continue;
+      }
+      const offlineMethod = (offlinePayments[0]?.method ?? normalizedPayload.paymentMethod ?? 'CASH').trim().toUpperCase();
+      const offlineTender = offlineTenderMap.get(offlineMethod);
+      if (!offlineTender || !offlineTender.policy.allowOffline) {
+        await registerConflict('OFFLINE_PAYMENT_NOT_ALLOWED', `Tender ${offlineMethod} tidak diizinkan untuk transaksi offline.`);
+        continue;
+      }
+      const offlineProvider = offlinePayments[0]?.provider?.trim();
+      const offlineReference = offlinePayments[0]?.externalRef?.trim();
+      if ((offlineTender.policy.requiresProvider && !offlineProvider) || (offlineTender.policy.requiresReference && !offlineReference)) {
+        await registerConflict('OFFLINE_PAYMENT_DETAILS_REQUIRED', `Tender ${offlineMethod} memerlukan provider/reference yang tidak tersedia.`);
         continue;
       }
       if (normalizedPayload.promoCode?.trim()) {
@@ -953,28 +1085,54 @@ export class SalesService {
         if ((!inventory || inventory.available < item.quantity) && !product.allowNegativeStock) throw new BadRequestException(`Stok ${product.name} tidak mencukupi.`);
       }
 
-      if (dto.payments?.length && dto.paymentMethod) throw new BadRequestException('Gunakan paymentMethod atau payments, jangan keduanya.');
-      const requestedPayments = dto.payments?.length
-        ? dto.payments.map((item) => ({ ...item, method: item.method.toUpperCase(), amount: new Prisma.Decimal(item.amount).toDecimalPlaces(2) }))
-        : [{ method: (dto.paymentMethod ?? 'CASH').toUpperCase(), amount: total.toDecimalPlaces(2), provider: undefined, externalRef: undefined }];
-      const paymentTotal = requestedPayments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-      if (!paymentTotal.equals(total.toDecimalPlaces(2))) {
-        throw new BadRequestException(`Total pembayaran ${paymentTotal.toFixed(2)} tidak sama dengan total transaksi ${total.toFixed(2)}.`);
-      }
-      if (options.offline && (requestedPayments.length !== 1 || requestedPayments[0].method !== 'CASH')) {
-        throw new BadRequestException('Transaksi offline hanya boleh satu pembayaran tunai.');
-      }
-      const cashSettlement = requestedPayments.filter((item) => item.method === 'CASH').reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-      const bankSettlement = requestedPayments.filter((item) => item.method !== 'CASH').reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
-      const saleEventType = !cashSettlement.isZero() && !bankSettlement.isZero() ? 'SALE_SPLIT' : cashSettlement.isZero() ? 'SALE_BANK' : 'SALE_CASH';
-
-      // The fee is charged on top of the basket and clamped to the settlement, so a crafted request
-      // cannot make the sale total less than the goods the customer is taking. Declared here because
-      // `total` is only final after the per-line tax loop above has run.
+      // Customer-facing service fee is part of the amount that must be settled. Historically the
+      // split-payment validator compared against goods gross before this fee, which made a correct
+      // split fail while a single legacy payment could understate the actual sale total.
       const serviceFee = serviceFeeFor(dto, total);
+      const saleTotal = total.add(serviceFee).toDecimalPlaces(2);
+      if (dto.payments !== undefined && dto.paymentMethod) throw new BadRequestException('Gunakan paymentMethod atau payments, jangan keduanya.');
+
+      const onAccountAmount = dto.onAccountAmount === undefined
+        ? new Prisma.Decimal(0)
+        : new Prisma.Decimal(dto.onAccountAmount).toDecimalPlaces(2);
+      if (dto.onAccountAmount !== undefined && dto.onAccount !== true) {
+        throw new BadRequestException('onAccount harus true saat onAccountAmount dikirim agar piutang tidak terbentuk diam-diam.');
+      }
+      if (dto.onAccount === true && dto.onAccountAmount === undefined) {
+        throw new BadRequestException('onAccountAmount wajib diisi saat onAccount true.');
+      }
+      if (onAccountAmount.greaterThan(0) && !dto.customerId) throw new BadRequestException('Penjualan piutang wajib memiliki pelanggan.');
+      if (onAccountAmount.greaterThan(saleTotal)) throw new BadRequestException('Piutang pelanggan melebihi total transaksi.');
+      if (options.offline && onAccountAmount.greaterThan(0)) throw new BadRequestException('Penjualan piutang tidak boleh direkam saat offline.');
+
+      const tenderDue = saleTotal.sub(onAccountAmount).toDecimalPlaces(2);
+      const rawRequestedPayments = dto.payments !== undefined
+        ? dto.payments.map((item) => ({ ...item, method: item.method.toUpperCase(), amount: new Prisma.Decimal(item.amount).toDecimalPlaces(2) }))
+        : tenderDue.greaterThan(0)
+          ? [{ method: (dto.paymentMethod ?? 'CASH').toUpperCase(), amount: tenderDue, provider: undefined, externalRef: undefined }]
+          : [];
+      const paymentTotal = rawRequestedPayments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)).toDecimalPlaces(2);
+      if (!paymentTotal.equals(tenderDue)) {
+        throw new BadRequestException(`Total tender ${paymentTotal.toFixed(2)} + piutang ${onAccountAmount.toFixed(2)} tidak sama dengan total transaksi ${saleTotal.toFixed(2)}.`);
+      }
+      if (tenderDue.greaterThan(0) && !rawRequestedPayments.length) throw new BadRequestException('Tender pembayaran wajib diisi untuk bagian transaksi yang tidak menjadi piutang.');
+      const requestedPayments = await this.resolveSalePayments(tx, scope, rawRequestedPayments);
+      if (options.offline && (requestedPayments.length !== 1 || !requestedPayments[0].tender.policy.allowOffline)) {
+        throw new BadRequestException('Tender transaksi offline tidak diizinkan konfigurasi cabang.');
+      }
+      if (onAccountAmount.greaterThan(0)) {
+        const receivableAccount = await tx.account.findFirst({
+          where: { branchId: scope.branchId, code: '1201', type: 'ASSET', isActive: true, branch: { companyId: scope.companyId } },
+          select: { id: true },
+        });
+        if (!receivableAccount) throw new BadRequestException('Akun Piutang Usaha 1201 belum aktif pada cabang.');
+      }
+      const cashSettlement = requestedPayments.filter((item) => item.tender.policy.kind === 'CASH').reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+      const settlementComponentCount = requestedPayments.length + (onAccountAmount.greaterThan(0) ? 1 : 0);
+      const saleEventType = onAccountAmount.greaterThan(0) || settlementComponentCount > 1 ? 'SALE_SPLIT' : !cashSettlement.isZero() ? 'SALE_CASH' : 'SALE_BANK';
       const sale = await tx.sale.create({ data: {
         number: await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'SALE', prefix: 'POS' }), branchId: scope.branchId, warehouseId: warehouse.id, customerId: dto.customerId,
-        cashierShiftId, subtotal: rawSubtotal, discount: totalDiscount, tax: taxTotal, serviceFee, total: total.add(serviceFee), costTotal, createdAt: occurredAt,
+        cashierShiftId, subtotal: rawSubtotal, discount: totalDiscount, tax: taxTotal, serviceFee, total: saleTotal, costTotal, createdAt: occurredAt,
         items: { create: prepared.map(({ productName, ...item }) => item) },
       } });
       if (promotion.rule && promoDiscount.greaterThan(0)) {
@@ -992,23 +1150,57 @@ export class SalesService {
       for (const requested of requestedPayments) {
         payments.push(await tx.payment.create({ data: {
           number: await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'PAYMENT', prefix: 'PAY' }),
-          saleId: sale.id, method: requested.method, provider: requested.provider, externalRef: requested.externalRef, amount: requested.amount,
+          saleId: sale.id,
+          method: requested.method,
+          methodName: requested.tender.name,
+          methodReferenceId: requested.tender.id,
+          methodSnapshot: this.tenderSnapshot(requested.tender),
+          provider: requested.provider,
+          externalRef: requested.externalRef,
+          amount: requested.amount,
+          settlementAccountCode: requested.tender.policy.settlementAccountCode,
+          settlementBehavior: requested.tender.policy.settlementBehavior,
+          feeAmount: requested.feeAmount,
+          feeAccountCode: requested.tender.policy.feeAccountCode,
           status: 'PAID', paidAt: occurredAt, createdAt: occurredAt,
         } }));
       }
+      if (onAccountAmount.greaterThan(0)) {
+        payments.push(await tx.payment.create({ data: {
+          number: await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'PAYMENT', prefix: 'PAY' }),
+          saleId: sale.id,
+          method: 'ON_ACCOUNT',
+          methodName: 'Piutang Pelanggan',
+          methodSnapshot: { version: 1, code: 'ON_ACCOUNT', name: 'Piutang Pelanggan', policy: { kind: 'RECEIVABLE', receivableAccountCode: '1201', refundBehavior: 'RECEIVABLE', allowOffline: false } },
+          amount: onAccountAmount,
+          settlementAccountCode: '1201',
+          settlementBehavior: 'RECEIVABLE',
+          feeAmount: new Prisma.Decimal(0),
+          status: 'PENDING',
+          createdAt: occurredAt,
+        } }));
+      }
       const taxLines: OperationalTaxLineInput[] = [...taxGroups.entries()].map(([taxCodeId, value]) => ({ taxCodeId, direction: 'OUTPUT', taxableBase: value.base, taxAmount: value.tax, counterpartyType: 'CUSTOMER', counterpartyId: dto.customerId }));
+      const settlementJournalLines = [
+        ...requestedPayments.flatMap((item) => [
+          ...(item.settlementAmount.greaterThan(0) ? [{ accountCode: item.tender.policy.settlementAccountCode, side: 'DEBIT' as const, amount: item.settlementAmount }] : []),
+          ...(item.feeAmount.greaterThan(0) && item.tender.policy.feeAccountCode ? [{ accountCode: item.tender.policy.feeAccountCode, side: 'DEBIT' as const, amount: item.feeAmount }] : []),
+        ]),
+        ...(onAccountAmount.greaterThan(0) ? [{ accountCode: '1201', side: 'DEBIT' as const, amount: onAccountAmount }] : []),
+      ];
       const event = await this.accounting.postOperationalEvent(tx, {
         companyId: scope.companyId, branchId: scope.branchId, eventType: saleEventType,
         sourceType: 'Sale', sourceId: sale.id, idempotencyKey: `sale:${sale.id}`,
-        amounts: { settlement: total.add(serviceFee), cashSettlement, bankSettlement, revenue: netTotal, serviceRevenue: serviceFee, outputTax: taxTotal, cogs: costTotal, inventory: costTotal, gross: total.add(serviceFee), net: netTotal, tax: taxTotal },
+        amounts: { settlement: 0, cashSettlement: 0, bankSettlement: 0, revenue: netTotal, serviceRevenue: serviceFee, outputTax: taxTotal, cogs: costTotal, inventory: costTotal, gross: saleTotal, net: netTotal, tax: taxTotal },
         accountCodes: {
-          settlement: cashSettlement.isZero() ? '1102' : '1101', cashSettlement: '1101', bankSettlement: '1102',
           revenue: '4101', serviceRevenue: '4104', outputTax: '2201', cogs: '5101', inventory: '1301',
         },
+        additionalJournalLines: settlementJournalLines,
         lines: prepared.map((item) => ({ itemType: 'Product', itemId: item.productId, description: item.productName, quantity: item.quantity, unitAmount: item.unitPrice, netAmount: item.netSubtotal, taxAmount: item.taxAmount, grossAmount: item.grossSubtotal, taxCodeId: item.taxCodeId })),
         taxLines, businessDate: occurredAt, context: {
           warehouseId: warehouse.id, customerId: dto.customerId, paymentIds: payments.map((item) => item.id),
-          payments: requestedPayments.map((item) => ({ method: item.method, amount: item.amount.toFixed(2), provider: item.provider, externalRef: item.externalRef })),
+          payments: requestedPayments.map((item) => ({ method: item.method, name: item.tender.name, amount: item.amount.toFixed(2), provider: item.provider, externalRef: item.externalRef, settlementAccountCode: item.tender.policy.settlementAccountCode, settlementBehavior: item.tender.policy.settlementBehavior, feeAmount: item.feeAmount.toFixed(2), feeAccountCode: item.tender.policy.feeAccountCode })),
+          ...(onAccountAmount.greaterThan(0) ? { onAccount: { amount: onAccountAmount.toFixed(2), accountCode: '1201' } } : {}),
           promo: promotion.rule ? { ...promotion.rule, discount: promoDiscount.toFixed(2) } : null,
           ...(options.offline ? { offline: options.offline } : {}),
         } as Prisma.InputJsonValue,

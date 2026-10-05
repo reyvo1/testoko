@@ -1,5 +1,21 @@
 import { clearLegacyOfflineKeys, readSnapshot, writeSnapshot, type StoreOutcome } from './offline-store';
 
+export type OfflineTenderMethod = {
+  code: string;
+  name: string;
+  kind: 'CASH' | 'SETTLEMENT';
+  settlementAccountCode: string;
+  settlementBehavior: 'IMMEDIATE' | 'CLEARING';
+  requiresProvider: boolean;
+  requiresReference: boolean;
+  refundBehavior: 'ORIGINAL' | 'CASH' | 'SETTLEMENT' | 'RECEIVABLE' | 'DISABLED';
+  refundAccountCode?: string;
+  allowOffline: boolean;
+  allowCashChange: boolean;
+  feeAccountCode?: string;
+  feeRatePercent: number;
+};
+
 export type OfflineTaxCode = {
   id: string;
   code: string;
@@ -39,6 +55,7 @@ export type OfflineSnapshot<Product, Warehouse, Customer, Shift, Manifest> = {
   shift: Shift | null;
   manifest: Manifest | null;
   taxCodes: OfflineTaxCode[];
+  tenderMethods?: OfflineTenderMethod[];
   offlineMaxAgeMinutes?: number;
   clockOffsetMs?: number;
 };

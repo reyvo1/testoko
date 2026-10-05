@@ -97,6 +97,16 @@ async function seed() {
   await prisma.masterReference.create({
     data: { companyId: COMPANY, branchId: null, type: 'UNIT', code: 'PCS', name: 'Pieces', isActive: true },
   });
+  await prisma.masterReference.create({
+    data: {
+      companyId: COMPANY, branchId: null, type: 'PAYMENT_METHOD', code: 'CASH', name: 'Tunai', isActive: true,
+      metadata: {
+        kind: 'CASH', settlementAccountCode: '1101', settlementBehavior: 'IMMEDIATE',
+        requiresProvider: false, requiresReference: false, refundBehavior: 'CASH', refundAccountCode: '1101',
+        allowOffline: true, allowCashChange: true, feeRatePercent: 0,
+      },
+    },
+  });
   for (const [id, code] of BRANCHES) {
     await prisma.branch.create({ data: { id, companyId: COMPANY, code, name: `Cabang ${code}`, isActive: true } });
     for (const [accountCode, name, type] of ACCOUNTS) {

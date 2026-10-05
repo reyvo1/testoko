@@ -105,10 +105,17 @@ test('P6A browser UAT consumes runtime tender master and refuses missing dynamic
   assert.match(browserUat, /master-data\/references\?type=PAYMENT_METHOD/);
   assert.match(browserUat, /P6A_TENDER_MASTER_RUNTIME/);
   assert.match(browserUat, /payments:\s*\[\{ method:\s*fixtureTenderCode/);
+  assert.match(browserUat, /quantity:\s*quantity \+ 1/);
+  assert.match(browserUat, /button\.productMain/);
+  assert.match(browserUat, /P6A_POS_CART_TENDER_PREREQUISITE/);
   assert.match(browserUat, /P6A_POS_TENDER_RUNTIME/);
+  assert.match(browserUat, /expectedTenderCodes = uatTenderCodes/);
   assert.match(browserUat, /missingTenderCodes\.length/);
   assert.match(browserUat, /hasSplit/);
   assert.match(browserUat, /hasOnAccount/);
+  const cartPrerequisite = browserUat.indexOf("id: 'P6A_POS_CART_TENDER_PREREQUISITE'");
+  const tenderAssertion = browserUat.indexOf("id: 'P6A_POS_TENDER_RUNTIME'");
+  assert.ok(cartPrerequisite > 0 && tenderAssertion > cartPrerequisite, 'POS cart prerequisite must execute before exact tender runtime assertion');
 });
 
 

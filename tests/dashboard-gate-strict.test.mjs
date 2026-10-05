@@ -96,8 +96,9 @@ test('kedua workflow runner menyalakan fixture penjualan', () => {
 test('stok fixture penjualan lewat penerimaan barang produksi, bukan Menembak stok', () => {
   assert.match(uat, /async function ensureStockThroughReceiving\(/,
     'UAT harus punya jalur penerimaan barang untuk menyediakan stok fixture');
-  assert.match(uat, /const receiving = await ensureStockThroughReceiving\(apiUrl, authHeaders, \{ product, warehouse, quantity \}\)/);
-  assert.match(uat, /id: 'SALES_CI_STOCK_RECEIVING'/);
+  assert.match(uat, /const receiving = await ensureStockThroughReceiving\(apiUrl, authHeaders, \{ product, warehouse, quantity: quantity \+ 1 \}\)/,
+    'fixture harus menerima stok lewat jalur produksi dan menyisakan satu unit untuk journey tender POS');
+  assert.match(uat, /id: 'SALES_CI_STOCK_RECEIVING'.*reservedForPosTenderUat: 1/);
   // Rantai produksi lengkap: supplier -> PO -> GRN -> inspeksi -> confirm.
   assert.match(uat, /await post\('\/suppliers', \{/, 'supplier wajib dibuat lewat API');
   assert.match(uat, /await post\('\/purchase-orders', \{/, 'PO wajib dibuat lewat API');

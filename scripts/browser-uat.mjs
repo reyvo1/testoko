@@ -1052,8 +1052,13 @@ async function main() {
         // ke POST /sales dan gagal 400 "Stok ... tidak mencukupi" di runner, karena
         // SEED_MODE=bootstrap tidak pernah membuat produk/supplier/stok. Stok datang lewat
         // penerimaan barang produksi, bukan ditulis ke DB.
-        const receiving = await ensureStockThroughReceiving(apiUrl, authHeaders, { product, warehouse, quantity });
-        evidence.checks.push({ id: 'SALES_CI_STOCK_RECEIVING', status: 'PASS', ...receiving, productionTouched: false });
+        // Sisakan satu unit nyata setelah fixture sale dibuat. Browser UAT P6A harus
+        // membentuk keranjang POS sungguhan sebelum memeriksa selector tender; memeriksa
+        // selector pada keranjang kosong adalah false-negative karena UI memang hanya
+        // merender metode pembayaran saat tenderTarget > 0. Stok ekstra tetap masuk lewat
+        // receiving produksi dan TIDAK ditembak langsung ke tabel inventory.
+        const receiving = await ensureStockThroughReceiving(apiUrl, authHeaders, { product, warehouse, quantity: quantity + 1 });
+        evidence.checks.push({ id: 'SALES_CI_STOCK_RECEIVING', status: 'PASS', ...receiving, reservedForPosTenderUat: 1, productionTouched: false });
         const createdRes = await http(`${apiUrl}/sales`, {
           method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -1344,6 +1349,28 @@ await waitExpression(cdp, `(() => {
     }
     await waitExpression(cdp, `Boolean(document.querySelector('[data-staff-memo-surface=\"pos\"]'))`, 'POS staff memo surface', 45000);
     evidence.checks.push({ id: 'POS_AUTHENTICATED_RUNTIME', status: 'PASS', assertions: ['cashier shell', 'warehouse selector', 'server online', 'offline config/data bootstrap'] });
+
+    // PAYMENT_METHOD selector sengaja tidak dirender saat keranjang kosong karena tidak ada
+    // tender yang harus dibayar. Jadi UAT harus membentuk prasyarat bisnis yang nyata, bukan
+    // menuntut kontrol pembayaran muncul pada total 0. Klik produk berstok lewat UI POS agar
+    // jalur React/cart yang sama dengan kasir benar-benar dieksekusi. Assertion tender di bawah
+    // tetap exact terhadap seluruh master runtime; tidak ada fallback/skip bila kode hilang.
+    const p6aPosCartFixture = await evaluateValue(cdp, `(() => {
+      const target=[...document.querySelectorAll('button.productMain')].find((node)=>!node.disabled && node.getClientRects().length>0);
+      if (!target) return { clicked:false, enabledProducts:0 };
+      target.click();
+      return { clicked:true, label:(target.textContent||'').trim().slice(0,120) };
+    })()`);
+    if (!p6aPosCartFixture?.clicked) {
+      throw new Error('P6A POS UAT tidak menemukan produk berstok untuk membentuk keranjang tender nyata. Fixture stok harus melalui receiving produksi.');
+    }
+    await waitExpression(cdp, `(() => {
+      const paymentLabel=[...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Metode pembayaran'));
+      const select=paymentLabel?.querySelector('select');
+      return Boolean(document.querySelector('.items .item') && select && select.options.length > 0);
+    })()`, 'P6A POS cart + tender controls', 45000);
+    evidence.checks.push({ id: 'P6A_POS_CART_TENDER_PREREQUISITE', status: 'PASS', product: p6aPosCartFixture.label, stockPath: 'production-receiving' });
+
     const p6aPosTenderRuntime = await evaluateValue(cdp, `(() => {
       const paymentLabel=[...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Metode pembayaran'));
       const select=paymentLabel?.querySelector('select');
@@ -1359,6 +1386,14 @@ await waitExpression(cdp, `(() => {
       throw new Error(`P6A POS runtime tidak memuat kontrak tender dinamis/split/piutang. missing=${missingTenderCodes.join(',') || '<none>'}`);
     }
     evidence.checks.push({ id: 'P6A_POS_TENDER_RUNTIME', status: 'PASS', tenderCodes: p6aPosTenderRuntime.options, splitPayment: true, onAccount: true });
+    const p6aCartCleared = await evaluateValue(cdp, `(() => {
+      const button=[...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan'));
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!p6aCartCleared) throw new Error('P6A POS UAT gagal membersihkan keranjang setelah verifikasi tender.');
+    await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6A POS cart cleanup');
     evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });

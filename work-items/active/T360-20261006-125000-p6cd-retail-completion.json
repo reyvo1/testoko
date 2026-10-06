@@ -69,13 +69,14 @@
     "docs/P6CD-VERIFICATION.md"
   ],
   "createdAt": "2026-10-06T04:50:46.405098+00:00",
-  "updatedAt": "2026-10-06T15:55:06.322278+00:00",
+  "updatedAt": "2026-10-06T15:57:36.566622+00:00",
   "notes": [
     "Explicit 2026-10-06 user instruction combines P6C/P6D and full menu/UI/frontend-backend audit before one push; supersedes earlier per-wave publication rule. P6B final four workflows all PASS on 12537b9. Selected production providers/sandbox availability still pending user information; continue all verifiable code work.",
     "Local implementation is complete for the supported cash exchange, liability deposit, consent communications, staff fulfillment and reviewed XML export paths; verification and cosmetic browser audit continue. Provider certification, Human Stage-20 and release remain pending.",
     "Stable final local candidate, built-browser wrapper and actual PostgreSQL/worker probe all PASS on one fingerprint. Engineering implementation locally verified; enter GitHub STAGING with one combined publication. No release/merge/provider/human acceptance inferred.",
     "Published cbc0e3b: Governance and CI PASS; Full System/UAT correctly fail because browser navigation matched Retur without its pending-count badge. Repair waits for hydrated labelled navigation with a real pending badge and retains quote/confirmation/atomic persistence checks. Five default-off features also receive operator-visible branch configuration in existing Settings/Features; dedicated deposit account config remains canonical. Nine scenarios pass on a new isolated PostgreSQL TEST database; final stable gates rerun.",
-    "Corrective final candidate local/runtime PASS on one source fingerprint: 1734 regression, 57 complete browser checks/nine new scenarios, seven PostgreSQL domain/worker assertions. New feature controls use existing scoped Platform API; no schema/core/gate weakening. Corrective publication is a separate push from the original combined cbc0e3b; request operator permission against the original one-push constraint before publishing."
+    "Corrective final candidate local/runtime PASS on one source fingerprint: 1734 regression, 57 complete browser checks/nine new scenarios, seven PostgreSQL domain/worker assertions. New feature controls use existing scoped Platform API; no schema/core/gate weakening. Corrective publication is a separate push from the original combined cbc0e3b; request operator permission against the original one-push constraint before publishing.",
+    "Operator explicitly selected Simpan lokal saja for the corrective e64be71 commit. Do not push it or dispatch new-source GitHub workflows until later explicit authorization. Local code/tests/evidence complete; existing PR #2 remains on cbc0e3b with Governance/CI PASS and full System/UAT FAIL from the old badge selector. Owned scratch PostgreSQL server stopped after probes; TEST files/evidence retained."
   ],
   "releaseEvidence": {
     "sourceFingerprint": "20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678",
@@ -84,7 +85,7 @@
     "builtBrowser": "57/57 PASS",
     "postgresqlDomain": "7/7 PASS",
     "sixBuildArtifact": "204bb062360c5ab2c2d259db29fac5a124f6b2b64423f0aae167d96a28706cc4",
-    "githubExactSource": "PENDING_CORRECTIVE_PUBLICATION",
+    "githubExactSource": "PENDING_NOT_PUBLISHED_BY_OPERATOR",
     "productionProviderCertification": "PENDING",
     "humanStage20": "PENDING",
     "runtimeCommit": "cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0",
@@ -94,6 +95,8 @@
     "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37457398259",
     "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37457407199",
     "repairCandidateFingerprint": "20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678",
-    "repairLocalGate": "PASS"
+    "repairLocalGate": "PASS",
+    "correctiveLocalCommit": "e64be71b6f58735025076ea58391e45dcc9cf5b9",
+    "correctivePublicationApproval": "LOCAL_ONLY_BY_OPERATOR"
   }
 }

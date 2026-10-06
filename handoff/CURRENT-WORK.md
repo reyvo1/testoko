@@ -1,3 +1,11 @@
+## Operator decision — corrective candidate LOCAL ONLY
+
+Operator explicitly selected “Simpan lokal saja” after reviewing the request for one additional corrective push. Code commit e64be71b6f58735025076ea58391e45dcc9cf5b9 remains local; do not push or run new-source GitHub workflows without new explicit authorization. PR #2 stays on cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0. Published Governance/CI PASS, full System/UAT FAIL on the old badge selector; do not claim GitHub green for the local correction.
+
+Final local correction is verified on source 20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678: 1734/1734 regression, lint/migration/DB smoke/six builds/boot, complete built Browser 57/57 (nine new scenarios) and PostgreSQL/worker 7/7. All-menu source audits 538 controls/552 handlers/206 models/70 contexts PASS; desktop/mobile feature controls inspected. Human Stage-20/provider certification/product readiness remain pending; flags default OFF. Work item remains STAGING, publication deferred by operator.
+
+All owned temporary API/worker/Next processes cleaned up. PostgreSQL TEST cluster /tmp/toko360-p6cd-pg-test-cluster (PID 243617) stopped via pg_ctl after probes. TEST databases/files/evidence preserved. Port 3000/operator services untouched. Re-read this decision before resuming; earlier requests for publication are superseded for the correction.
+
 ## 2026-10-06 — GitHub corrective candidate, T360-20261006-125000
 
 Published combined commit cbc0e3b in draft PR #2. Governance 37457370376 and CI 37457370524 PASS; System 37457398259 and UAT 37457407199 FAIL because the browser selector required `Retur` while fresh data showed `Retur 1`. The financial/inspection/worker probes are retained; no gate is bypassed.

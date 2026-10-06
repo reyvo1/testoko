@@ -37,6 +37,11 @@ Work item enters STAGING; corrective publication needs one additional push beyon
 the original combined push, so operator approval is required. No current-source
 GitHub runtime acceptance, merge or release is claimed.
 
+Operator selected **Simpan lokal saja** for corrective code `e64be71`.
+Corrected source has complete local runtime evidence, but remains unpublished;
+PR #2 stays on `cbc0e3b` with two full runtime failures from the old selector.
+Do not publish or claim corrected-source GitHub acceptance without new instruction.
+
 ## Baseline
 
 - Version: 0.5.3

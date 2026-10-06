@@ -108,3 +108,12 @@ smoke/six builds/API boot; complete built Browser UAT PASS 57/57; actual Postgre
 worker/domain probe PASS 7/7. All match `20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678`. Source audit PASS: 538 controls,
 552 handlers, 206 models, 70/70 contexts. Corrective source publication/GitHub
 acceptance remains pending; earlier published evidence remains historical.
+
+## Operator disposition
+
+The operator selected **Simpan lokal saja** for the additional corrective push.
+Code commit `e64be71b6f58735025076ea58391e45dcc9cf5b9` remains local. No corrected-source GitHub
+acceptance is claimed; PR #2 remains on `cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0`.
+Local gates above passed; publishing/dispatching the correction requires a later
+explicit operator instruction. Owned temporary TEST services are stopped and
+evidence/scratch databases retained. Human/provider/production readiness pending.

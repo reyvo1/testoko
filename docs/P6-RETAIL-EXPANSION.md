@@ -9,14 +9,15 @@ product phase remains P5 and Human Stage-20 remains PENDING.
 - P6C: direct exchange orchestration and customer communication/receipt delivery.
 - P6D: Indonesia tax adapters, ship-later/ship-from-store, provider certification.
 
-Execute one wave, verify it, then proceed. No new financial/inventory ledger.
+The 2026-10-06 operator instruction combines P6C/P6D and all-menu UI/API audit
+into one local verification/publication batch after P6B gates. No new financial/inventory ledger.
 External provider certification requires real configuration and executed evidence.
 The recovered package also assigns customer deposits to P6C; this is not a
 customer wallet or a replacement for existing AR/payment ledgers.
 
 ## Verified P6A baseline — 2026-10-06
 
-Local HEAD and origin/main are `d07446c6edac764aa32a3231b42faafa17913a63`.
+Verified main/origin-main P6A baseline is `d07446c6edac764aa32a3231b42faafa17913a63`.
 The following exact-commit runs completed successfully:
 
 - [Workflow Governance](https://github.com/reyvo1/testoko/actions/runs/37325983846)
@@ -55,7 +56,7 @@ production requires a verified backup/restore point before applying expansion.
 Rollback application first, leave additive columns, disable new retail policies;
 posted inventory/accounting effects use canonical returns/reversals.
 
-P6C/P6D implementation must wait for P6B quality gates; neither is claimed complete.
+P6B final dependency gates passed; combined P6C/P6D implementation is under verification.
 
 ## P6B runtime checkpoint
 
@@ -66,14 +67,17 @@ and [Full Automated UAT](https://github.com/reyvo1/testoko/actions/runs/37358970
 The mandatory P6B PostgreSQL probe and Browser scanner/manual-weight/raster checks
 passed. Auxiliary PR CI exposed an older prerequisite defect: PostgreSQL client
 was used for SQLite tests and worker transport artifacts were absent. Its
-prerequisite repair remains in verification; no job/test is skipped.
+prerequisite repair was verified by the final four workflows below; no job/test
+was skipped. This earlier candidate is historical evidence.
 
 ## Final P6B candidate verification boundary
 
 Candidate `12537b96547f9fd88849fa92902a65cf97d3ec7b` passed full local
 verification (1714 tests, lint, six-app build/boot, migration, coverage) and
 [all auxiliary CI jobs](https://github.com/reyvo1/testoko/actions/runs/37363402348).
-The three final official workflows failed to acquire hosted runners and ran zero
-steps during [Actions incident](https://www.githubstatus.com/incidents/3q1yb5m7ltvb).
-Same-source retries have been requested; final runtime closure remains pending.
-P6C/P6D audit/design documents are preparatory only.
+All final mandatory retries passed: [Governance](https://github.com/reyvo1/testoko/actions/runs/37363402271),
+[Full System](https://github.com/reyvo1/testoko/actions/runs/37363589397),
+[Full UAT](https://github.com/reyvo1/testoko/actions/runs/37363596627).
+The transient hosted-runner incident is resolved for this source. P6C/P6D
+implementation and limits are described in their updated design documents.
+Current-source gates, production providers and human acceptance are separate.

@@ -49,7 +49,7 @@ test('F8 report job completion feeds schedule health without duplicating export 
   assert.match(worker, /if \(job\.scheduleId\) await tx\.reportSchedule\.updateMany/);
   assert.match(worker, /lastError: message/);
   assert.match(worker, /buildReportCsv\(job\)/);
-  assert.match(worker, /renderReportOutput\(csv, job\.format, job\.reportType\)/);
+  assert.match(worker, /renderReportOutput\(await buildReportCsv\(job\), job\.format, job\.reportType\)/);
 });
 
 test('F8 business rule lifecycle validates actions and exposes execution history controls', () => {

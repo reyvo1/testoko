@@ -1,4 +1,6 @@
-import { createDecipheriv, createHash, createHmac } from 'node:crypto';
+import { customerNotificationAllowed, processCustomerCampaignBatch } from '@toko360/contracts/customer-communications.cjs';
+import { renderCoretaxExport, taxExportChecksum } from '@toko360/contracts/coretax-export.cjs';
+import { createDecipheriv, createHash, createHmac, randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { existsSync, mkdirSync } from 'node:fs';
@@ -664,6 +666,7 @@ async function processExternalNotifications(): Promise<void> {
     if (!claimed.count) continue;
     let integrationId: string | null = null;
     try {
+      if (!await customerNotificationAllowed(prisma, notification)) { await prisma.notification.update({ where: { id: notification.id }, data: { status: 'CANCELLED', lastError: 'Customer communication consent/destination is no longer valid.' } }); continue; }
       const integration = await findNotificationIntegration(notification);
       integrationId = integration?.id ?? null;
       let response: Response;
@@ -696,14 +699,14 @@ async function processExternalNotifications(): Promise<void> {
         throw new Error(`Integration NOTIFICATION CONNECTED untuk channel ${notification.channel} belum dikonfigurasi.`);
       }
       const responseBody = (await response.text()).slice(0, 4000);
-      if (!response.ok) throw new Error(`Provider HTTP ${response.status}: ${responseBody}`);
+      if (!response.ok) throw new Error(jsonObject(notification.data).customerCommunication ? `Provider HTTP ${response.status}` : `Provider HTTP ${response.status}: ${responseBody}`);
       await prisma.notification.update({ where: { id: notification.id }, data: {
-        status: 'SENT', attempts: { increment: 1 }, sentAt: new Date(), externalRef: responseBody.slice(0, 250), provider, lastError: null,
+        status: 'SENT', attempts: { increment: 1 }, sentAt: new Date(), externalRef: jsonObject(notification.data).customerCommunication ? null : responseBody.slice(0, 250), provider, lastError: null,
       } });
       if (integrationId) await prisma.integrationConnection.update({ where: { id: integrationId }, data: { lastHealthCheckAt: new Date(), lastError: null } });
       await prisma.employeeNotificationDelivery.updateMany({ where: { notificationId: notification.id }, data: { status: 'SENT', attempts: { increment: 1 }, sentAt: new Date(), externalReference: responseBody.slice(0, 250), lastError: null } });
     } catch (error) {
-      const attempts = notification.attempts + 1; const message = error instanceof Error ? error.message : String(error);
+      const attempts = notification.attempts + 1; const message = jsonObject(notification.data).customerCommunication ? 'Customer provider delivery failed; inspect provider monitoring.' : error instanceof Error ? error.message : String(error);
       await prisma.notification.update({ where: { id: notification.id }, data: { status: attempts >= 8 ? 'FAILED' : 'QUEUED', attempts, lastError: message, scheduledAt: attempts >= 8 ? notification.scheduledAt : new Date(Date.now() + Math.min(3600000, 5000 * 2 ** attempts)) } });
       if (integrationId) await prisma.integrationConnection.update({ where: { id: integrationId }, data: { status: 'DEGRADED', lastHealthCheckAt: new Date(), lastError: message.slice(0, 1000) } });
       await prisma.employeeNotificationDelivery.updateMany({ where: { notificationId: notification.id }, data: { status: attempts >= 8 ? 'FAILED' : 'QUEUED', attempts, lastError: message } });
@@ -799,7 +802,9 @@ async function processAutomationJobs(): Promise<void> {
         if (!current || current.status !== 'PROCESSING') return;
         const payload = jsonObject(current.payload);
         const eventPayload = jsonObject(payload.eventPayload);
-        if (current.actionType === 'EMIT_OUTBOX_EVENT') {
+        if (current.actionType === 'ENQUEUE_CUSTOMER_CAMPAIGN') {
+          await processCustomerCampaignBatch(tx, current);
+        } else if (current.actionType === 'EMIT_OUTBOX_EVENT') {
           const eventType = typeof payload.eventType === 'string' ? payload.eventType : current.eventType;
           await tx.eventOutbox.create({ data: {
             companyId: current.companyId, eventType, aggregateType: current.sourceType, aggregateId: current.sourceId,
@@ -1690,37 +1695,51 @@ function renderReportOutput(csv: string, format: string, reportType: string): { 
 }
 
 async function processReportJobs(): Promise<void> {
+  await prisma.reportJob.updateMany({ where:{ reportType:'CORETAX_XML',status:'RUNNING',leaseExpiresAt:{lt:new Date()} },data:{ status:'RETRY',leaseOwner:null,leaseExpiresAt:null,nextAttemptAt:new Date() } });
   const jobs = await prisma.reportJob.findMany({
-    where: { status: 'PENDING' },
+    where: { OR:[{status:'PENDING'},{reportType:'CORETAX_XML',status:'RETRY',nextAttemptAt:{lte:new Date()}}] },
     orderBy: { createdAt: 'asc' },
     take: 5,
   });
   for (const job of jobs) {
+    const leaseOwner = `report:${job.id}:${randomUUID()}`;
     // klaim atomik: hanya satu worker yang memproses job yang sama.
     const claimed = await prisma.reportJob.updateMany({
-      where: { id: job.id, status: 'PENDING' },
-      data: { status: 'RUNNING', startedAt: new Date() },
+      where: { id: job.id, status: job.status, attempts:job.attempts },
+      data: { status: 'RUNNING', startedAt: new Date(),...(job.reportType==='CORETAX_XML' ? {attempts:{increment:1},leaseOwner,leaseExpiresAt:new Date(Date.now()+600000)} : {}) },
     });
     if (!claimed.count) continue;
     try {
-      const csv = await buildReportCsv(job);
-      const output = renderReportOutput(csv, job.format, job.reportType);
+      if (job.reportType === 'CORETAX_XML') {
+        if (!job.branchId || job.format !== 'XML') throw new Error('Invalid Coretax report scope.');
+        const snapshot = job.filters as { documents?: Array<{documentId:string}> } | null;
+        if (!Array.isArray(snapshot?.documents) || !snapshot.documents.length || snapshot.documents.length>100) throw new Error('Invalid tax snapshot.');
+        const documents = await prisma.taxDocument.findMany({where:{id:{in:snapshot.documents.map(row=>row.documentId)},companyId:job.companyId,branchId:job.branchId,status:'ISSUED'}});
+        for (const row of snapshot.documents) {
+          const approved = (documents.find(doc=>doc.id===row.documentId)?.metadata as { coretaxExport?: Record<string,unknown> } | null)?.coretaxExport;
+          if (!approved || taxExportChecksum({documentId:approved.documentId,mapping:approved.mapping,facts:approved.facts,approvedById:approved.approvedById,approvedAt:approved.approvedAt}) !== taxExportChecksum(row)) throw new Error('Tax snapshot ownership/review mismatch.');
+        }
+        const flags = await prisma.featureFlag.findMany({ where: { companyId:job.companyId,userId:null,key:'tax_export',OR:[{branchId:job.branchId},{branchId:null}] },take:3 });
+        if (flags.filter(row=>row.branchId===job.branchId).length>1 || flags.filter(row=>row.branchId===null).length>1 || !(flags.find(row=>row.branchId===job.branchId) ?? flags.find(row=>row.branchId===null))?.enabled) throw new Error('Coretax export disabled or ambiguous.');
+      }
+      const output = job.reportType === 'CORETAX_XML' ? { extension:'xml',data:renderCoretaxExport(job.filters) } : renderReportOutput(await buildReportCsv(job), job.format, job.reportType);
       const dir = resolveExportDir();
       await mkdir(dir, { recursive: true });
       const filename = `${job.id}.${output.extension}`;
       if (typeof output.data === 'string') await writeFile(join(dir, filename), output.data, 'utf8');
       else await writeFile(join(dir, filename), output.data);
       await prisma.$transaction(async (tx) => {
-        await tx.reportJob.update({
-          where: { id: job.id },
-          data: { status: 'DONE', progress: 100, outputUrl: filename, finishedAt: new Date(), errorMessage: null },
+        await tx.reportJob.updateMany({
+          where: { id: job.id,...(job.reportType==='CORETAX_XML' ? {leaseOwner,status:'RUNNING'} : {}) },
+          data: { status: 'DONE', progress: 100, outputUrl: filename, finishedAt: new Date(), errorMessage: null,leaseOwner:null,leaseExpiresAt:null,nextAttemptAt:null },
         });
         if (job.scheduleId) await tx.reportSchedule.updateMany({ where: { id: job.scheduleId }, data: { lastJobId: job.id, lastError: null } });
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = job.reportType === 'CORETAX_XML' ? 'Coretax export rejected; inspect approved mappings and canonical reconciliation.' : error instanceof Error ? error.message : String(error);
       await prisma.$transaction(async (tx) => {
-        await tx.reportJob.update({ where: { id: job.id }, data: { status: 'FAILED', errorMessage: message, finishedAt: new Date() } });
+        const retry = job.reportType === 'CORETAX_XML' && job.attempts + 1 < job.maxAttempts;
+        await tx.reportJob.updateMany({ where: { id: job.id,...(job.reportType==='CORETAX_XML' ? {leaseOwner,status:'RUNNING'} : {}) }, data: { status: retry ? 'RETRY' : job.reportType==='CORETAX_XML' ? 'DEAD_LETTER' : 'FAILED', errorMessage: message, finishedAt: retry ? null : new Date(),leaseOwner:null,leaseExpiresAt:null,nextAttemptAt:retry ? new Date(Date.now()+Math.min(3600000,30000 * 2 ** job.attempts)) : null } });
         if (job.scheduleId) await tx.reportSchedule.updateMany({ where: { id: job.scheduleId }, data: { lastJobId: job.id, lastError: message } });
       });
     }

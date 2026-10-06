@@ -1,3 +1,17 @@
+## 2026-10-06 — P6C/P6D local verification complete, GitHub staging
+
+User scope: implement P6C and P6D together, audit all menu cosmetics/functions/API parity, then one combined push. Active T360-20261006-125000 on feature/T360-20261006-125000-p6cd-retail-completion. P6B exact 12537b9 passed Governance 37363402271, CI 37363402348, Full System 37363589397 and Full UAT 37363596627; older runner incident is resolved and historical.
+
+- Supported cash exchange, journal-backed deposits, customer-owned communication consent/campaign/secure receipts, canonical staff Order cash/fulfillment and operator-reviewed Faktur/BPPU XML are implemented. Five ingress/adapter flags default OFF. No second money, stock or journal ledger.
+- Source audit PASS: 206 models, 552 handlers, 536 controls, 70/70 Admin contextual destinations, nine canonical ownership records, recovery 48/48. POS product/receipt layout, campaign action visibility, storefront punctuation and employee guidance repaired.
+- Previous source 6eafb1c4 passed all local gates: 1733/1733 regression, six builds/boot, 56 complete built-browser checks/eight new operator scenarios, seven real PostgreSQL domain probes and legacy migration preservation. This is historical after a newly reproduced local-month tax bug was corrected.
+- Accounting/Tax Core now use trusted company timezone for tax periods and XML dates; Sales/Orders reuse core period/recognition time. No historical period backfill. Invalid calendars abort; export period mismatch requires explicit canonical review. Focused behavior 20/20 PASS; extended historical immutability/invalid timezone rollback assertions also PASS.
+- Final official candidate PASS: 1734/1734 regression, all lint, six builds/API boot, database smoke, legacy migration and coverage 12/12. Full built Browser wrapper PASS 56/56 (eight new operator scenarios, no JS exceptions and all navigation/desktop/mobile geometry). Real PostgreSQL worker/domain probe PASS 7/7. All share fingerprint 2deee66eb3e72652bab0afa85ec195026716814b33e33575bd9816d118669c90 and built artifact f0a63b20580ac96381caaf887fd151506e4d694e479a3e510580ca92863b4a0d. Next one combined push/draft PR then require all four exact GitHub workflows.
+- Synthetic scratch TEST only (/tmp and explicit loopback PostgreSQL TEST database). Operator database untouched. RUST_LOG=info required. No real notification destinations or production tax submission used.
+- Actual provider selection/certification and Human Stage-20 remain PENDING. productReady=false; canonical phase P5; main P6A/B draft PR unchanged. See docs/P6CD-VERIFICATION.md and C/D designs.
+
+**Historical session notes below. Newer evidence above supersedes their pending states and old counts.**
+
 ## 2026-10-06 — P6B final gate waiting for hosted runner
 
 - User objective persists: continue verified P6A through P6B, P6C and P6D.

@@ -38,7 +38,9 @@ test('POS is light-first, tenant-aware and exposes real digital receipt capabili
   assert.match(posShell,/branchName/);
   assert.match(posPage,/companyName=\{manifest\?\.company\?\.name/);
   assert.match(posPage,/branchName=\{manifest\?\.branch\?\.name/);
-  assert.match(posPage,/\/receipts\/\$\{encodeURIComponent\(lastReceipt\.number\)\}/);
+  assert.match(posPage,/reprintReceipt\(lastReceipt\.number\)/);
+  assert.match(posPage,/\/sales\/\$\{encodeURIComponent\(saleNumber\)\}\/receipt-link/);
+  assert.doesNotMatch(posPage,/window\.open\(`\$\{API\}\/receipts/);
   assert.match(posCss,/\.receiptReady/);
   assert.doesNotMatch(posCss,/\.posV4\{[^}]*background\s*:\s*#0[0-9a-f]{5}/i);
 });

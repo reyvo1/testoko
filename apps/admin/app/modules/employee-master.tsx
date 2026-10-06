@@ -392,7 +392,7 @@ export default function EmployeeMasterView({ token }: { token: string }) {
       </Panel>
 
       <Panel eyebrow="POSISI & RIWAYAT JABATAN" title="Employee Assignment" badge={assignmentEmployeeId ? employees.find((row) => row.id === assignmentEmployeeId)?.fullName ?? '' : 'belum dipilih'}>
-        <p className="sectionHelp">Assignment bersifat effective-dated: satu karyawan dapat memiliki beberapa riwayat jabatan, jabatan, dan atasan. Endpoint ini ada di backend tetapi sebelumnya tidak dapat alcanzado dari UI sama sekali.</p>
+        <p className="sectionHelp">Kelola riwayat departemen, jabatan, dan atasan karyawan berdasarkan tanggal mulai dan berakhir. Tandai penugasan utama yang berlaku.</p>
         <form className="formStack" onSubmit={(event) => { event.preventDefault(); void saveAssignment(); }}>
           <label>Karyawan<select value={assignmentEmployeeId} onChange={(event) => void loadAssignments(event.target.value)} required>
             <option value="">Pilih karyawan</option>
@@ -435,7 +435,7 @@ export default function EmployeeMasterView({ token }: { token: string }) {
       </Panel>
 
       <Panel title="Departemen & Jabatan" eyebrow="R · MASTER">
-        <p className="sectionBlock">Form ini ada karena select di form karyawan dan assignment membaca dari endpoint yang sama, jadi menambah departemen atau jabatan sebelumnya hanya bisa lewat insert manual ke database.</p>
+        <p className="sectionBlock">Tambahkan departemen dan jabatan agar dapat dipilih saat membuat karyawan atau mengatur penugasannya.</p>
         {/* POST /hr/departments dan POST /hr/positions keduanya di gate employee.manage, sama
             seperti form karyawan, jadi form disembunyikan utuh bila token tidak memegangnya. */}
         {canManageEmployees && <div className="grid2">

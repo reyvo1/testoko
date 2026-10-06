@@ -129,7 +129,8 @@
     "ci:p5:probe": "node scripts/ci-p5-visual-probe.mjs",
     "audit:ui:domain-depth": "node scripts/audit-ui-domain-surface-depth.mjs",
     "uat:browser:fresh": "node scripts/fresh-state-uat.mjs",
-    "ci:p6b:probe": "node scripts/ci-p6b-retail-products-probe.mjs"
+    "ci:p6b:probe": "node scripts/ci-p6b-retail-products-probe.mjs",
+    "ci:p6cd:probe": "node scripts/ci-p6cd-retail-completion-probe.mjs"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

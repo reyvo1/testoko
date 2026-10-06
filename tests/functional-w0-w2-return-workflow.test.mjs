@@ -50,5 +50,6 @@ test('sale return completion still posts inventory, accounting, tax, and loyalty
   assert.match(returnsService, /eventType: 'SALE_RETURN'/);
   assert.match(returnsService, /taxLines,/);
   assert.match(returnsService, /type: 'REFUND'/);
-  assert.match(returnsService, /isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable/);
+  assert.match(returnsService, /serializableTx\(this\.prisma, async \(tx\)/);
+  assert.match(fs.readFileSync('apps/api/src/common/serializable-tx.ts', 'utf8'), /isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable/);
 });

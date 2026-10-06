@@ -1,0 +1,89 @@
+{
+  "id": "T360-20261006-125000",
+  "title": "P6C/P6D exchanges deposits customer communications tax adapters store fulfillment and complete UI contract audit",
+  "type": "feature",
+  "module": "payments",
+  "wave": "W2",
+  "phase": "STAGING",
+  "risk": "HIGH",
+  "owner": "openai",
+  "featureFlag": "retail_exchange/customer_deposit/customer_campaign/pos_ship_later/tax_export default off",
+  "dependencies": [
+    "T360-20261006-090000",
+    "accounting-core",
+    "returns",
+    "orders",
+    "operations-control",
+    "notifications"
+  ],
+  "impacts": {
+    "database": "MEDIUM",
+    "inventory": "HIGH",
+    "accounting": "HIGH",
+    "tax": "HIGH",
+    "payment": "HIGH",
+    "payroll": "LOW",
+    "sync": "MEDIUM",
+    "security": "HIGH",
+    "performance": "MEDIUM"
+  },
+  "businessRules": [
+    "Trusted tenant/branch/customer and immutable transaction lineage; no second inventory/accounting ledger.",
+    "Exchange confirms approved inspected return plus canonical replacement sale in one serializable operation.",
+    "Deposit balance comes from posted liability journals; draft/approval/post and pending refund holds prevent overdraw.",
+    "Customer-owned consent and verified destinations, paginated asynchronous campaigns and secure receipts.",
+    "Store fulfillment reuses canonical Order reservation, Shipment inspection and Accounting Core.",
+    "Versioned tax export adapters use canonical tax facts; production provider certification needs actual provider evidence.",
+    "New tax periods and export dates use trusted company timezone; canonical Sales/Order documents reuse Core posting periods, invalid calendar aborts and historical mismatches require explicit correction without backfill.",
+    "One push after combined local gates per explicit user instruction; all prior mandatory CI remains."
+  ],
+  "acceptanceCriteria": [
+    "Exchange rollback/replay/tenant/inspection/permission/cash difference and current-shift invariants verified.",
+    "Deposit receipt/refund/consumption and historical returns balance journals and prevent concurrent overdraw.",
+    "Customer can manage separate marketing/receipt preferences; bounded campaigns and receipt delivery respect opt-out and verified ownership.",
+    "POS ship-later/from-store has staff tenant scope and canonical payment/inspection/stock fulfillment without duplicate sale.",
+    "Tax export contracts have pinned official versions, validated mappings and asynchronous auditable jobs; unsupported provider readiness remains explicit.",
+    "Admin/POS/Storefront/Employee menu/button/API parity, responsive layout and operator paths audited; actionable regressions fixed without bypassing auth.",
+    "Full local candidate and exact-source PostgreSQL/Browser workflows pass; Human Stage-20 remains separate."
+  ],
+  "testPlan": [
+    "Behavioral isolated SQLite rollback/replay/concurrency/tenant/permission/accounting/tax/consent/signature tests.",
+    "SQLite/PostgreSQL expand-only rehearsal preserving legacy fixtures and cursor/index query assessment.",
+    "Mandatory PostgreSQL domain probe plus real browser operator-path/geometry checks in both full workflows.",
+    "Workflow/repo/lint/dependency-free/full build/boot/local candidate and recovery/fullrepo/UI audits.",
+    "Inventory stock and append-only movement/reservation invariant before/after inspected fulfillment and returns.",
+    "Accounting balanced journal debit/credit and canonical posting/locked period rollback tests.",
+    "Sync idempotency replay retry conflict and concurrent operation receipt tests; new retail flows fail closed offline.",
+    "Actual local-month boundary in Asia/Makassar and UTC, immutable historical period mismatch denial and invalid-timezone transaction rollback; original offline business time remains canonical."
+  ],
+  "migrationPlan": "Add only orchestration/consent/campaign and optional order tender/shift lineage; no balance ledger or historical consent backfill. See docs/P6C-DESIGN.md and docs/P6D-ADAPTER-DESIGN.md; production backup/restore prerequisite.",
+  "rollbackPlan": "Disable new ingress/campaign/adapter flags; retain immutable history and liability closeout; canonical return/reversal and reconciliation for in-flight provider effects.",
+  "monitoringPlan": "Track journal balance, deposit overdraw/refund holds, exchange failures, queue retry/dead-letter, consent denials, receipt token expiry, reservation drift and provider reconciliation.",
+  "securityNotes": "Intersect existing permissions; no raw credentials/PII in logs/evidence; secure expiring receipt access and customer-owned consent. Provider activation requires configuration and actual sandbox evidence.",
+  "documentation": [
+    "docs/P6C-DESIGN.md",
+    "docs/P6D-ADAPTER-DESIGN.md",
+    "docs/P6-RETAIL-EXPANSION.md",
+    "handoff/CURRENT-WORK.md",
+    "docs/adr/ADR-T360-20261006-125000-RETAIL-ORCHESTRATION.md",
+    "docs/P6CD-VERIFICATION.md"
+  ],
+  "createdAt": "2026-10-06T04:50:46.405098+00:00",
+  "updatedAt": "2026-10-06T11:34:00.751759+00:00",
+  "notes": [
+    "Explicit 2026-10-06 user instruction combines P6C/P6D and full menu/UI/frontend-backend audit before one push; supersedes earlier per-wave publication rule. P6B final four workflows all PASS on 12537b9. Selected production providers/sandbox availability still pending user information; continue all verifiable code work.",
+    "Local implementation is complete for the supported cash exchange, liability deposit, consent communications, staff fulfillment and reviewed XML export paths; verification and cosmetic browser audit continue. Provider certification, Human Stage-20 and release remain pending.",
+    "Stable final local candidate, built-browser wrapper and actual PostgreSQL/worker probe all PASS on one fingerprint. Engineering implementation locally verified; enter GitHub STAGING with one combined publication. No release/merge/provider/human acceptance inferred."
+  ],
+  "releaseEvidence": {
+    "sourceFingerprint": "2deee66eb3e72652bab0afa85ec195026716814b33e33575bd9816d118669c90",
+    "localCandidate": "PASS",
+    "regression": "1734/1734",
+    "builtBrowser": "56/56 PASS",
+    "postgresqlDomain": "7/7 PASS",
+    "sixBuildArtifact": "f0a63b20580ac96381caaf887fd151506e4d694e479a3e510580ca92863b4a0d",
+    "githubExactSource": "PENDING_PUBLICATION",
+    "productionProviderCertification": "PENDING",
+    "humanStage20": "PENDING"
+  }
+}

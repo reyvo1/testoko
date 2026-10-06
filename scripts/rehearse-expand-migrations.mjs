@@ -134,7 +134,7 @@ function sqliteUrl(file) {
   return `file:${path.resolve(file).replaceAll('\\', '/')}`;
 }
 
-async function verifySqlite(databaseFile, verificationClient) {
+async function verifySqlite(databaseFile, verificationClient, preserveRetailFixture = false) {
   const { DatabaseSync } = await import('node:sqlite');
   const { Prisma } = verificationClient;
   const db = new DatabaseSync(databaseFile);
@@ -146,6 +146,11 @@ async function verifySqlite(databaseFile, verificationClient) {
       for (const column of db.prepare(`PRAGMA table_info("${escaped}")`).all()) {
         columns.push({ table_name: row.table_name, column_name: column.name });
       }
+    }
+    if (preserveRetailFixture) {
+      const fixture = db.prepare('SELECT status,filters,outputUrl,attempts,maxAttempts,leaseOwner FROM "ReportJob" WHERE id=?').get('synthetic-p6cd-legacy-report');
+      if (!fixture || fixture.status !== 'RUNNING' || JSON.parse(fixture.filters).syntheticMigration !== true || fixture.outputUrl !== 'synthetic-retained.csv' || fixture.attempts !== 0 || fixture.maxAttempts !== 6 || fixture.leaseOwner !== null) throw new Error('Legacy ReportJob data/defaults were changed by retail expansion.');
+      console.log('Legacy ReportJob preservation PASS — retained status/filter/output, no inferred lease.');
     }
     const expected = buildExpectedSchemaContract(Prisma.dmmf);
     const actualTableSet = new Set(tables.map((row) => String(row.table_name)));
@@ -219,13 +224,18 @@ function applyPostgres(files, target) {
   }
 }
 
-async function verifyPostgres(targetUrl, verificationClient) {
+async function verifyPostgres(targetUrl, verificationClient, preserveRetailFixture = false) {
   const previous = process.env.DATABASE_URL;
   process.env.DATABASE_URL = targetUrl;
   let prisma;
   try {
     const { Prisma, PrismaClient } = verificationClient;
     prisma = new PrismaClient();
+    if (preserveRetailFixture) {
+      const fixture = await prisma.reportJob.findUnique({where:{id:'synthetic-p6cd-legacy-report'}});
+      if (!fixture || fixture.status !== 'RUNNING' || fixture.filters?.syntheticMigration !== true || fixture.outputUrl !== 'synthetic-retained.csv' || fixture.attempts !== 0 || fixture.maxAttempts !== 6 || fixture.leaseOwner !== null) throw new Error('Legacy ReportJob data/defaults were changed by retail expansion.');
+      console.log('Legacy ReportJob preservation PASS — retained status/filter/output, no inferred lease.');
+    }
     const expected = buildExpectedSchemaContract(Prisma.dmmf);
     const [tables, columns, enums, indexes] = await Promise.all([
       prisma.$queryRawUnsafe("SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' ORDER BY table_name"),
@@ -261,22 +271,26 @@ async function main() {
     const baseSchema = gitShow(baseRef, schemaRelative);
     const baseSchemaFile = path.join(tempDir, path.basename(schemaRelative));
     fs.writeFileSync(baseSchemaFile, baseSchema);
+    const preserveRetailFixture = pending.some(item=>item.name==='T360-20261006-p6cd-retail-orchestration');
+    const fixtureSql = `INSERT INTO "ReportJob" ("id","companyId","reportType","format","filters","status","progress","outputUrl","createdAt","updatedAt") VALUES ('synthetic-p6cd-legacy-report','synthetic-test-company','SALES','CSV','{"syntheticMigration":true}','RUNNING',17,'synthetic-retained.csv',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);`;
 
     if (provider === 'sqlite') {
       const databaseFile = path.join(tempDir, 'baseline.sqlite');
       const databaseUrl = sqliteUrl(databaseFile);
       npmPrisma(['db', 'push', '--schema', baseSchemaFile, '--skip-generate'], { DATABASE_URL: databaseUrl, DATABASE_PROFILE: 'sqlite' });
+      if (preserveRetailFixture) { const {DatabaseSync}=await import('node:sqlite');const fixtureDb=new DatabaseSync(databaseFile);try{fixtureDb.exec(fixtureSql);}finally{fixtureDb.close();} }
       await applySqlite(pending, databaseFile);
       const verificationClient = await generateScratchClient(tempDir, databaseUrl);
-      await verifySqlite(databaseFile, verificationClient);
+      await verifySqlite(databaseFile, verificationClient, preserveRetailFixture);
     } else {
       const raw = process.env.T360_MIGRATION_DATABASE_URL;
       if (!raw) throw new Error('T360_MIGRATION_DATABASE_URL wajib untuk PostgreSQL rehearsal.');
       const target = postgresConnection(raw);
       npmPrisma(['db', 'push', '--schema', baseSchemaFile, '--skip-generate'], { DATABASE_URL: raw, DATABASE_PROFILE: 'postgresql' });
+      if (preserveRetailFixture) run('psql',['-X','-v','ON_ERROR_STOP=1','-h',target.host,'-p',target.port,'-U',target.user,'-d',target.database,'-c',fixtureSql],{env:{...process.env,PGPASSWORD:target.password}});
       applyPostgres(pending, target);
       const verificationClient = await generateScratchClient(tempDir, raw);
-      await verifyPostgres(raw, verificationClient);
+      await verifyPostgres(raw, verificationClient, preserveRetailFixture);
     }
 
     console.log(`Migration rehearsal PASS — ${pending.length} migration(s) membawa baseline ${baseRef} ke schema saat ini.`);

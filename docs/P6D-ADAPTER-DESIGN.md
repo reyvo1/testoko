@@ -1,7 +1,8 @@
-# P6D adapter and fulfillment design — not activated
+# P6D — implemented fulfillment and versioned XML, verification in progress
 
-P6D implementation depends on P6C runtime acceptance. This is preparatory audit
-evidence only. Human Stage-20 and productReady are unchanged.
+The operator authorized combined P6C/P6D implementation and one publication after
+local verification. P6B exact-source dependency is green. Human Stage-20 remains
+PENDING and productReady=false; selected production providers remain unconfirmed.
 
 ## Tax source audit — 2026-10-06
 
@@ -14,6 +15,7 @@ identities were copied to repository, logs or handoff.
 | Public template | Archive SHA-256 | Notes |
 | --- | --- | --- |
 | [Faktur PK v1.4](https://pajak.go.id/sites/default/files/2025-03/Sample%20Faktur%20PK%20Template%20v.1.4.xml.zip) | a71d6c004f7d0979b9f33eedc7f669daf3238e6820d2decd13525f2cc32b9beb | TaxInvoiceBulk / ListOfTaxInvoice / TaxInvoice / GoodService; preserves official BuyerAdress spelling |
+| [BPPU Unifikasi](https://pajak.go.id/sites/default/files/2024-12/bppu.zip) | 8a90ea38737bd8d5f0563c12c11ec076b91138f0865ac9f46fd0d4414b004deb | BpuBulk / ListOfBpu; implemented separate BPPU contract |
 | [Dokumen dipersamakan bukti potong](https://pajak.go.id/sites/default/files/2024-12/ddbu.zip) | 640f14ce5895e4ed18c54918cb4b577a23092e5c0a5a88fde2e66b247f724e6e | SDocsBulk / ListOfSDocs; distinct from ordinary unification bupot |
 | [BPMP monthly payroll](https://pajak.go.id/sites/default/files/2024-12/bpmp.zip) | d4973f18262cef8a0548be1e9b6e7c05fa844ae18360a15c456bc95cd27cbfb3 | MmPayrollBulk / ListOfMmPayroll; separate payroll ownership |
 
@@ -43,6 +45,17 @@ configuration in secret management, real acceptance/rejection/replay evidence,
 approved legal mapping and operator review. No credentials may enter chat/source.
 Simulation may validate our adapter boundary but cannot satisfy that certificate.
 
+## Trusted business calendar
+
+Accounting Core derives new TaxTransaction periods from the authenticated company
+timezone. Sales and Order tax documents reuse that posted period and the same
+recognition instant. Reviewed XML uses the company business date, not UTC day.
+Missing/invalid timezone aborts posting. Export rejects historical period/date
+mismatches for explicit canonical review/correction; no historical backfill or
+mutation is performed. Previously approved immutable snapshots remain unchanged.
+The actual month-boundary regression covers Asia/Makassar, UTC, historical
+immutability and invalid-calendar transaction rollback.
+
 ## Ship-later / ship-from-store reuse
 
 Existing OrdersService reserves stock and posts order advances to account 2105;
@@ -51,12 +64,13 @@ posting. POS must create that Order under trusted staff branch/customer authorit
 not first post a Sale then duplicate it as an Order. Preserve immutable P6B kit
 components through reservations and return flows.
 
-Current order prepayment uses bank account 1102 regardless of payment method.
-Cash ship-later therefore needs an explicit immutable tender/shift lineage and
-canonical cash settlement mapping before it can be enabled. Shift recap must
-include that order cash ingress/refund once, without an extra finance journal.
-Ordinary cashier payment confirmation cannot inherit finance authority silently.
-Shipping provider status must never bypass physical inspection/stock posting.
+Staff Order now binds the trusted actor/customer/branch and owned open shift.
+Cash confirmation uses an immutable immediate CASH tender snapshot and the same
+canonical order-advance event; normal legacy bank prepayment keeps account 1102.
+Shift recap includes paid/refunded staff Order cash once. Pending unpaid staff
+orders block shift close and have bounded recovery/cancellation controls. No Sale
+is created for this flow. Shipping retains inspection/packing/physical posting.
+Paid orders close through canonical customer return/refund, never unpaid cancel.
 
 ## Gates and rollback
 
@@ -67,3 +81,33 @@ journals, idempotency/concurrency, reservation/retry/conflict and provider error
 Run existing local candidate and all exact-source GitHub gates. Disable ingress
 and adapter delivery for rollback; retain pending receipts and posted snapshots,
 reconcile in-flight external operations and use canonical compensation.
+
+## Implemented XML workflow and limits
+
+TaxDocument/TaxTransaction/posted AccountingEvent reconciliation supplies amounts.
+Historical versioned TaxCode.calculationRules.coretax supplies statutory VAT rate
+and OtherTaxBase ratio, or BPPU object code. Export refuses missing mapping,
+amount/rate overrides, source drift, wrong ownership and mismatched posted totals.
+Legal review snapshots seller/branch TIN/NITKU and buyer/transaction/product/unit
+codes; approval is immutable and auditable. Faktur PK v1.4 and BPPU 2024-11 have
+separate pinned contracts and checksums in the shared renderer.
+
+Admin Finance/Tax exposes source reconciliation, legal approval, queue status and
+authenticated XML download. Canonical ReportJob carries immutable checksummed
+facts, scope/review checks, atomic leases, bounded retries, backoff/dead-letter and
+lease recovery. Download expires after one day and requires tax/report authority;
+broad report lists redact legal mappings. Physical file cleanup uses the existing
+report storage operational retention policy and needs deployment review.
+
+The first Faktur export supports issued original Sale/Order VAT documents with
+fully reconciled goods lines. Shipping/service fees without corresponding export
+source lines, corrections/replacements/cancellations and nonzero luxury tax fail
+closed; dedicated contracts/mappings are required before enabling those cases.
+Payroll BPMP remains its own domain and is not certified by BPPU output. These
+exports are operator-reviewed files, not automatic DJP/PJAP submission. Public
+archive checksums prove the pinned sample structure, not statutory/XSD acceptance.
+
+Flags pos_ship_later and tax_export default OFF. Production requires actual PJAP,
+shipping/payment provider selection, sandbox specs/configuration, acceptance,
+rejection/replay/reconciliation evidence and legal/operator review. TEST queue and
+XML correctness cannot substitute for those requirements.

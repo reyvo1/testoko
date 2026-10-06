@@ -37,7 +37,11 @@ html[data-t360-theme='dark']{background:#07111f;color-scheme:dark} body{margin:0
   .product{@apply relative flex min-h-[150px] min-w-0 flex-col justify-between overflow-hidden rounded-[22px] border border-slate-200 bg-white p-3.5 text-left shadow-[0_10px_28px_rgba(15,23,42,.05)] transition hover:-translate-y-1 hover:border-teal-200 hover:shadow-[0_18px_38px_rgba(15,118,110,.12)];}
   .product::after{content:"";@apply pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-teal-500 via-cyan-400 to-sky-500 opacity-0 transition-opacity;}
   .product:hover::after{@apply opacity-100;}
-  .productMain{@apply flex min-w-0 items-start gap-3;}
+  .productMain{@apply grid w-full min-w-0 grid-cols-[44px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 text-left;}
+  .productMain>.productIcon{@apply row-span-3;}
+  .product .productMain>strong{@apply col-start-2 whitespace-normal break-words;}
+  .product .productMain>small{@apply col-start-2 mt-0 break-words;}
+  .productMain>span{@apply col-span-2 mt-2 block text-sm font-semibold;}
   .productIcon{@apply grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-50 to-cyan-50 text-teal-700 ring-1 ring-teal-100;}
   .product strong{@apply block truncate text-xs font-semibold text-slate-950;}
   .product small{@apply mt-1 block text-[9px] leading-4 text-slate-500;}
@@ -59,6 +63,17 @@ html[data-t360-theme='dark']{background:#07111f;color-scheme:dark} body{margin:0
   .item{@apply rounded-2xl border border-slate-200 bg-slate-50/70 p-3;}
   .item strong{@apply text-xs font-semibold text-slate-900;}
   .qty,.rowActions{@apply mt-2 flex flex-wrap items-center gap-2;}
+  .receiptHistory{@apply mb-4 rounded-2xl border border-slate-200 bg-white p-4;}
+  .receiptHistory h3{@apply text-sm font-bold;}
+  .receiptHistory ul{@apply mt-2 max-h-44 overflow-y-auto;}
+  .receiptHistory li{@apply flex min-w-0 flex-wrap items-center gap-2 border-b border-slate-100 py-2 last:border-b-0;}
+  .receiptHistory li>span:first-child{@apply min-w-0 flex-1 basis-60;}
+  .receiptHistory strong{@apply block break-words text-xs;}
+  .receiptHistory small{@apply block text-[10px] text-slate-500;}
+  .receiptHistory .rowActions{@apply mt-0;}
+  .receiptHistory{background:var(--pos-surface);border-color:var(--pos-border);}
+  .receiptHistory li{border-color:var(--pos-border);}
+  .receiptHistory small{color:var(--pos-text-subtle);}
   .summary{@apply mt-4 space-y-2 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-3 text-xs text-slate-600;}
   .summary>div{@apply flex items-center justify-between gap-3;}
   .grand{@apply border-t border-slate-200 pt-2 text-base font-bold text-slate-950;}

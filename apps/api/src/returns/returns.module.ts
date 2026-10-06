@@ -6,5 +6,8 @@ import { StorefrontCustomerModule } from '../storefront-customer/storefront-cust
 import { ReturnsController } from './returns.controller';
 import { ReturnsService } from './returns.service';
 import { StorefrontOrderReturnsController } from './storefront-order-returns.controller';
-@Module({ imports: [PrismaModule, AccountingCoreModule, OperationsControlModule, StorefrontCustomerModule], controllers: [ReturnsController, StorefrontOrderReturnsController], providers: [ReturnsService], exports: [ReturnsService] })
+import { SalesModule } from '../sales/sales.module';
+import { ExchangesController } from './exchanges.controller';
+import { ExchangesService } from './exchanges.service';
+@Module({ imports: [PrismaModule, AccountingCoreModule, OperationsControlModule, StorefrontCustomerModule, SalesModule], controllers: [ReturnsController, StorefrontOrderReturnsController, ExchangesController], providers: [ReturnsService, ExchangesService], exports: [ReturnsService] })
 export class ReturnsModule {}

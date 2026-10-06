@@ -1,16 +1,18 @@
-import { Controller, Get, Header, NotFoundException, Param, Req } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Header, NotFoundException, Param, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { AuthUser } from '../auth/auth.types';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { Permissions } from '../auth/permissions.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { retailScope } from '../common/retail-feature';
+import { mintReceiptShare, verifyReceiptShare } from '../common/receipt-access';
 import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
-interface ReceiptRequest {
-  protocol?: string;
-  headers: Record<string, string | string[] | undefined>;
-}
-
 /**
  * T360-20260825 GROWTH PACK — Fitur 2: struk digital via link/QR.
- * Endpoint publik read-only: GET /receipts/:saleNumber
+ * Signed tenant-bound receipt: GET /receipts/:saleNumber?share=...
  * Render HTML ringan (mobile-friendly) untuk dibuka dari scan QR di kasir.
  * Tidak menampilkan biaya (unitCost), hanya sisi pelanggan.
  */
@@ -18,16 +20,29 @@ interface ReceiptRequest {
 @ApiTags('receipts')
 @Controller()
 export class ReceiptController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN','OWNER','ADMIN','CASHIER','FINANCE')
+  @Permissions('sale.view')
+  @Get('sales/:saleNumber/receipt-link')
+  async share(@Param('saleNumber') saleNumber: string, @CurrentUser() user: AuthUser) {
+    const scope = retailScope(user);
+    const sale = await this.prisma.sale.findFirst({ where: { number: saleNumber, branchId: scope.branchId, branch: { companyId: scope.companyId } }, select: { id: true, number: true, branchId: true } });
+    if (!sale) throw new NotFoundException('Struk tidak tersedia.');
+    const token = mintReceiptShare(sale, scope.companyId, this.config.get<string>('RECEIPT_SIGNING_KEY') ?? this.config.get<string>('JWT_SECRET') ?? '');
+    return { path: `/receipts/${encodeURIComponent(sale.number)}?share=${encodeURIComponent(token)}`, expiresIn: 3600 };
+  }
 
   @Public()
+  @ApiQuery({ name: 'share', required: true })
   @Get('receipts/:saleNumber')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  async receipt(@Param('saleNumber') saleNumber: string, @Req() request: ReceiptRequest) {
-    const host = typeof request.headers.host === 'string' ? request.headers.host : 'localhost';
-    const proto = request.protocol ?? 'http';
-    const sale = await this.prisma.sale.findUnique({
-      where: { number: saleNumber },
+  async receipt(@Param('saleNumber') saleNumber: string, @Query('share') share?: string) {
+    const claims = verifyReceiptShare(share, saleNumber, this.config.get<string>('RECEIPT_SIGNING_KEY') ?? this.config.get<string>('JWT_SECRET') ?? '');
+    if (!claims) throw new NotFoundException('Struk tidak tersedia.');
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: claims.s, number: claims.n, branchId: claims.b, branch: { companyId: claims.c } },
       select: {
         number: true, status: true, subtotal: true, discount: true, tax: true, total: true,
         createdAt: true,
@@ -51,7 +66,11 @@ export class ReceiptController {
       </tr>`).join('');
 
     // T360-20260829 value pack 2 — bagikan struk via WhatsApp + cetak.
-    const receiptUrl = `${proto}://${host}/receipts/${sale.number}`;
+    const configured = this.config.get<string>('PUBLIC_API_URL');
+    let base: URL | null = null;
+    try { base = configured ? new URL(configured) : null; } catch { /* fail closed on sharing origin */ }
+    const trustedBase = base && !base.username && !base.password && !base.search && !base.hash && (base.protocol === 'https:' || (base.protocol === 'http:' && ['localhost','127.0.0.1'].includes(base.hostname) && this.config.get<string>('NODE_ENV') !== 'production')) ? base.href.replace(/\/$/, '') : null;
+    const receiptUrl = trustedBase ? `${trustedBase}/receipts/${encodeURIComponent(sale.number)}?share=${encodeURIComponent(share!)}` : null;
     const shareText = `Struk ${sale.number} — ${fmt(sale.total)} dari ${sale.branch.name}\n${receiptUrl}`;
     const body = `
       <div class="head">
@@ -72,7 +91,7 @@ export class ReceiptController {
       </div>
       <p class="thanks">Terima kasih telah berbelanja 🙏</p>
       <div class="share no-print">
-        <a class="btn" href="https://wa.me/?text=${encodeURIComponent(shareText)}" target="_blank" rel="noopener">Bagikan via WhatsApp</a>
+        ${receiptUrl ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(shareText)}" target="_blank" rel="noopener noreferrer">Bagikan via WhatsApp</a>` : '<span class="sku">Tautan berbagi belum tersedia. Hubungi admin.</span>'}
         <button class="btn secondary" type="button" onclick="window.print()">Cetak</button>
       </div>`;
     return page(`Struk ${sale.number}`, body);

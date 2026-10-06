@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { depositAccount } from '../common/customer-deposit';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
 import { normalizeTenderPolicy, tenderPolicyMetadata } from '../common/tender-policy';
@@ -337,7 +338,7 @@ export class MasterDataService {
     return this.prisma.$transaction(async (tx) => {
       let metadata = dto.metadata === undefined ? undefined : json(dto.metadata);
       if (type === 'PAYMENT_METHOD') {
-        try { metadata = tenderPolicyMetadata(normalizeTenderPolicy(code, dto.metadata)); }
+        try { const policy = normalizeTenderPolicy(code, dto.metadata); if (policy.kind === 'DEPOSIT') { if (!dto.branchId) throw new BadRequestException('Tender deposit harus dibatasi ke satu cabang.'); const account = await depositAccount(tx, {companyId:scope.companyId,branchId:dto.branchId},false); if (policy.settlementAccountCode !== account.code) throw new BadRequestException('Akun tender harus cocok dengan konfigurasi deposit cabang.'); } metadata = tenderPolicyMetadata(policy); }
         catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Konfigurasi payment method tidak valid.'); }
       }
       const row = await tx.masterReference.create({
@@ -359,8 +360,8 @@ export class MasterDataService {
         await this.assertUnitReferenceCanDeactivate(tx, scope.companyId, existing.code);
       }
       let metadata = dto.metadata === undefined ? undefined : json(dto.metadata);
-      if (existing.type === 'PAYMENT_METHOD' && dto.metadata !== undefined) {
-        try { metadata = tenderPolicyMetadata(normalizeTenderPolicy(existing.code, dto.metadata)); }
+      if (existing.type === 'PAYMENT_METHOD' && (dto.metadata !== undefined || dto.branchId !== undefined)) {
+        try { const policy = normalizeTenderPolicy(existing.code, dto.metadata === undefined ? existing.metadata : dto.metadata); if (policy.kind === 'DEPOSIT') { const branchId = dto.branchId !== undefined ? dto.branchId : existing.branchId; if (!branchId) throw new BadRequestException('Tender deposit harus dibatasi ke satu cabang.'); const account = await depositAccount(tx, {companyId:scope.companyId,branchId},false); if (policy.settlementAccountCode !== account.code) throw new BadRequestException('Akun tender harus cocok dengan konfigurasi deposit cabang.'); } if (dto.metadata !== undefined) metadata = tenderPolicyMetadata(policy); }
         catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Konfigurasi payment method tidak valid.'); }
       }
       const row = await tx.masterReference.update({

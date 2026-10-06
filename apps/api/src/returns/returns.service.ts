@@ -1,3 +1,4 @@
+import { depositAccount } from '../common/customer-deposit';
 import { inventoryLines } from '../common/retail-kit';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, TaxTransactionDirection } from '@prisma/client';
@@ -23,7 +24,7 @@ type RefundAllocation = {
   methodName: string;
   amount: string;
   accountCode: string;
-  kind: 'CASH' | 'SETTLEMENT' | 'RECEIVABLE';
+  kind: 'CASH' | 'SETTLEMENT' | 'RECEIVABLE' | 'DEPOSIT';
   behavior: string;
   methodSnapshot?: Prisma.JsonValue;
 };
@@ -207,7 +208,7 @@ export class ReturnsService {
     if (policy.refundBehavior === 'DISABLED') return null;
     if (policy.refundBehavior === 'RECEIVABLE') return { accountCode: '1201', kind: 'RECEIVABLE' as const };
     if (policy.refundBehavior === 'CASH') return { accountCode: policy.refundAccountCode ?? '1101', kind: 'CASH' as const };
-    return { accountCode: policy.settlementAccountCode, kind: policy.kind === 'CASH' ? 'CASH' as const : 'SETTLEMENT' as const };
+    return { accountCode: policy.settlementAccountCode, kind: policy.kind === 'DEPOSIT' ? 'DEPOSIT' as const : policy.kind === 'CASH' ? 'CASH' as const : 'SETTLEMENT' as const };
   }
 
   private async saleReceivableCapacity(
@@ -314,6 +315,7 @@ export class ReturnsService {
     });
     if (!reference) throw new BadRequestException(`Metode refund ${method} tidak aktif/diizinkan pada cabang ini.`);
     const policy = normalizeTenderPolicy(reference.code, reference.metadata);
+    if (policy.kind === 'DEPOSIT') throw new BadRequestException('Refund deposit hanya melalui ORIGINAL pada tender asal.');
     const destination = this.refundDestination(policy);
     if (!destination) throw new BadRequestException(`Metode ${method} tidak mengizinkan refund.`);
     if (destination.kind === 'RECEIVABLE') {
@@ -493,9 +495,9 @@ export class ReturnsService {
     return updated;
   }
 
-  async confirmSaleReturn(id: string, dto: ConfirmReturnDto, user: AuthUser) {
+  async confirmSaleReturn(id: string, dto: ConfirmReturnDto, user: AuthUser, existingTx?: Prisma.TransactionClient) {
     const scope = this.requireTenantScope(user);
-    return this.prisma.$transaction(async (tx) => {
+    return serializableTx(this.prisma, async (tx) => {
       const row = await this.scopedSaleReturn(tx, user, scope, id);
       if (!['REQUESTED','APPROVED'].includes(row.status)) {
         throw new BadRequestException(`Retur berstatus ${row.status}.`);
@@ -542,6 +544,8 @@ export class ReturnsService {
         .reduce((sum, item) => sum.add(item.unitCost.mul(item.quantity)), new Prisma.Decimal(0));
       const refundResolution = await this.resolveSaleRefundAllocations(tx, scope, row.saleId, gross, row.refundMethod ?? 'ORIGINAL');
       const refundAllocations = refundResolution.allocations;
+      if (refundAllocations.some((item) => item.kind === 'DEPOSIT') && !refundResolution.sale.customerId) throw new BadRequestException('Refund deposit kehilangan pelanggan asal.');
+      for (const code of new Set(refundAllocations.filter((item) => item.kind === 'DEPOSIT').map((item) => item.accountCode))) await depositAccount(tx, scope, false, code);
       const taxLines = row.items
         .filter((item) => item.taxCodeId && !item.taxAmount.isZero())
         .map((item) => ({
@@ -564,6 +568,7 @@ export class ReturnsService {
         accountCodes: { returns: '4102', outputTax: '2201', inventory: '1301', cogs: '5101' },
         additionalJournalLines: refundAllocations.map((item) => ({ accountCode: item.accountCode, side: 'CREDIT' as const, amount: item.amount })),
         taxLines,
+        lines: refundAllocations.some((item) => item.kind === 'DEPOSIT') ? [{ itemType: 'CustomerDeposit', itemId: refundResolution.sale.customerId!, grossAmount: gross }] : undefined,
         context: { inspectionId, confirmationId, notes: dto.notes, refundMethod: row.refundMethod ?? 'ORIGINAL', refundAllocations },
       });
       await tx.eventOutbox.create({ data: {
@@ -634,7 +639,7 @@ export class ReturnsService {
         },
         include: { items: true },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { existingTx });
   }
 
   async createPurchaseReturn(dto: CreatePurchaseReturnDto, user: AuthUser) {
@@ -1275,7 +1280,9 @@ export class ReturnsService {
       const cogs = row.items.filter((item) => restockableItemIds.includes(item.id)).reduce((sum, item) => sum.add(item.unitCost.mul(item.quantity)), new Prisma.Decimal(0));
       const payment = row.order.payments[0];
       const requestedMethod = dto.refundMethod ?? row.refundMethod ?? 'ORIGINAL';
-      const refundMethod = requestedMethod === 'ORIGINAL' ? (payment?.method === 'COD' ? 'CASH' : payment?.method === 'INVOICE' ? 'RECEIVABLE' : 'BANK_TRANSFER') : requestedMethod;
+      const staffCash = Boolean(row.order.createdById && payment?.methodSnapshot && typeof payment.methodSnapshot === 'object' && !Array.isArray(payment.methodSnapshot) && ((payment.methodSnapshot as { policy?: { kind?: string } }).policy?.kind === 'CASH'));
+      if (staffCash && !['ORIGINAL','CASH'].includes(requestedMethod)) throw new BadRequestException('Refund order kasir harus melalui kas asal.');
+      const refundMethod = requestedMethod === 'ORIGINAL' ? (staffCash || payment?.method === 'COD' ? 'CASH' : payment?.method === 'INVOICE' ? 'RECEIVABLE' : 'BANK_TRANSFER') : requestedMethod;
       const reduceReceivable = refundMethod === 'RECEIVABLE' || (!payment || payment.status !== 'PAID') && ['COD','INVOICE'].includes(payment?.method ?? '');
       const settlementAmount = reduceReceivable ? new Prisma.Decimal(0) : gross;
       const receivableAmount = reduceReceivable ? gross : new Prisma.Decimal(0);
@@ -1287,7 +1294,7 @@ export class ReturnsService {
         companyId: scope.companyId, branchId: scope.branchId, eventType: 'ORDER_RETURN', sourceType: 'OrderReturn', sourceId: row.id,
         idempotencyKey: `order-return:${row.id}`,
         amounts: { net, outputTax: tax, gross, settlement: settlementAmount, receivable: receivableAmount, inventory: cogs, cogs },
-        accountCodes: { returns: '4102', outputTax: '2201', settlement: refundMethod === 'CASH' ? '1101' : '1102', receivable: payment?.method === 'COD' ? '1203' : '1201', inventory: '1301', cogs: '5101' },
+        accountCodes: { returns: '4102', outputTax: '2201', settlement: staffCash ? payment!.settlementAccountCode! : refundMethod === 'CASH' ? '1101' : '1102', receivable: payment?.method === 'COD' ? '1203' : '1201', inventory: '1301', cogs: '5101' },
         taxLines,
         context: { orderId: row.orderId, inspectionId: row.inspectionId, refundMethod, notes: dto.notes, restockableItemIds },
       });

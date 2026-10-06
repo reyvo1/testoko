@@ -37,7 +37,13 @@ test('offline sales preserve original business time and reject unsafe payment as
   assert.match(sales, /businessDate: occurredAt/);
   assert.match(sales, /OFFLINE_CAPTURE_BEFORE_SHIFT/);
   assert.match(sales, /const businessOccurredAt = beforeShiftMs > 0 \? replayShift\.openedAt : occurredAt/);
-  assert.match(sales, /issueDate: occurredAt, taxPeriod: occurredAt\.toISOString\(\)\.slice\(0, 7\)/);
+  assert.match(sales, /issueDate: occurredAt, taxPeriod: event\.taxTransactions\?\.\[0\]\?\.taxPeriod \?\? null/);
+  const accounting = read('apps/api/src/accounting-core/accounting-core.service.ts');
+  assert.match(accounting, /const businessDate = input\.businessDate \?\? new Date\(\)/);
+  assert.match(accounting, /client\.company\.findUnique\(\{ where: \{ id: input\.companyId \}, select: \{ timezone: true \} \}\)/);
+  assert.match(accounting, /taxPeriod = businessDateKey\(businessDate, company\.timezone\)\.slice\(0, 7\)/);
+  assert.match(accounting, /transactionDate: businessDate/);
+  assert.doesNotMatch(accounting, /taxPeriod: businessDate\.toISOString\(\)/);
 });
 
 test('server validates the amount captured offline before creating a sale', () => {

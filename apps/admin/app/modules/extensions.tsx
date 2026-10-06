@@ -1,4 +1,5 @@
 'use client';
+import { CustomerCampaignWorkspace } from './retail-customer-workspaces';
 import { authFetch } from '../auth-fetch';
 // Loyalty/devices/notifications dan storefront fulfillment.
 import { useEffect, useState } from 'react';
@@ -485,7 +486,8 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
           ])} empty="Belum ada device." />
           {credential && <div className="notice success"><strong>SECRET SEKALI TAMPIL</strong><br/>Key ID: <code>{credential.keyId}</code><br/>Secret: <code>{credential.secret}</code><br/><small>Simpan pada secure store node toko. Setelah panel ini ditutup, server tidak akan menampilkan secret lagi.</small></div>}
         </Panel>}
-        {(showProviders || showNotifications) && <section className="grid2">
+        {showNotifications && <CustomerCampaignWorkspace token={token} />}
+        {(showProviders || showNotifications) && <section className={showProviders && showNotifications ? 'grid2' : 'formStack'}>
           {showProviders && <Panel eyebrow="PROVIDER" title="WhatsApp / Telegram" badge={`${providers.length} connection`}>
             <div className="formStack">
               <label>Channel<select value={providerForm.channel} onChange={(e) => setProviderForm({ ...providerForm, channel: e.target.value, name: e.target.value === 'TELEGRAM' ? 'Telegram Utama' : 'WhatsApp Utama' })}>{['TELEGRAM','WHATSAPP'].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>

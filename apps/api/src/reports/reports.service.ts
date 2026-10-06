@@ -6,6 +6,7 @@ import { AuthUser } from '../auth/auth.types';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { businessDateKey, businessDayBounds, businessHour, businessMonthStart, parseBusinessDateBoundary, startOfBusinessDaysAgo, zonedDateParts, zonedLocalToUtc } from '../common/business-time';
 import { PrismaService } from '../prisma/prisma.service';
+import { retailAuthority } from '../common/retail-feature';
 import { CreateReportJobDto } from './dto/create-report-job.dto';
 import { CreateReportScheduleDto, UpdateReportScheduleDto } from './dto/report-schedule.dto';
 
@@ -1004,7 +1005,8 @@ export class ReportsService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     });
-    return toCursorPage(rows, limit, (item) => ({ createdAt: item.createdAt.toISOString(), id: item.id }));
+    const safeRows = rows.map(row => row.reportType === 'CORETAX_XML' ? { ...row,filters:null,errorMessage:row.errorMessage ? 'Export pajak memerlukan pemeriksaan mapping/retry.' : null } : row);
+    return toCursorPage(safeRows, limit, (item) => ({ createdAt: item.createdAt.toISOString(), id: item.id }));
   }
 
   async listSchedules(user: AuthUser) {
@@ -1201,13 +1203,15 @@ export class ReportsService {
       where: { id: jobId, companyId: scope.companyId, branchId: scope.branchId },
     });
     if (!job) return this.denyTenantAccess(this.prisma, user, scope, 'ReportJob', jobId);
+    if (job.reportType === 'CORETAX_XML') retailAuthority(user, ['SUPER_ADMIN','OWNER','FINANCE'], ['tax.view','report.export']);
+    if (job.expiresAt && job.expiresAt <= new Date()) throw new NotFoundException('Berkas export telah kedaluwarsa.');
     if (job.status !== 'DONE' || !job.outputUrl) throw new BadRequestException('Export belum tersedia.');
     const filePath = resolveExportPath(job.outputUrl);
     if (!existsSync(filePath)) throw new NotFoundException('Berkas export sudah tidak tersedia.');
     const extension = job.outputUrl.split('.').pop()?.toLowerCase() ?? 'csv';
     const contentType = extension === 'xlsx'
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : extension === 'pdf' ? 'application/pdf' : 'text/csv; charset=utf-8';
+      : extension === 'xml' ? 'application/xml; charset=utf-8' : extension === 'pdf' ? 'application/pdf' : 'text/csv; charset=utf-8';
     return new StreamableFile(createReadStream(filePath), {
       type: contentType,
       disposition: `attachment; filename="${job.id}.${extension}"`,

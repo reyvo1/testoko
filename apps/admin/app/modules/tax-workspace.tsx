@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import CoretaxExportWorkspace from './coretax-export-workspace';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
 import { Panel, StatusChip, Table, rupiah, tanggal } from '../ui';
@@ -11,7 +12,7 @@ type Account = { id: string; code: string; name: string; type: string; isActive:
 type TaxCode = {
   id: string; code: string; version: number; name: string; scope: string; rate: string | number; inclusive: boolean; recoverable: boolean;
   payableAccountCode?: string | null; receivableAccountCode?: string | null; expenseAccountCode?: string | null;
-  effectiveFrom?: string | null; effectiveTo?: string | null; status: 'DRAFT'|'ACTIVE'|'INACTIVE'; legalReference?: string | null;
+  calculationRules?: { coretax?: { vatRatePercent?:string;otherTaxBaseNumerator?:string;otherTaxBaseDenominator?:string;bppuObjectCode?:string } }; effectiveFrom?: string | null; effectiveTo?: string | null; status: 'DRAFT'|'ACTIVE'|'INACTIVE'; legalReference?: string | null;
 };
 type TaxTransaction = {
   id: string; accountingEventId?: string | null; sourceType: string; sourceId: string; direction: string; transactionDate: string; taxPeriod?: string | null;
@@ -32,7 +33,7 @@ type TaxPreview = { taxCode: TaxCode | null; net: string | number; tax: string |
 const emptyForm = {
   code: '', version: 1, name: '', scope: 'SALE', ratePercent: '11', inclusive: false, recoverable: false,
   payableAccountCode: '', receivableAccountCode: '', expenseAccountCode: '', effectiveFrom: '', effectiveTo: '',
-  status: 'DRAFT' as 'DRAFT'|'ACTIVE', legalReference: '',
+  status: 'DRAFT' as 'DRAFT'|'ACTIVE', legalReference: '', coretaxVatRate:'',coretaxNumerator:'',coretaxDenominator:'',bppuObjectCode:'',
 };
 
 function isoDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
@@ -109,6 +110,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
         payableAccountCode: form.payableAccountCode || undefined, receivableAccountCode: form.receivableAccountCode || undefined,
         expenseAccountCode: form.expenseAccountCode || undefined, effectiveFrom: form.effectiveFrom || undefined,
         effectiveTo: form.effectiveTo || undefined, status: form.status, legalReference: form.legalReference.trim() || undefined,
+        ...((form.coretaxVatRate || form.bppuObjectCode) ? {calculationRules:{coretax:{vatRatePercent:form.coretaxVatRate,otherTaxBaseNumerator:form.coretaxNumerator,otherTaxBaseDenominator:form.coretaxDenominator,bppuObjectCode:form.bppuObjectCode}}}:{}),
       }) });
       setMessage(`${form.code.toUpperCase()} v${form.version} tersimpan.`);
       setForm(emptyForm); await refresh();
@@ -122,6 +124,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
       inclusive: row.inclusive, recoverable: row.recoverable, payableAccountCode: row.payableAccountCode ?? '',
       receivableAccountCode: row.receivableAccountCode ?? '', expenseAccountCode: row.expenseAccountCode ?? '',
       effectiveFrom: '', effectiveTo: '', status: 'DRAFT', legalReference: row.legalReference ?? '',
+      coretaxVatRate:row.calculationRules?.coretax?.vatRatePercent??'',coretaxNumerator:row.calculationRules?.coretax?.otherTaxBaseNumerator??'',coretaxDenominator:row.calculationRules?.coretax?.otherTaxBaseDenominator??'',bppuObjectCode:row.calculationRules?.coretax?.bppuObjectCode??'',
     });
   }
 
@@ -149,6 +152,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
 
   return <>
     {message && <div className="notice">{message}</div>}
+    <CoretaxExportWorkspace token={token} documents={documents.filter(row=>row.status==='ISSUED')} />
     <section className="grid2">
       <Panel eyebrow="TAX CORE" title="Versioned Tax Configuration" badge={`${codes.length} version`}>
         <form className="formStack" onSubmit={saveTaxCode}>
@@ -164,6 +168,10 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
             <label>Utang pajak<select value={form.payableAccountCode} onChange={(e) => setForm({ ...form, payableAccountCode: e.target.value })}><option value="">—</option>{liabilities.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
             <label>Piutang pajak<select value={form.receivableAccountCode} onChange={(e) => setForm({ ...form, receivableAccountCode: e.target.value })}><option value="">—</option>{assets.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
             <label>Beban pajak<select value={form.expenseAccountCode} onChange={(e) => setForm({ ...form, expenseAccountCode: e.target.value })}><option value="">—</option>{expenses.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
+            <label>Tarif PPN statutory Coretax (%)<input inputMode="decimal" value={form.coretaxVatRate} onChange={e=>setForm({...form,coretaxVatRate:e.target.value})}/></label>
+            <label>Rasio DPP lain: pembilang<input inputMode="numeric" value={form.coretaxNumerator} onChange={e=>setForm({...form,coretaxNumerator:e.target.value})}/></label>
+            <label>Rasio DPP lain: penyebut<input inputMode="numeric" value={form.coretaxDenominator} onChange={e=>setForm({...form,coretaxDenominator:e.target.value})}/></label>
+            <label>Kode objek BPPU (withholding)<input value={form.bppuObjectCode} onChange={e=>setForm({...form,bppuObjectCode:e.target.value})}/></label>
             <label>Referensi hukum<input value={form.legalReference} onChange={(e) => setForm({ ...form, legalReference: e.target.value })} /></label>
           </section>
           <div className="actionRow"><label className="checkboxRow"><input type="checkbox" checked={form.inclusive} onChange={(e) => setForm({ ...form, inclusive: e.target.checked })} /> Inclusive</label><label className="checkboxRow"><input type="checkbox" checked={form.recoverable} onChange={(e) => setForm({ ...form, recoverable: e.target.checked })} /> Recoverable input</label>{canManageTax&&<button>Simpan version</button>}</div>

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { runP6cdBrowserUat } from './lib/p6cd-browser-uat.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -297,8 +298,8 @@ async function navigateAdminContext(cdp, route, label, timeoutMs = 45000) {
   await waitExpression(cdp, `document.readyState === 'complete' && location.pathname === ${routeJson} && document.querySelector('#admin-main')?.getAttribute('data-admin-workspace') === ${workspaceJson} && document.querySelector('#admin-main')?.getAttribute('data-admin-view') === ${viewJson} && Boolean(document.querySelector(${activeTabSelectorJson}))`, label, timeoutMs);
 }
 
-async function evaluateValue(cdp, expression) {
-  const result = await cdp.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+async function evaluateValue(cdp, expression, { userGesture = false } = {}) {
+  const result = await cdp.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, userGesture });
   if (result?.exceptionDetails) {
     // exceptionDetails.text untuk SyntaxError hanya berisi kata "Uncaught" - namaexception-nya
     // ada di exception.className/description. Tanpa ini, satu backslash atau satu kurung yang
@@ -1355,6 +1356,7 @@ await waitExpression(cdp, `(() => {
     // menuntut kontrol pembayaran muncul pada total 0. Klik produk berstok lewat UI POS agar
     // jalur React/cart yang sama dengan kasir benar-benar dieksekusi. Assertion tender di bawah
     // tetap exact terhadap seluruh master runtime; tidak ada fallback/skip bila kode hilang.
+    await waitExpression(cdp, `[...document.querySelectorAll('button.productMain')].some(node=>!node.disabled && node.getClientRects().length>0)`, 'P6A POS loaded catalog with available stock', 45000);
     const p6aPosCartFixture = await evaluateValue(cdp, `(() => {
       const target=[...document.querySelectorAll('button.productMain')].find((node)=>!node.disabled && node.getClientRects().length>0);
       if (!target) return { clicked:false, enabledProducts:0 };
@@ -1435,6 +1437,7 @@ await waitExpression(cdp, `(() => {
     evidence.checks.push({ id: 'P6B_POS_MANUAL_WEIGHT_GALLERY_RUNTIME', status: 'PASS', baseQuantity: 3, authoritativeQuoteTotal: 12, galleryRasterLoaded: true });
     await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan')).click(); const input=document.querySelector('input.search'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
     await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6B final cart cleanup');
+    await runP6cdBrowserUat({cdp,apiUrl,adminUrl,posUrl,storefrontUrl,token:loginBody.accessToken,unit:uatUnitCode,branchId:loginBody.user.branchId,branchCode:loginBody.user.branchCode ?? (await (await http(`${apiUrl}/platform/manifest`,{headers:staffAuthHeaders})).json()).branch.code,evidence,http,evaluateValue,waitExpression,navigateAdminContext,assertResponsiveMatrix,captureSuccessScreenshot,ensureStockThroughReceiving});
     evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });

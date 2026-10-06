@@ -36,6 +36,12 @@ export function decodeCursor<T extends object>(cursor?: string): T | undefined {
   }
 }
 
+export function decodeDateIdCursor(cursor?: string) {
+  const value = decodeCursor<{ createdAt: string; id: string }>(cursor);
+  if (value && (typeof value.id !== 'string' || !value.id || value.id.length > 200 || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)))) throw new BadRequestException('cursor tanggal/id tidak valid.');
+  return value;
+}
+
 export function toCursorPage<T>(
   rows: T[],
   limit: number,

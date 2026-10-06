@@ -8,7 +8,7 @@ import { sourceFingerprint } from './lib/source-fingerprint.mjs';
 export const scenarioCoverage = {
   'UAT-01-AUTH-ACCESS': ['functional-w0-auth-password-reset-2fa.test.mjs','functional-w0-auth-refresh-rotation.test.mjs','tenant-scope-users-access.test.mjs'],
   'UAT-02-PUBLIC-CATALOG': ['commerce-fulfillment-integrity.test.mjs','functional-w2-storefront-customer-account.test.mjs','functional-w2-storefront-fulfillment-address.test.mjs'],
-  'UAT-03-SALES-ORDER-PAYMENT': ['core-pos-transaction-integrity.test.mjs','functional-w2-payment-provider.test.mjs','tenant-scope-orders.test.mjs','tenant-scope-sales-purchase.test.mjs'],
+  'UAT-03-SALES-ORDER-PAYMENT': ['p6c-retail-orchestration.test.mjs','p6d-store-tax.test.mjs','core-pos-transaction-integrity.test.mjs','functional-w2-payment-provider.test.mjs','tenant-scope-orders.test.mjs','tenant-scope-sales-purchase.test.mjs'],
   'UAT-04-PURCHASE-RECEIPT': ['procurement-integrity.test.mjs','functional-w1-purchase-request.test.mjs','functional-w2-purchase-return-admin.test.mjs','tenant-scope-goods-receipts.test.mjs'],
   'UAT-05-INVENTORY-OPERATIONS': ['functional-w1-inventory-admin-workflow.test.mjs','functional-w1-location-level-inventory.test.mjs','functional-w1-batch-serial-safety.test.mjs','tenant-scope-operations-inventory.test.mjs'],
   'UAT-06-ACCOUNTING-FINANCE-REPORTS': ['finance-accounting-reporting-integrity.test.mjs','functional-w3-finance-reconciliation.test.mjs','functional-w7-reporting-data-completeness.test.mjs','tenant-scope-reports.test.mjs'],

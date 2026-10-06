@@ -1,8 +1,8 @@
 > **Canonical product status:** `config/product-completeness.json` is the only machine-readable completion authority. Historical recovery/F1/F12 status below is evidence/context, not proof of product completeness.
 >
-> **Counting rule for this file:** every number below is the count *at the time that wave was authored* and is kept as a historical record. The live counts are regenerated from source by `npm run audit:p5:visual` into `config/p5-full-ui-root-audit.json` and are currently **36 controllers / 454 API handlers / 180 Prisma models / 63 contextual destinations / 420 interactive controls**, with **1089/1089** dependency-free tests passing. Do not treat a number in a dated section as a current one.
+> **Counting rule for this file:** every number below is the count *at the time that wave was authored* and is kept as a historical record. The live counts are regenerated from source by `npm run audit:p5:visual` into `config/p5-full-ui-root-audit.json` and must be read from that generated artifact for the current checkout. Older test/count entries are dated evidence, not current-source acceptance. Do not treat a number in a dated section as a current one.
 >
-> **This copy has no `.git`.** Commit SHAs and source fingerprints below are notes from the originating machine and cannot be verified from here.
+> **Checkout authority (2026-10-06):** this checkout has `.git`; main P6A and P6B exact-source GitHub evidence were verified. Earlier copied-snapshot notes remain historical.
 
 # Toko360 Project State
 
@@ -11,6 +11,23 @@
 ```text
 RC0.5.3.1_EMBEDDED_INSTRUCTIONS_DYNAMIC_CHAT_HANDOFF
 ```
+
+## 2026-10-06 — P6B accepted for sequencing; combined P6C/P6D implementation
+
+P6B commit `12537b96547f9fd88849fa92902a65cf97d3ec7b` passed Governance
+37363402271, CI 37363402348, Full System 37363589397 and Full Automated UAT
+37363596627. This supersedes the transient hosted-runner incident recorded in
+previous handoffs. P6B remains a draft PR; main P6A is unchanged.
+
+Active work item `T360-20261006-125000`, branch
+`feature/T360-20261006-125000-p6cd-retail-completion`. Explicit operator instruction
+combines P6C/P6D and all-menu cosmetics/frontend-backend audit before one push.
+Exchange/deposit/consent/receipt and staff Order/Tax Core XML implementation is
+locally verified: 1734/1734 regression, six builds/boot/lint/migration, 56 complete
+browser checks and seven PostgreSQL domain assertions share the final source
+fingerprint (docs/P6CD-VERIFICATION.md). Work item enters GitHub STAGING with
+one combined publication; current-source GitHub acceptance and production
+provider certification remain pending. Human Stage-20 remains PENDING; productReady remains false.
 
 ## Baseline
 

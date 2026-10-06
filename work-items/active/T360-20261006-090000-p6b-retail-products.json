@@ -4,7 +4,7 @@
   "type": "feature",
   "module": "master-data",
   "wave": "W2",
-  "phase": "VERIFICATION",
+  "phase": "STAGING",
   "risk": "HIGH",
   "owner": "openai",
   "featureFlag": "product metadata retail policy (default disabled)",
@@ -63,8 +63,9 @@
     "docs/P6D-ADAPTER-DESIGN.md"
   ],
   "createdAt": "2026-10-06T09:00:00+08:00",
-  "updatedAt": "2026-10-05T19:44:50.062990+00:00",
+  "updatedAt": "2026-10-06T04:50:46.405098+00:00",
   "notes": [
+    "Final exact 12537b9 now PASS in all four GitHub workflows; P6B runtime verified for sequencing. User requests combined P6C/P6D implementation and full frontend/backend/UI audit locally before one publication round. Human acceptance and release remain separate.",
     "Final candidate 12537b96547f9fd88849fa92902a65cf97d3ec7b: exact auxiliary Toko360 CI 37363402348 PASS (repository, SQLite, PostgreSQL). Governance 37363402271, Full System 37363589397 and Full UAT 37363596627 attempt 1 all cancelled before any step with annotation: hosted runner not acquired after multiple attempts. Failed-job reruns requested on the same source during confirmed Actions incident 3q1yb5m7ltvb. Final gate remains pending; P6C/P6D design only, no implementation or production certification.",
     "Final worker fixture uses isolated clean checkout and preserves caller build state; focused built-context PASS 5/5, actual absent-dist checkout PASS 3/3. Official final local candidate PASS 1714/1714, lint/build/boot/migration/coverage; source 0a5cb03bd41ac8f5bdeee4f51795f754ffa8743405297f85398cefbcd1689757. Full repo, recovery 48/48 and UI audits PASS. Exact final CI runs pending after publish.",
     "Auxiliary CI prerequisite repair passed focused 24/24 and official stable-source local candidate 1714/1714, lint/build/boot/migration/coverage. Source c261a86b8ed639e11c8f9bd88d012771e9d2ed7487fecd76ec019dcd21c87962. Publish repair and require new exact-commit auxiliary CI and full workflows.",
@@ -74,14 +75,14 @@
     "Local inherited RUST_LOG=warn prevents Prisma CLI scratch auto-creation; RUST_LOG=info fixes it. Use explicit /tmp SQLite TEST target for local candidate gate; do not seed/reset operator database."
   ],
   "releaseEvidence": {
-    "runtimeCommit": "3d8e774a40faa380dc0ad28255203e4556e53466",
-    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37358941375",
-    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37358962197",
-    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37358970410",
-    "auxiliaryCiRepair": "PASS on 12537b9; three official final gate retries pending hosted runner",
+    "runtimeCommit": "12537b96547f9fd88849fa92902a65cf97d3ec7b",
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37363402271",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37363589397",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37363596627",
+    "auxiliaryCiRepair": "PASS",
     "humanStage20": "PENDING",
     "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37363402348",
     "finalCandidateCommit": "12537b96547f9fd88849fa92902a65cf97d3ec7b",
-    "finalCandidateStatus": "VERIFICATION_PENDING_HOSTED_RUNNER"
+    "finalCandidateStatus": "RUNTIME_VERIFIED"
   }
 }

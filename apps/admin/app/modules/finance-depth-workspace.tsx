@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { authFetch } from '../auth-fetch';
+import { CustomerDepositWorkspace } from './retail-customer-workspaces';
 import { Panel, Table, StatusChip, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -83,6 +84,7 @@ export default function FinanceDepthWorkspace({ token, mode }: { token: string; 
   const buckets = (aging: AgingResponse | null) => ['CURRENT','1_30','31_60','61_90','90_PLUS'].map((key) => [bucketLabel[key], aging?.asOfBuckets[key]?.count ?? 0, rupiah(Number(aging?.asOfBuckets[key]?.amount ?? 0))]);
 
   return <>
+    {showAr && <CustomerDepositWorkspace token={token} />}
     {showAr && <Panel eyebrow="AR AGING" title="Piutang Pelanggan per Umur" badge={`${ar?.openDocuments ?? 0} dokumen`}>
       <Table head={['Bucket','Dokumen','Outstanding']} rows={buckets(ar)} empty="Belum ada aging piutang." />
       <Table head={['Order','Pelanggan','Umur','Bucket','Sisa','Trace']} rows={(ar?.rows ?? []).map((row) => [

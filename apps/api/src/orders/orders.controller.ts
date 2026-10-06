@@ -7,11 +7,29 @@ import { Permissions } from '../auth/permissions.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { CancelOrderDto, ConfirmOrderPaymentDto, CreateOrderDto, DispatchOrderDto, PayOrderDto } from './dto/create-order.dto';
 import { OrdersService } from './orders.service';
+import { CreateStaffOrderDto, StaffOrderCashDto } from './dto/staff-order.dto';
 
 @ApiTags('orders')
 @Controller('orders')
   export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
+
+  @ApiBearerAuth() @Roles('SUPER_ADMIN','OWNER','ADMIN','CASHIER') @Permissions('sale.create') @Get('staff')
+  staffOrders(@CurrentUser() user: AuthUser,@Query('limit') limit?: string,@Query('cursor') cursor?: string) { return this.orders.staffOrders(user,limit,cursor); }
+  @ApiBearerAuth() @Roles('SUPER_ADMIN','OWNER','ADMIN','CASHIER') @Permissions('sale.create') @Post(':id/staff-cancel')
+  cancelStaff(@Param('id') id: string,@Body() dto: CancelOrderDto,@CurrentUser() user: AuthUser) { return this.orders.cancelStaff(id,dto,user); }
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN','OWNER','ADMIN','CASHIER')
+  @Permissions('sale.create')
+  @Post('staff')
+  createStaff(@Body() dto: CreateStaffOrderDto, @CurrentUser() user: AuthUser) { return this.orders.createStaff(dto, user); }
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN','OWNER','ADMIN','CASHIER')
+  @Permissions('sale.create')
+  @Post(':id/staff-cash')
+  staffCash(@Param('id') id: string, @Body() dto: StaffOrderCashDto, @CurrentUser() user: AuthUser) { return this.orders.staffCash(id, dto, user); }
 
   @ApiBearerAuth()
   @Roles('SUPER_ADMIN', 'OWNER', 'ADMIN', 'WAREHOUSE', 'FINANCE')

@@ -39,6 +39,11 @@ export const FEATURE_KEYS = {
   GATE_PASS: 'gate_pass',
   OPERATIONS_AUTOMATION: 'operations_automation',
   FLEET_GPS: 'fleet_gps',
+  RETAIL_EXCHANGE: 'retail_exchange',
+  CUSTOMER_DEPOSIT: 'customer_deposit',
+  CUSTOMER_CAMPAIGN: 'customer_campaign',
+  POS_SHIP_LATER: 'pos_ship_later',
+  TAX_EXPORT: 'tax_export',
 } as const;
 
 export type FeatureKey = typeof FEATURE_KEYS[keyof typeof FEATURE_KEYS];

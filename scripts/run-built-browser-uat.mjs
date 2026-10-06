@@ -78,7 +78,11 @@ function requireFile(relative, id) {
 
 function startService(name, workspace) {
   const out = fs.createWriteStream(path.join(logDir, `${name}.log`), { flags: 'w' });
-  const child = spawnNpm(['run', 'start', '-w', workspace], {
+  const frontendUrlKey = { storefront:'T360_STOREFRONT_URL', admin:'T360_ADMIN_URL', pos:'T360_POS_URL', employee:'T360_EMPLOYEE_URL' }[name];
+  const frontendUrl = frontendUrlKey ? runtimeEnv[frontendUrlKey] : undefined;
+  const args = ['run','start','-w',workspace];
+  if (frontendUrl) { const url = new URL(frontendUrl); if (!['localhost','127.0.0.1','[::1]'].includes(url.hostname)) throw new Error('Built Browser TEST services require a loopback URL.'); args.push('--','-p',url.port || (url.protocol === 'https:' ? '443' : '80')); }
+  const child = spawnNpm(args, {
     cwd: root, env: runtimeEnv, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32',
   });
   child.stdout.pipe(out); child.stderr.pipe(out);

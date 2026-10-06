@@ -11,7 +11,7 @@
 
 | Surface | Files | Lines | Required semantic classes | Missing |
 |---|---:|---:|---:|---:|
-| admin | 54 | 10541 | 34 | 0 |
+| admin | 54 | 10544 | 34 | 0 |
 | pos | 10 | 1786 | 5 | 0 |
 | storefront | 8 | 996 | 30 | 0 |
 | employee-portal | 11 | 1096 | 21 | 0 |

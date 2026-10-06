@@ -22,6 +22,7 @@ type TaxTransaction = {
 type TaxDocument = { id: string; number: string; documentType: string; status: string; sourceType: string; sourceId: string; issueDate: string; taxPeriod?: string | null; counterpartyName?: string | null; netAmount: string | number; taxAmount: string | number; grossAmount: string | number; externalReference?: string | null };
 type TaxReconciliation = {
   from: string; to: string;
+  businessCalendar: { timezone: string; from: string; to: string };
   directions: Array<{ direction: string; count: number; taxableBase: number; taxAmount: number }>;
   mappedAccountMovement: Array<{ code: string; name: string; type: string; debit: number; credit: number; net: number }>;
   integrity: { transactionCount: number; missingAccountingEvent: number; missingJournal: number; nonPosted: number; ok: boolean };
@@ -37,27 +38,20 @@ const emptyForm = {
 };
 
 function isoDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
-function currentMonthRange() {
-  const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
-  const to = now.toISOString().slice(0, 10);
-  return { from, to };
-}
-
 export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: string; onOpenAccountingEvent?: (id: string) => void }) {
   // accounting-core.controller.ts: POST /accounting-core/tax-codes dan
   // PATCH /accounting-core/tax-codes/:id/status keduanya dijaga tax.manage. Endpoint
   // tax/preview hanya tax.view dan tidak menulis apa pun, jadi tetap dibiarkan terbuka.
   const { canAll } = usePermissions(token);
   const canManageTax = canAll('tax.manage');
-  const initialRange = currentMonthRange();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [codes, setCodes] = useState<TaxCode[]>([]);
   const [transactions, setTransactions] = useState<TaxTransaction[]>([]);
   const [documents, setDocuments] = useState<TaxDocument[]>([]);
   const [reconciliation, setReconciliation] = useState<TaxReconciliation | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [range, setRange] = useState(initialRange);
+  // Empty initial filters let Tax Core resolve the trusted company's current month.
+  const [range, setRange] = useState({ from: '', to: '' });
   const [direction, setDirection] = useState('');
   const [message, setMessage] = useState('');
   const [previewInput, setPreviewInput] = useState({ taxCodeId: '', amount: 0 });
@@ -78,20 +72,28 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
 
   async function refresh() {
     try {
-      const qs = new URLSearchParams({ from: range.from, to: range.to, limit: '100' });
+      const dates = new URLSearchParams();
+      if (range.from) dates.set('from', range.from);
+      if (range.to) dates.set('to', range.to);
+      const qs = new URLSearchParams(dates);
+      qs.set('limit', '100');
       if (direction) qs.set('direction', direction);
       const [accountRows, taxCodes, ledger, docs, recon] = await Promise.all([
         api<Account[]>('/accounting-core/accounts'),
         api<TaxCode[]>('/accounting-core/tax-codes'),
         api<CursorPage<TaxTransaction>>(`/accounting-core/tax-transactions?${qs.toString()}`),
-        api<CursorPage<TaxDocument>>(`/accounting-core/tax-documents?from=${range.from}&to=${range.to}&limit=100`),
-        api<TaxReconciliation>(`/accounting-core/tax-reconciliation?from=${range.from}&to=${range.to}`),
+        api<CursorPage<TaxDocument>>(`/accounting-core/tax-documents?${dates.toString()}&limit=100`),
+        api<TaxReconciliation>(`/accounting-core/tax-reconciliation?${dates.toString()}`),
       ]);
+      if (!recon.businessCalendar?.from || !recon.businessCalendar?.to || !recon.businessCalendar?.timezone) throw new Error('Kalender perusahaan belum tersedia dari Tax Core.');
       setAccounts(accountRows);
       setCodes(taxCodes);
       setTransactions(ledger.items ?? []);
       setDocuments(docs.items ?? []);
       setReconciliation(recon);
+      if (!range.from && !range.to) {
+        setRange(current => current.from || current.to ? current : { from: recon.businessCalendar.from, to: recon.businessCalendar.to });
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Gagal memuat tax workspace.');
     }
@@ -190,6 +192,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
 
       <Panel eyebrow="PERIODE PAJAK" title="Tax Reconciliation" badge={reconciliation?.integrity.ok ? 'PASS' : 'REVIEW'}>
         <div className="grid2"><label>Dari<input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></label><label>Sampai<input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></label></div>
+        {reconciliation && <p className="sectionHelp">Kalender perusahaan: {reconciliation.businessCalendar.timezone}.</p>}
         {reconciliation && <>
           <Table head={['Direction','Transaksi','Taxable Base','Tax']} rows={reconciliation.directions.map((row) => [row.direction, row.count, rupiah(row.taxableBase), rupiah(row.taxAmount)])} empty="Belum ada transaksi pajak pada periode ini." />
           <p className="sectionHelp">Integrity: {reconciliation.integrity.transactionCount} transaksi · missing event {reconciliation.integrity.missingAccountingEvent} · missing journal {reconciliation.integrity.missingJournal} · non-posted {reconciliation.integrity.nonPosted}. Tax document: {reconciliation.documents.count}, tax {rupiah(reconciliation.documents.taxAmount)}.</p>

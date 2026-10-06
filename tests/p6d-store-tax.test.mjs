@@ -188,6 +188,11 @@ test('posted tax period and export date follow the trusted company calendar acro
   const document=await prisma.taxDocument.findUnique({where:{id:sale.taxDocumentId}});assert.equal(document.taxPeriod,period);
   const rows=await prisma.taxTransaction.findMany({where:{sourceType:'Sale',sourceId:sale.id}});assert(rows.length);assert(rows.every(row=>row.taxPeriod===period));
   assert.equal((await taxExports.draft(document.id,'FAKTUR_PK_1_4',user)).facts.date,date);
+  const recon=await accounting.taxReconciliation(user);
+  assert.deepEqual(recon.businessCalendar,{timezone:zone,from:`${period}-01`,to:date});
+  assert((await accounting.listTaxDocuments(user)).items.some(row=>row.id===document.id));
+  assert((await accounting.listTaxDocuments(user,recon.businessCalendar.from,recon.businessCalendar.to)).items.some(row=>row.id===document.id));
+  if(zone==='Asia/Makassar')assert(!(await accounting.listTaxDocuments(user,'2026-01-01','2026-01-31')).items.some(row=>row.id===document.id));
   if (!firstDocument) firstDocument=document;
  }
  await assert.rejects(()=>taxExports.draft(firstDocument.id,'FAKTUR_PK_1_4',user),/Periode pajak historis/);

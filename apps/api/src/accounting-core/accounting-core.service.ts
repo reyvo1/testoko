@@ -381,7 +381,14 @@ export class AccountingCoreService {
     const from = parseBusinessDateBoundary(fromValue, businessMonthStart(now, company.timezone), company.timezone, false);
     const to = parseBusinessDateBoundary(toValue, now, company.timezone, true);
     if (from > to) throw new BadRequestException('Rentang tanggal pajak tidak valid.');
-    return { from, to };
+    return {
+      from, to,
+      businessCalendar: {
+        timezone: company.timezone,
+        from: businessDateKey(from, company.timezone),
+        to: businessDateKey(to, company.timezone),
+      },
+    };
   }
 
   async listTaxTransactions(user: AuthUser, fromValue?: string, toValue?: string, directionValue?: string, limitValue?: string, cursorValue?: string) {
@@ -423,7 +430,7 @@ export class AccountingCoreService {
 
   async taxReconciliation(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = await this.taxDateRange(scope.companyId, fromValue, toValue);
+    const { from, to, businessCalendar } = await this.taxDateRange(scope.companyId, fromValue, toValue);
     const transactions = await this.prisma.taxTransaction.findMany({
       where: { companyId: scope.companyId, branchId: scope.branchId, transactionDate: { gte: from, lte: to } },
       orderBy: [{ transactionDate: 'asc' }, { id: 'asc' }],
@@ -456,7 +463,7 @@ export class AccountingCoreService {
     const nonPosted = transactions.filter((row) => row.status !== 'POSTED').length;
     const documents = await this.prisma.taxDocument.aggregate({ where: { companyId: scope.companyId, branchId: scope.branchId, issueDate: { gte: from, lte: to }, status: { not: 'CANCELLED' } }, _count: true, _sum: { taxAmount: true, netAmount: true, grossAmount: true } });
     return {
-      from, to, companyId: scope.companyId, branchId: scope.branchId,
+      from, to, businessCalendar, companyId: scope.companyId, branchId: scope.branchId,
       directions: [...byDirection.entries()].map(([direction, value]) => ({ direction, count: value.count, taxableBase: Number(value.taxableBase), taxAmount: Number(value.taxAmount) })),
       mappedAccountMovement: [...accountMovement.entries()].map(([code, value]) => ({ code, ...value, debit: Number(value.debit), credit: Number(value.credit), net: Number(value.debit.sub(value.credit)) })),
       integrity: { transactionCount: transactions.length, missingAccountingEvent, missingJournal, nonPosted, ok: missingAccountingEvent === 0 && missingJournal === 0 && nonPosted === 0 },

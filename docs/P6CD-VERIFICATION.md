@@ -121,3 +121,17 @@ evidence/scratch databases retained. Human/provider/production readiness pending
 ## 2026-10-07 corrective publication authorization
 
 Operator subsequently instructed **ok push saja**, superseding the prior local-only disposition for this correction. Publish the verified source and checkpoint to existing draft PR #2 and run four exact-commit GitHub gates. Source/local evidence unchanged; GitHub outcome pending. This does not authorize merge or production release and does not close human/provider acceptance.
+
+## 2026-10-07 — actual GitHub blockers and local root fix
+
+Published 8c6ab2a Governance/CI PASS; final System 37497869209 and UAT 37497875023 FAIL. Browser artifacts (not continue-on-error step conclusions) fail at P6CD tax document controls: UTC-derived UI date excludes documents created after midnight in company timezone. P6CD domain/worker probes PASS in both runs. System also reports two HIGH production dependencies: sharp <0.35.5 and source-map-js <1.2.2.
+
+Root fix in local verification: existing Tax Core reconciliation returns the trusted calendar/date-only bounds; UI uses server defaults rather than UTC currentMonthRange, preserving manual filters. Month-boundary behavior and browser calendar parity are asserted. Patch-only sharp 0.35.5/source-map-js 1.2.2 installed deterministically; production dependency audit and source/UI audits PASS. Full candidate/browser/PostgreSQL verification pending on changed source. Prior local 1734/57/7 PASS belongs to 20ff source, not this root fix. No production/schema/history mutation, human/provider acceptance or assertion weakening.
+
+Rollback: revert the calendar response/UI together if required; retain canonical tax/period history. Dependency rollback must use a verified safe patch, not the known-vulnerable versions. No migration/backfill needed. Official advisories: https://github.com/advisories/GHSA-wq5f-xc86-pv6w and https://github.com/advisories/GHSA-68fv-2mgg-jv7q.
+
+## 2026-10-07 — calendar/security root fix locally verified
+
+Trusted Tax Core business-calendar bounds now initialize Tax workspace filters; manual filters are preserved and missing calendar fails visibly. Actual month-boundary assertions show UTC and Makassar documents remain selectable; browser checks the server/UI calendar before legal review/export. Patch-only sharp 0.35.5 and source-map-js 1.2.2 lockfile installed deterministically; native sharp image smoke and zero-high/critical production audit PASS. No schema, backfill, posted-history or business posting change.
+
+All final local gates PASS on a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8: 1734/1734 regression, lint, expand rehearsal/DB smoke, six builds/boot, Browser 57/57 and PostgreSQL/worker 7/7. Artifact 82118cb7e3ebaefabae99506d0940d118cf5eada12fe65ac978e5dff34d8bdf4 unchanged; all five evidence files bind this same source. UI audit 538 controls/70 contexts unchanged. Owned TEST PostgreSQL/API/worker/Next services stopped; fixtures/evidence retained. Publish to existing draft PR #2 and run four exact-commit gates under current operator authorization. Prior published failure is historical; human/provider/product readiness remain pending, no merge/release.

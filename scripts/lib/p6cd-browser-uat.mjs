@@ -111,6 +111,10 @@ export async function runP6cdBrowserUat({cdp,apiUrl,adminUrl,posUrl,storefrontUr
   await api(`/products/${product.id}`,{method:'PATCH',body:{salesTaxCodeId:taxCode.id}});
   const taxSale=await api('/sales',{method:'POST',body:{warehouseId:warehouse.id,customerId,paymentMethod:'CASH',idempotencyKey:`browser-tax-sale-${stamp}`,items:[{productId:product.id,quantity:1}]}});
   await navigateAdminContext(cdp,'/finance/tax','P6CD legal XML operator');
+  const calendar=(await api('/accounting-core/tax-reconciliation')).businessCalendar;
+  if(!calendar?.from||!calendar?.to)throw new Error('P6CD trusted Tax Core calendar absent.');
+  const reconciliationPanel=`[...document.querySelectorAll('.panel')].find(node=>node.textContent.includes('Tax Reconciliation'))`;
+  await waitExpression(cdp,`(()=>{const inputs=(${reconciliationPanel})?.querySelectorAll('input[type="date"]');return inputs?.[0]?.value===${JSON.stringify(calendar.from)} && inputs?.[1]?.value===${JSON.stringify(calendar.to)};})()`,'P6CD tax filters match trusted business calendar');
   const taxPanel=`[...document.querySelectorAll('.panel')].find(node=>node.textContent.includes('Review dan export dokumen pajak'))`;
   await waitExpression(cdp,`Boolean(${taxPanel}) && [...(${taxPanel}).querySelectorAll('option')].some(node=>node.value===${JSON.stringify(taxSale.taxDocumentId)})`,'P6CD tax document controls');
   await field('Dokumen',taxSale.taxDocumentId,taxPanel);await click('Periksa source dan rekonsiliasi',taxPanel);

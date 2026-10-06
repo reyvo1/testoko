@@ -326,3 +326,9 @@ P5 remains `IMPLEMENTED_RUNTIME_PENDING`, `humanStage20=PENDING`, and `productRe
 ## 2026-10-07 corrective publication authorization
 
 Operator subsequently instructed **ok push saja**, superseding the prior local-only disposition for this correction. Publish the verified source and checkpoint to existing draft PR #2 and run four exact-commit GitHub gates. Source/local evidence unchanged; GitHub outcome pending. This does not authorize merge or production release and does not close human/provider acceptance.
+
+## 2026-10-07 — calendar/security root fix locally verified
+
+Trusted Tax Core business-calendar bounds now initialize Tax workspace filters; manual filters are preserved and missing calendar fails visibly. Actual month-boundary assertions show UTC and Makassar documents remain selectable; browser checks the server/UI calendar before legal review/export. Patch-only sharp 0.35.5 and source-map-js 1.2.2 lockfile installed deterministically; native sharp image smoke and zero-high/critical production audit PASS. No schema, backfill, posted-history or business posting change.
+
+All final local gates PASS on a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8: 1734/1734 regression, lint, expand rehearsal/DB smoke, six builds/boot, Browser 57/57 and PostgreSQL/worker 7/7. Artifact 82118cb7e3ebaefabae99506d0940d118cf5eada12fe65ac978e5dff34d8bdf4 unchanged; all five evidence files bind this same source. UI audit 538 controls/70 contexts unchanged. Owned TEST PostgreSQL/API/worker/Next services stopped; fixtures/evidence retained. Publish to existing draft PR #2 and run four exact-commit gates under current operator authorization. Prior published failure is historical; human/provider/product readiness remain pending, no merge/release.

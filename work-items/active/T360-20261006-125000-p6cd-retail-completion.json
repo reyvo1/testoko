@@ -69,7 +69,7 @@
     "docs/P6CD-VERIFICATION.md"
   ],
   "createdAt": "2026-10-06T04:50:46.405098+00:00",
-  "updatedAt": "2026-10-06T16:42:19.364195+00:00",
+  "updatedAt": "2026-10-06T17:18:15.535930+00:00",
   "notes": [
     "Explicit 2026-10-06 user instruction combines P6C/P6D and full menu/UI/frontend-backend audit before one push; supersedes earlier per-wave publication rule. P6B final four workflows all PASS on 12537b9. Selected production providers/sandbox availability still pending user information; continue all verifiable code work.",
     "Local implementation is complete for the supported cash exchange, liability deposit, consent communications, staff fulfillment and reviewed XML export paths; verification and cosmetic browser audit continue. Provider certification, Human Stage-20 and release remain pending.",
@@ -77,27 +77,37 @@
     "Published cbc0e3b: Governance and CI PASS; Full System/UAT correctly fail because browser navigation matched Retur without its pending-count badge. Repair waits for hydrated labelled navigation with a real pending badge and retains quote/confirmation/atomic persistence checks. Five default-off features also receive operator-visible branch configuration in existing Settings/Features; dedicated deposit account config remains canonical. Nine scenarios pass on a new isolated PostgreSQL TEST database; final stable gates rerun.",
     "Corrective final candidate local/runtime PASS on one source fingerprint: 1734 regression, 57 complete browser checks/nine new scenarios, seven PostgreSQL domain/worker assertions. New feature controls use existing scoped Platform API; no schema/core/gate weakening. Corrective publication is a separate push from the original combined cbc0e3b; request operator permission against the original one-push constraint before publishing.",
     "Operator explicitly selected Simpan lokal saja for the corrective e64be71 commit. Do not push it or dispatch new-source GitHub workflows until later explicit authorization. Local code/tests/evidence complete; existing PR #2 remains on cbc0e3b with Governance/CI PASS and full System/UAT FAIL from the old badge selector. Owned scratch PostgreSQL server stopped after probes; TEST files/evidence retained.",
-    "Operator subsequently explicitly authorized the corrective push: ok push saja (2026-10-07 Asia/Makassar). This supersedes LOCAL_ONLY for this verified correction. Publish to existing draft PR #2 and execute four exact-commit GitHub gates; no merge, production deployment, live-provider message or human acceptance is authorized/inferred."
+    "Operator subsequently explicitly authorized the corrective push: ok push saja (2026-10-07 Asia/Makassar). This supersedes LOCAL_ONLY for this verified correction. Publish to existing draft PR #2 and execute four exact-commit GitHub gates; no merge, production deployment, live-provider message or human acceptance is authorized/inferred.",
+    "Corrective push completed to existing draft PR #2 on 8c6ab2a; Governance 37497844597 and CI 37497844610 PASS. Full System 37497869209 and full UAT 37497875023 running. Human/provider/product readiness unchanged. Subsequent acceptance metadata remains local and is not another push.",
+    "8c6ab2a final System/UAT FAIL: actual Browser evidence fails P6CD tax document controls after UTC date differs from trusted company day; source-map-js and sharp production advisories also block System. Continue-on-error step conclusions are not proof of individual gates. Local root fix exposes trusted Tax Core businessCalendar in existing reconciliation response and uses server-resolved initial UI dates; midnight/month-boundary assertions and browser calendar checks added. Patch-only sharp 0.35.5/source-map-js 1.2.2 lock resolution installed deterministically; production audit PASS. Full local verification pending. No schema/history mutation or gate weakening.",
+    "Calendar/security root fix final local proof PASS: 1734/1734 regression, lint/migration/DB smoke/six builds/API boot, Browser 57/57 and actual PostgreSQL worker/domain 7/7, production dependency audit zero high/critical. All five evidence files match a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8; build artifact 82118cb7e3ebaefabae99506d0940d118cf5eada12fe65ac978e5dff34d8bdf4 unchanged. Publish root fix to same draft PR under current corrective publication authorization and require actual four final conclusions, never continue-on-error step conclusions. Owned TEST services stopped."
   ],
   "releaseEvidence": {
-    "sourceFingerprint": "20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678",
+    "sourceFingerprint": "a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8",
     "localCandidate": "PASS",
     "regression": "1734/1734",
     "builtBrowser": "57/57 PASS",
     "postgresqlDomain": "7/7 PASS",
-    "sixBuildArtifact": "204bb062360c5ab2c2d259db29fac5a124f6b2b64423f0aae167d96a28706cc4",
-    "githubExactSource": "PENDING_AUTHORIZED_CORRECTIVE_PUBLICATION",
+    "sixBuildArtifact": "82118cb7e3ebaefabae99506d0940d118cf5eada12fe65ac978e5dff34d8bdf4",
+    "githubExactSource": "PENDING_VERIFIED_CALENDAR_SECURITY_ROOT_FIX_PUBLICATION",
     "productionProviderCertification": "PENDING",
     "humanStage20": "PENDING",
-    "runtimeCommit": "cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0",
+    "runtimeCommit": "8c6ab2a0c0736ff2b3a20494532658658f3e0666",
     "pullRequest": "https://github.com/reyvo1/testoko/pull/2",
-    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37457370376",
-    "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37457370524",
-    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37457398259",
-    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37457407199",
-    "repairCandidateFingerprint": "20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678",
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37497844597",
+    "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37497844610",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37497869209",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37497875023",
+    "repairCandidateFingerprint": "a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8",
     "repairLocalGate": "PASS",
     "correctiveLocalCommit": "e64be71b6f58735025076ea58391e45dcc9cf5b9",
-    "correctivePublicationApproval": "AUTHORIZED_BY_OPERATOR_2026_10_07"
+    "correctivePublicationApproval": "AUTHORIZED_BY_OPERATOR_2026_10_07",
+    "githubGateStatus": {
+      "workflowGovernance": "PASS",
+      "auxiliaryCi": "PASS",
+      "fullSystemSimulation": "FAIL",
+      "fullAutomatedUat": "FAIL"
+    },
+    "productionDependencyAudit": "PASS_ZERO_HIGH_CRITICAL"
   }
 }

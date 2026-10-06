@@ -5,16 +5,16 @@ inspect all four UI surfaces, and publish once after the combined local checks.
 P6B dependency is exact-source runtime verified on 12537b9. Canonical product
 phase remains P5, productReady=false and Human Stage-20=PENDING.
 
-## Local verification complete — GitHub staging next
+## Corrective local verification complete
 
 | Gate | Executed evidence | Status |
 | --- | --- | --- |
-| Source/domain/UI audit | 206 models, 552 API handlers, 536 UI controls; 70/70 Admin contextual destinations; nine canonical domain ownership records; recovery 48/48 | PASS |
+| Source/domain/UI audit | 206 models, 552 API handlers, 538 UI controls; 70/70 Admin contextual destinations; nine canonical domain ownership records; recovery 48/48 | PASS |
 | PostgreSQL expand migration | Explicit TEST database, legacy ReportJob status/filters/output/progress preserved; new retry/lease defaults checked | PASS |
-| PostgreSQL domain runtime | All seven domain assertions pass on final fingerprint 2deee66eb3e72652bab0afa85ec195026716814b33e33575bd9816d118669c90: exchange concurrency/rollback, deposit ledger/overdraw, receipt/consent, campaign batch, inspected staff fulfillment, real XML worker and retry/dead-letter/lease recovery | PASS |
-| Full local candidate | 1734/1734 regression, all-workspace lint, DB smoke, six production builds/API boot, legacy SQLite preservation, critical source mapping 12/12; unchanged fingerprint 2deee66eb3e72652bab0afa85ec195026716814b33e33575bd9816d118669c90; completed 2026-10-06T11:26:32Z | PASS |
-| Built Browser UAT | 56/56 checks PASS, eight new operator scenarios, all registered navigation, no JavaScript exceptions, 1440/1024/390 geometry and inspected new desktop/mobile panels; same final source/artifact | PASS |
-| Exact-source GitHub gates | Governance, CI, Full System Simulation and Full Automated UAT | Pending one combined publication |
+| PostgreSQL domain runtime | All seven domain assertions pass on final fingerprint 20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678: exchange concurrency/rollback, deposit ledger/overdraw, receipt/consent, campaign batch, inspected staff fulfillment, real XML worker and retry/dead-letter/lease recovery | PASS |
+| Full local candidate | 1734/1734 regression, all-workspace lint, DB smoke, six production builds/API boot, legacy SQLite preservation, critical source mapping 12/12; unchanged fingerprint 20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678; completed 2026-10-06T15:46:26Z | PASS |
+| Built Browser UAT | 57/57 checks PASS, nine new operator scenarios, all registered navigation, no JavaScript exceptions, 1440/1024/390 geometry and inspected new desktop/mobile panels; same final source/artifact | PASS |
+| Exact-source GitHub gates | Commit `cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0`: [Governance](https://github.com/reyvo1/testoko/actions/runs/37457370376), [CI](https://github.com/reyvo1/testoko/actions/runs/37457370524), [Full System](https://github.com/reyvo1/testoko/actions/runs/37457398259), [Full UAT](https://github.com/reyvo1/testoko/actions/runs/37457407199) | Governance/CI PASS; System/UAT FAIL |
 | Actual provider certification / human review | Real chosen-provider sandbox acceptance/replay/reconciliation and Human Stage-20 | PENDING |
 
 Generated evidence under handoff/quality is tied to a source fingerprint and,
@@ -25,8 +25,8 @@ critical mutation paths; domain tests cover denial, retry and atomic rollback.
 
 Final local candidate, complete built-browser wrapper and PostgreSQL probe
 all match the final fingerprint above. Six artifact build identity:
-`f0a63b20580ac96381caaf887fd151506e4d694e479a3e510580ca92863b4a0d`.
-Browser completed 2026-10-06T11:31:31Z; PostgreSQL probe 11:32:45Z. The stale offline
+`204bb062360c5ab2c2d259db29fac5a124f6b2b64423f0aae167d96a28706cc4`.
+Browser completed 2026-10-06T15:52:03Z; PostgreSQL probe 15:53:24Z. The stale offline
 source assertion requiring UTC was updated to require original business time,
 trusted company calendar and reuse of the Core tax period; no guard was removed.
 
@@ -56,7 +56,7 @@ trusted company calendar and reuse of the Core tax period; no guard was removed.
   receipt history has bounded scrolling so the POS catalog remains accessible.
   Account punctuation and employee master help now use clear operator wording.
 
-The eight new operator scenarios pass within the mandatory complete built-browser
+The nine new operator scenarios pass within the mandatory complete built-browser
 run. Final checks retain desktop/mobile screenshots of new operator panels;
 operator navigation, mutations and geometry are verified with production builds.
 
@@ -83,3 +83,28 @@ TEST fixtures and isolated scratch databases were used. The operator database,
 production database and real notification destinations were not used. Production
 migration still requires backup/restore, staging query review and deployment
 retention/monitoring checks described in the migration and domain designs.
+
+Combined publication completed once in [draft PR #2](https://github.com/reyvo1/testoko/pull/2).
+GitHub acceptance metadata added afterward remains local to preserve the operator
+request for one push. No second source publication, merge or release is implied.
+
+## Corrective candidate
+
+The GitHub browser screenshot proves that the pending-count badge renders
+`Retur 1`; exact whole-button matching of `Retur` timed out. The repair targets
+the labelled span inside POS navigation, waits for a real pending badge/hydration
+and verifies active workspace plus the same quote/confirm/atomic return checks.
+No browser or financial assertion is skipped.
+
+Five retail flags previously had no controls in the module-based Features list.
+The existing Settings/Features menu now configures them for the trusted branch
+through the existing Platform API, including dedicated deposit liability account.
+Role/permission checks match the API; missing or ambiguous scope fails closed.
+Flags remain default OFF, and provider certification is still independent.
+
+Nine focused browser scenarios PASS on a newly created isolated PostgreSQL TEST
+database. Final complete gate PASS 1734/1734 regression plus lint/migration/DB
+smoke/six builds/API boot; complete built Browser UAT PASS 57/57; actual PostgreSQL
+worker/domain probe PASS 7/7. All match `20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678`. Source audit PASS: 538 controls,
+552 handlers, 206 models, 70/70 contexts. Corrective source publication/GitHub
+acceptance remains pending; earlier published evidence remains historical.

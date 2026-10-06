@@ -29,6 +29,14 @@ fingerprint (docs/P6CD-VERIFICATION.md). Work item enters GitHub STAGING with
 one combined publication; current-source GitHub acceptance and production
 provider certification remain pending. Human Stage-20 remains PENDING; productReady remains false.
 
+Published C/D `cbc0e3b` has Governance/CI PASS; two full runtime workflows failed
+the new browser selector with a pending `Retur 1` badge. Corrective candidate
+also adds missing branch feature controls to Settings/Features. Corrective local candidate now passes 1734/1734 regression, six builds/boot/lint,
+57 complete browser checks and seven PostgreSQL assertions on one source identity.
+Work item enters STAGING; corrective publication needs one additional push beyond
+the original combined push, so operator approval is required. No current-source
+GitHub runtime acceptance, merge or release is claimed.
+
 ## Baseline
 
 - Version: 0.5.3

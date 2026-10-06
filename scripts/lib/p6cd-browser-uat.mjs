@@ -5,11 +5,31 @@ export async function runP6cdBrowserUat({cdp,apiUrl,adminUrl,posUrl,storefrontUr
   async function captureSuccessScreenshot(session,name) {const desktop=await captureScreenshot(session,name);try {await session.call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await new Promise(resolve=>setTimeout(resolve,150));await captureScreenshot(session,`${name}-mobile`);}finally {await session.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});}return desktop;}
   async function api(path,{method='GET',body,customerHeaders}={}) {const response=await http(`${apiUrl}${path}`,{method,headers:{...headers,...customerHeaders,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{data=raw;}if(!response.ok)throw new Error(`P6CD ${method} ${path} HTTP ${response.status} [private response omitted]`);return data;}
   async function click(text,scope='document') {await waitExpression(cdp,`(()=>{const root=${scope};return Boolean(root&&[...root.querySelectorAll('button')].some(node=>node.textContent?.trim()===${JSON.stringify(text)}&&!node.disabled));})()`,`P6CD enabled operator button: ${text}`);const ok=await evaluateValue(cdp,`(()=>{const root=${scope};const button=[...root.querySelectorAll('button')].find(node=>node.textContent?.trim()===${JSON.stringify(text)});if(!button||button.disabled)return false;button.click();return true;})()`,{userGesture:true});if(!ok)throw new Error(`P6CD operator button unavailable: ${text}`);}
+  async function clickWorkspace(text) {
+    const button = `[...document.querySelectorAll('.posWorkspaceNav button')].find(node=>[...node.querySelectorAll(':scope > span')].some(label=>label.textContent?.trim()===${JSON.stringify(text)}))`;
+    // A pending-return badge is part of the button text, but not its workspace label.
+    await waitExpression(cdp,`Boolean(${button}) && !(${button}).disabled && Number((${button}).querySelector('b')?.textContent)>0`,'P6CD hydrated return navigation with pending badge');
+    const clicked=await evaluateValue(cdp,`(()=>{const button=${button};if(!button||button.disabled)return false;button.click();return true;})()`,{userGesture:true});
+    if(!clicked)throw new Error('P6CD return workspace navigation unavailable.');
+    await waitExpression(cdp,`(${button})?.getAttribute('aria-current')==='page'`,'P6CD active return workspace');
+  }
   async function field(label,value,scope='document') {const ok=await evaluateValue(cdp,`(()=>{const root=${scope};const label=[...root.querySelectorAll('label')].find(node=>node.textContent?.trim().startsWith(${JSON.stringify(label)}));const input=label?.querySelector('input,select,textarea');if(!input)return false;const prototype=input.tagName==='SELECT'?HTMLSelectElement.prototype:input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(prototype,'value').set.call(input,${JSON.stringify(String(value))});input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);if(!ok)throw new Error(`P6CD operator field unavailable: ${label}`);}
   const flags=await api('/platform/features');
   const depositCode=`UATDEP${String(Date.now()).slice(-9)}`;
   await api('/accounting-core/accounts',{method:'POST',body:{code:depositCode,name:'Synthetic Browser TEST deposit',type:'LIABILITY'}});
-  for(const key of ['retail_exchange','customer_deposit','customer_campaign','pos_ship_later','tax_export'])await api('/platform/features',{method:'POST',body:{key,branchId,enabled:true,config:key==='customer_deposit'?{accountCode:depositCode}:{}}});
+  await navigateAdminContext(cdp,'/settings/features','P6CD branch feature configuration');
+  const featureNames={retail_exchange:'Tukar barang',customer_deposit:'Deposit pelanggan',customer_campaign:'Komunikasi pelanggan',pos_ship_later:'Pesanan dari toko',tax_export:'Export pajak XML'};
+  for(const [key,name] of Object.entries(featureNames)) {
+    const form=`document.querySelector('form[data-retail-feature="${key}"]')`;
+    await waitExpression(cdp,`Boolean(${form}) && !(${form}).querySelector('input[type="checkbox"]').disabled`,'P6CD loaded branch feature control');
+    if(key==='customer_deposit')await field('Kode akun deposit',depositCode,form);
+    await evaluateValue(cdp,`(()=>{const checkbox=(${form}).querySelector('input[type="checkbox"]');if(!checkbox.checked)checkbox.click();return true;})()`,{userGesture:true});
+    await click(`Simpan ${name}`,form);
+    await waitExpression(cdp,`document.body.innerText.includes('Konfigurasi fitur cabang tersimpan.') && !(${form}).querySelector('button[type="submit"]').disabled`,'P6CD saved branch feature control');
+    const stored=(await api('/platform/features')).find(row=>row.key===key&&row.branchId===branchId&&!row.userId);
+    if(!stored?.enabled||(key==='customer_deposit'&&stored.config?.accountCode!==depositCode))throw new Error('P6CD UI branch feature configuration was not persisted.');
+  }
+  evidence.checks.push({id:'P6CD_BRANCH_FEATURE_CONFIG_BROWSER',status:'PASS',branchScoped:true,existingPlatformApi:true,matrix:await assertResponsiveMatrix(cdp,'P6CD feature configuration'),screenshot:await captureSuccessScreenshot(cdp,'p6cd-feature-config')});
   const registration=await api('/storefront/account/register',{method:'POST',body:{branchCode,name:`P6CD Browser ${stamp}`,email:`p6cd-browser-${stamp}@example.invalid`,password:'Synthetic-TEST-only-browser!0000',address:'Synthetic TEST customer address'}});
   const customerHeaders={'x-branch-code':branchCode,'x-customer-session':registration.sessionToken};
   const verification=await api('/storefront/account/verification/request',{method:'POST',customerHeaders,body:{type:'EMAIL'}});
@@ -111,7 +131,7 @@ export async function runP6cdBrowserUat({cdp,apiUrl,adminUrl,posUrl,storefrontUr
   const inspectionPage=await api('/operations-control/inspections?limit=100');const inspection=inspectionPage.items.find(row=>row.id===returned.inspectionId);if(!inspection?.results?.length)throw new Error('Browser exchange inspection absent.');
   const results=inspection.results.map(row=>({... (row.templateItemId?{templateItemId:row.templateItemId}:{}),code:row.code,label:row.label,result:'PASS',...(row.productId?{productId:row.productId}:{}),...(row.expectedQty!=null?{expectedQty:row.expectedQty,acceptedQty:row.expectedQty,rejectedQty:0,damagedQty:0,missingQty:0,extraQty:0}:{}),...(row.scannedQty!=null?{scannedQty:row.scannedQty}:{})}));
   await api(`/operations-control/inspections/${returned.inspectionId}/complete`,{method:'POST',body:{results,notes:'Synthetic TEST inspector'}});await api(`/operations-control/inspections/${returned.inspectionId}/approve`,{method:'POST',body:{notes:'Synthetic TEST inspection approval'}});
-  await cdp.call('Page.navigate',{url:posUrl});await waitExpression(cdp,`document.body.innerText.includes('TOKO360 POS')`,'P6CD POS exchange ready');await click('Retur');
+  await cdp.call('Page.navigate',{url:posUrl});await waitExpression(cdp,`document.body.innerText.includes('TOKO360 POS')`,'P6CD POS exchange ready');await clickWorkspace('Retur');
   const exchangePanel=`[...document.querySelectorAll('details')].find(node=>node.textContent.includes('TUKAR BARANG LANGSUNG'))`;
   await waitExpression(cdp,`Boolean(${exchangePanel}) && [...(${exchangePanel}).querySelectorAll('option')].some(node=>node.value===${JSON.stringify(returned.id)})`,'P6CD exchange controls');
   await evaluateValue(cdp,`(()=>{(${exchangePanel}).open=true;return true;})()`);

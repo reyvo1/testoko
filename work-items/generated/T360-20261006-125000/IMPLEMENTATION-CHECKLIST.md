@@ -8,6 +8,6 @@
 - [x] Source menu/button/API/permission audit and identified cosmetic fixes.
 - [x] Eight new operator scenarios pass focused diagnostic browser execution.
 - [x] Complete built Browser UAT and desktop/mobile screenshot inspection.
-- [x] Behavioral and full local quality gates: 1734/1734 regression; 20 focused behavioral tests; 56 browser checks; seven PostgreSQL assertions.
-- [ ] One publication and exact GitHub runtime evidence.
+- [x] Behavioral and full local quality gates: 1734/1734 regression; 20 focused behavioral tests; 57 browser checks; seven PostgreSQL assertions.
+- [ ] Corrective publication approval and exact GitHub runtime evidence; original combined push complete, Governance/CI PASS, initial full runtime gates FAIL on badge selector.
 - [ ] Actual provider certification and Human Stage-20, separate from automation.

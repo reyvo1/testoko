@@ -29,6 +29,7 @@ import ReportingWorkspace from './modules/reporting-workspace';
 import OrganizationAdminView from './modules/organization-admin';
 import AccessControlView from './modules/access-control';
 import PlatformControlView from './modules/platform-control';
+import RetailFeatureControls from './modules/retail-feature-controls';
 import DashboardOverview from './dashboard-overview';
 import AdminAppShell from './app-shell';
 import { canReadAdminFeed, settleAdminFeed } from './bootstrap-data';
@@ -576,6 +577,7 @@ export default function AdminPage() {
               <p className="sectionHelp">Flag runtime bukan bukti product-completeness. Maturity dan ownership di bawah menjelaskan capability sebenarnya; FOUNDATION/ADAPTER_REQUIRED tidak boleh dibaca sebagai modul produksi selesai.</p>
               <div className="table">{manifest?.modules.map((module) => { const feature = module.featureKey ? manifest.features[module.featureKey] : undefined; const enabled = module.isCore || !module.featureKey || feature?.enabled; const maturity = feature?.config?.maturityClass ?? (module.isCore ? 'OPERATIONAL' : 'UNKNOWN'); const help = feature?.config?.helpText ?? module.description ?? 'Capability core runtime.'; const configurable = feature?.config?.configurable !== false; return <div className="receipt" key={module.code}><div><strong>{module.name}</strong><small>{module.category} · {module.code}</small><small>Maturity: {maturity} · Ownership: {feature?.config?.ownership ?? (module.isCore ? 'TOKO360_RUNTIME' : 'UNDECLARED')}</small><small>{help}</small></div>{module.featureKey ? <div className="actionRow"><span className={enabled?'okText':''}>{enabled?'ENABLED':'DISABLED'}</span><button type="button" className="secondary" disabled={!configurable || !canRootAction('platform.configure', ['SUPER_ADMIN', 'OWNER', 'ADMIN'])} onClick={() => setFeatureChange({ key: module.featureKey!, enabled: !enabled })}>{enabled ? 'Nonaktifkan' : 'Aktifkan'}</button></div> : <span className="okText">CORE</span>}</div>; })}</div>
             </section>}
+            {(!activeDomainView || activeDomainView.key === 'features') && manifest?.company?.id && manifest.branch?.id && <RetailFeatureControls token={token} companyId={manifest.company.id} branchId={manifest.branch.id} onSaved={() => loadAll(token)} />}
             {activeDomainView?.key === 'setup' && <SetupReadinessView token={token} />}
             {activeDomainView?.key === 'users' && <AccessControlView token={token} canManageRoles={Boolean(identity?.roles.includes('SUPER_ADMIN'))} actorId={identity?.sub} />}
             {(['platform','custom-fields','approvals','webhooks','ui-config','audit-ops'] as const).includes(activeDomainView?.key as never) && activeDomainView && <PlatformControlView token={token} mode={activeDomainView.key as 'platform'|'custom-fields'|'approvals'|'webhooks'|'ui-config'|'audit-ops'} />}

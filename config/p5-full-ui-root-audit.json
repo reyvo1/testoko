@@ -10,12 +10,12 @@
     "posViews": 4,
     "storefrontViews": 5,
     "employeeViews": 7,
-    "interactiveControls": 536
+    "interactiveControls": 538
   },
   "presentation": {
     "admin": {
-      "fileCount": 53,
-      "lineCount": 10467,
+      "fileCount": 54,
+      "lineCount": 10541,
       "requiredSemanticClassCount": 34,
       "missingSemanticClasses": []
     },
@@ -40,7 +40,7 @@
   },
   "controls": {
     "admin": {
-      "buttons": 407,
+      "buttons": 409,
       "links": 2,
       "inertButtons": 0,
       "implicitSubmitButtons": 32,

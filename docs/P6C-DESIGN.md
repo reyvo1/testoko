@@ -38,6 +38,12 @@ exposes reprint and consented delivery. Storefront Account exposes separate
 communication preferences and owned receipts. Existing permission guards remain
 server authoritative; offline new retail paths are rejected.
 
+Settings/Features provides branch-scoped controls for all five new retail flags,
+using the existing Platform configuration API and matching role/permission gates.
+It preserves company fallback configuration, ignores global/user flags for these
+retail flows and fails closed on ambiguity or load errors. Deposit has an explicit
+liability account field; posting still validates the account and canonical ledger.
+
 Flags retail_exchange, customer_deposit and customer_campaign default OFF.
 customer_deposit.config.accountCode names the dedicated liability account; a
 branch DEPOSIT tender must match it and be immediate, fee/provider free and online.

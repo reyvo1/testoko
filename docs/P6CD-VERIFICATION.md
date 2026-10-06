@@ -117,3 +117,7 @@ acceptance is claimed; PR #2 remains on `cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a
 Local gates above passed; publishing/dispatching the correction requires a later
 explicit operator instruction. Owned temporary TEST services are stopped and
 evidence/scratch databases retained. Human/provider/production readiness pending.
+
+## 2026-10-07 corrective publication authorization
+
+Operator subsequently instructed **ok push saja**, superseding the prior local-only disposition for this correction. Publish the verified source and checkpoint to existing draft PR #2 and run four exact-commit GitHub gates. Source/local evidence unchanged; GitHub outcome pending. This does not authorize merge or production release and does not close human/provider acceptance.

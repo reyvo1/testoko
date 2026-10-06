@@ -1,3 +1,7 @@
+## 2026-10-07 — corrective push authorized
+
+Operator explicitly instructed “ok push saja”, superseding the earlier local-only disposition for corrective code e64be71. Publish the verified correction and checkpoint to existing draft PR #2, then require four exact-commit GitHub gates. Source remains 20ff8d4cd788b87a8c349e538512fa617255a31aa4fbf578d73978c28e78c678; local evidence below remains valid. No merge/deployment/live-provider message/human acceptance inferred. GitHub outcome pending.
+
 ## Operator decision — corrective candidate LOCAL ONLY
 
 Operator explicitly selected “Simpan lokal saja” after reviewing the request for one additional corrective push. Code commit e64be71b6f58735025076ea58391e45dcc9cf5b9 remains local; do not push or run new-source GitHub workflows without new explicit authorization. PR #2 stays on cbc0e3b0382ef88266b6fce4e66a0ba70f32c2a0. Published Governance/CI PASS, full System/UAT FAIL on the old badge selector; do not claim GitHub green for the local correction.

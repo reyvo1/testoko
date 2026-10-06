@@ -322,3 +322,7 @@ F10 is no longer a legitimate PARTIAL capability at source level: explainable fo
 
 P5 remains `IMPLEMENTED_RUNTIME_PENDING`, `humanStage20=PENDING`, and `productReady=false`. The next authority is exact-source GitHub UAT: dependency install/build, PostgreSQL authenticated multi-role mutation/replay/concurrency, four-Next production/browser matrix, then explicit Human Stage-20. No source-only result may promote product readiness.
 
+
+## 2026-10-07 corrective publication authorization
+
+Operator subsequently instructed **ok push saja**, superseding the prior local-only disposition for this correction. Publish the verified source and checkpoint to existing draft PR #2 and run four exact-commit GitHub gates. Source/local evidence unchanged; GitHub outcome pending. This does not authorize merge or production release and does not close human/provider acceptance.

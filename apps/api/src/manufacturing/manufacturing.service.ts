@@ -5,6 +5,7 @@ import { AuthUser } from '../auth/auth.types';
 import { consumeAvailableLocationStock, depositLocationStock } from '../common/location-inventory';
 import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { readRetailPolicy } from '../common/retail-policy';
 import { serializableTx } from '../common/serializable-tx';
 import { PrismaService } from '../prisma/prisma.service';
 import { CompleteProductionOrderDto, CreateProductionOrderDto, CreateProductionRecipeDto } from './dto/manufacturing.dto';
@@ -139,6 +140,7 @@ export class ManufacturingService {
       if (!order) throw new NotFoundException('Production order tidak ditemukan pada branch aktif.');
       if (order.status !== 'IN_PROGRESS') throw new BadRequestException('Production order harus IN_PROGRESS sebelum diselesaikan.');
       const output = order.recipe.outputProduct;
+      if ([output, ...order.components.map((component) => component.product)].some((product) => readRetailPolicy(product.metadata).kitRecipeId)) throw new BadRequestException('Kit virtual dikonsumsi saat penjualan; produksi memakai SKU fisik terpisah.');
       const tracked = [output, ...order.components.map((component) => component.product)].filter((product) => product.trackBatch || product.trackExpiry || product.trackSerial);
       if (tracked.length) throw new BadRequestException(`Produksi batch/expiry/serial belum boleh diposting tanpa traceability produksi: ${tracked.map((product) => product.sku).join(', ')}.`);
       const actualOutputQty = dto.actualOutputQty ?? order.plannedOutputQty;

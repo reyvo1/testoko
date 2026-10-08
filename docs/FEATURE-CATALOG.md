@@ -45,6 +45,7 @@
 | staff_memo | on | implemented-runtime-pending | Memo pribadi database-backed untuk seluruh role staf pada Admin, POS, dan Employee Portal |
 | dynamic_product_uom | on | implemented-runtime-pending | Base unit dari master UNIT aktif + kemasan ProductUnit dinamis tanpa fallback PCS runtime |
 | retail_transaction_completion | on | implemented-runtime-pending | Dynamic tender/payment authority, exact split tender, customer on-account AR, tender-safe refund and accounting |
+| retail_weight_media_kit | opt-in | implemented-runtime-pending | Weighted barcode/base-unit quantities, product gallery, BOM kit inventory snapshots and historical returns |
 
 ## Enterprise operations
 

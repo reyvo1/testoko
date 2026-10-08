@@ -3,6 +3,7 @@ import { authFetch } from '../auth-fetch';
 // Modul Operations Control — inspeksi, gate pass, approval konfirmasi.
 import { useEffect, useState } from 'react';
 import { usePermissions } from '../permissions';
+import { canAccessApiPath } from '../../../../packages/contracts/src/api-access';
 import { readOptional } from '../read-path-contract';
 import { Panel, Table, StatusChip, tanggal } from '../ui';
 
@@ -45,8 +46,8 @@ export default function OperationsControlView({ token, mode = 'inspections' }: {
   async function refresh() {
     try {
       const [ins, gp, policyRows] = await Promise.all([
-        api<{ items?: Inspection[] } | Inspection[]>('/operations-control/inspections?limit=15'),
-        api<{ items?: GatePass[] } | GatePass[]>('/operations-control/gate-passes?limit=15'),
+        readOptional(identity, '/operations-control/inspections?limit=15', [] as Inspection[], p => api<{ items?: Inspection[] } | Inspection[]>(p)),
+        readOptional(identity, '/operations-control/gate-passes?limit=15', [] as GatePass[], p => api<{ items?: GatePass[] } | GatePass[]>(p)),
         // Policies are a separate capability (operations.policy.view) that the WAREHOUSE role
         // does not hold, and the workspace gate is operations|inspection|gate|fleet|shipment. In a
         // bare Promise.all that one 403 discarded the inspection queue and the gate-pass log too.
@@ -237,16 +238,16 @@ export default function OperationsControlView({ token, mode = 'inspections' }: {
               tanggal(i.createdAt),
               <StatusChip status={i.status} />,
               <div className="rowActions">
-                {['GoodsReceipt','Shipment','SaleReturn','OrderReturn','PurchaseReturn'].includes(i.sourceType) && i.status === 'IN_PROGRESS' ? (canAll('inspection.record') ? <button type="button" className="secondary" onClick={() => void completeInspection(i)}>Finalisasi</button> : null) : null}
+                {['GoodsReceipt','Shipment','SaleReturn','OrderReturn','PurchaseReturn'].includes(i.sourceType) && i.status === 'IN_PROGRESS' ? (canAll('inspection.record') && canAccessApiPath(identity, `/operations-control/inspections/${i.id}/complete`, 'POST') ? <button type="button" className="secondary" onClick={() => void completeInspection(i)}>Finalisasi</button> : null) : null}
                 {['GoodsReceipt','Shipment','SaleReturn','OrderReturn','PurchaseReturn'].includes(i.sourceType) && ['PASSED','PARTIAL','FAILED','REVIEW_REQUIRED'].includes(i.status) && i.status === 'FAILED' && <div className="stack">
                   <input placeholder="Alasan penolakan (opsional, default diisi sistem)" value={rejectReasons[i.id] ?? ''} onChange={(event) => setRejectReasons((current) => ({ ...current, [i.id]: event.target.value }))} />
                   <div className="rowActions">
-                    {canAll('inspection.approve') && <><button type="button" className="dangerButton" onClick={() => void reviewInspection(i, 'reject')}>Tolak hasil</button>
+                    {canAll('inspection.approve') && canAccessApiPath(identity, `/operations-control/inspections/${i.id}/approve`, 'POST') && <><button type="button" className="dangerButton" onClick={() => void reviewInspection(i, 'reject')}>Tolak hasil</button>
                     <button type="button" className="secondary" onClick={() => void reviewInspection(i, 'approve')}>Setujui</button></>}
                   </div>
                 </div>}
-                {['GoodsReceipt','Shipment','SaleReturn','OrderReturn','PurchaseReturn'].includes(i.sourceType) && ['PASSED','PARTIAL','REVIEW_REQUIRED'].includes(i.status) && <button type="button" className="secondary" onClick={() => void reviewInspection(i, 'approve')}>Setujui</button>}
-                {['PASSED','PARTIAL','APPROVED'].includes(i.status) ? (canAll('operations.confirm') ? <button type="button" className="secondary" onClick={() => void confirmOperation(i)}>Konfirmasi operasi</button> : null) : null}
+                {['GoodsReceipt','Shipment','SaleReturn','OrderReturn','PurchaseReturn'].includes(i.sourceType) && ['PASSED','PARTIAL','REVIEW_REQUIRED'].includes(i.status) && canAll('inspection.approve') && canAccessApiPath(identity, `/operations-control/inspections/${i.id}/approve`, 'POST') && <button type="button" className="secondary" onClick={() => void reviewInspection(i, 'approve')}>Setujui</button>}
+                {['PASSED','PARTIAL','APPROVED'].includes(i.status) ? (canAll('operations.confirm') && canAccessApiPath(identity, '/operations-control/confirmations', 'POST') ? <button type="button" className="secondary" onClick={() => void confirmOperation(i)}>Konfirmasi operasi</button> : null) : null}
                 {!['IN_PROGRESS','PASSED','PARTIAL','FAILED','REVIEW_REQUIRED','APPROVED'].includes(i.status) && <span>-</span>}
               </div>,
             ])}
@@ -254,7 +255,7 @@ export default function OperationsControlView({ token, mode = 'inspections' }: {
           />
         </Panel>}
         {mode === 'inspections' && <Panel eyebrow="POLICY" title="Policy Operasional" badge={`${policies.length} policy`}>
-          {canAll('operations.policy.manage') && <form className="formStack" onSubmit={savePolicy}>
+          {canAll('operations.policy.manage') && canAccessApiPath(identity, '/operations-control/policies', 'POST') && <form className="formStack" onSubmit={savePolicy}>
             <div className="formGrid">
               <label>Kode<input required value={policyForm.code} onChange={(e) => setPolicyForm({ ...policyForm, code: e.target.value })} /></label>
               <label>Tipe operasi<select value={policyForm.operationType} onChange={(e) => setPolicyForm({ ...policyForm, operationType: e.target.value })}><option value="PURCHASE_RECEIPT">Purchase receipt</option><option value="ORDER_OUTBOUND">Order outbound</option><option value="PURCHASE_RETURN">Purchase return</option><option value="SALE_RETURN">Sale return</option></select></label>
@@ -307,15 +308,15 @@ export default function OperationsControlView({ token, mode = 'inspections' }: {
           <label>Scan barcode / SKU
             <input value={barcodeValue} onChange={(e) => setBarcodeValue(e.target.value)} placeholder="Scan atau ketik barcode" />
           </label>
-          <button type="button" className="secondary" onClick={() => void uploadBarcode()}>Simpan barcode</button>
+          {canAccessApiPath(identity, '/operations-control/inspections/_/evidence', 'POST') && <button type="button" className="secondary" onClick={() => void uploadBarcode()}>Simpan barcode</button>}
           <label className="sectionBlock">Foto evidence
             <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
           </label>
-          <button type="button" className="secondary" onClick={() => void uploadPhoto()}>Unggah foto</button>
+          {canAccessApiPath(identity, '/operations-control/inspections/_/evidence', 'POST') && <button type="button" className="secondary" onClick={() => void uploadPhoto()}>Unggah foto</button>}
           <small className="mutedText">Finalisasi inspeksi hanya dapat dilakukan bila policy evidence sudah terpenuhi.</small>
         </Panel>}
         {mode === 'evidence' && <Panel eyebrow="TEMPLATE" title="Template Inspeksi" badge="versioned">
-          {canAll('inspection.manage') && <form className="formStack" onSubmit={saveTemplate}>
+          {canAll('inspection.manage') && canAccessApiPath(identity, '/operations-control/inspection-templates', 'POST') && <form className="formStack" onSubmit={saveTemplate}>
             <div className="formGrid"><label>Kode template<input required value={templateForm.code} onChange={(e) => setTemplateForm({ ...templateForm, code: e.target.value })} /></label><label>Nama<input required value={templateForm.name} onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })} /></label></div>
             <div className="formGrid"><label>Jenis<select value={templateForm.type} onChange={(e) => setTemplateForm({ ...templateForm, type: e.target.value })}><option value="PURCHASE_INBOUND">Purchase inbound</option><option value="TRANSFER_INBOUND">Transfer inbound</option><option value="ORDER_OUTBOUND">Order outbound</option><option value="RETURN_INBOUND">Return inbound</option><option value="GATE_SECURITY">Gate security</option><option value="OTHER">Other</option></select></label><label>Berlaku untuk<input required value={templateForm.appliesTo} onChange={(e) => setTemplateForm({ ...templateForm, appliesTo: e.target.value })} /></label></div>
             <div className="formGrid"><label>Kode checklist<input required value={templateForm.itemCode} onChange={(e) => setTemplateForm({ ...templateForm, itemCode: e.target.value })} /></label><label>Label checklist<input required value={templateForm.itemLabel} onChange={(e) => setTemplateForm({ ...templateForm, itemLabel: e.target.value })} /></label></div>
@@ -331,7 +332,7 @@ export default function OperationsControlView({ token, mode = 'inspections' }: {
               g.direction ?? '-',
               tanggal(g.createdAt),
               <StatusChip status={g.status ?? '-'} />,
-              <div className="rowActions">{g.status === 'DRAFT' && (canAll('gate_pass.approve') ? <button type="button" className="secondary" onClick={() => void approveGatePass(g)}>Setujui</button> : null)}{g.status === 'APPROVED' && (canAll('gate_pass.manage') ? <button type="button" onClick={() => void recordGateMovement(g)}>Catat {g.direction === 'INBOUND' ? 'masuk' : 'keluar'}</button> : null)}{['ENTERED','EXITED'].includes(g.status ?? '') && <span className="okText">Movement tercatat</span>}</div>,
+              <div className="rowActions">{g.status === 'DRAFT' && (canAll('gate_pass.approve') && canAccessApiPath(identity, `/operations-control/gate-passes/${g.id}/approve`, 'POST') ? <button type="button" className="secondary" onClick={() => void approveGatePass(g)}>Setujui</button> : null)}{g.status === 'APPROVED' && (canAll('gate_pass.manage') && canAccessApiPath(identity, `/operations-control/gate-passes/${g.id}/movement`, 'POST') ? <button type="button" onClick={() => void recordGateMovement(g)}>Catat {g.direction === 'INBOUND' ? 'masuk' : 'keluar'}</button> : null)}{['ENTERED','EXITED'].includes(g.status ?? '') && <span className="okText">Movement tercatat</span>}</div>,
             ])}
             empty="Belum ada gate pass."
           />

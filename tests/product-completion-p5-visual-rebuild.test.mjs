@@ -30,7 +30,7 @@ test('P5 screenshot matrix still covers all four products at desktop tablet and 
   assert.equal(visualMap.admin.representativeContextualRoutes.length,Math.max(0,navigationRows.length-1));
   assert.ok(visualMap.admin.primaryWorkspaces.some((item)=>item.route==='/manufacturing'&&item.label==='Produksi'));
   assert.ok(visualMap.admin.representativeContextualRoutes.includes('/manufacturing/recipes'));
-  assert.equal(visualMap.pos.views.length,4);
+  assert.deepEqual(visualMap.pos.views,['sale','shift','returns','sync','ppob']);
   assert.equal(visualMap.storefront.views.length,5);
   assert.equal(visualMap.employeePortal.views.length,7);
   assert.deepEqual([visualMap.requirements.desktopWidth,visualMap.requirements.tabletWidth,visualMap.requirements.mobileWidth],[1440,1024,390]);

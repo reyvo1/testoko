@@ -113,7 +113,8 @@
       "sale",
       "shift",
       "returns",
-      "sync"
+      "sync",
+      "ppob"
     ]
   },
   "storefront": {

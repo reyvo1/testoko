@@ -1,3 +1,5 @@
+import { isPersonnelSelfOnly } from '../../../packages/contracts/personnel-authority.cjs';
+import { canAccessApiPath } from '../../../packages/contracts/src/api-access';
 import type { ComponentType } from 'react';
 import {
   Activity,
@@ -110,6 +112,9 @@ export function resolveAdminNavigation(manifest: AdminRuntimeManifest | null, id
   const overrides = readOverrides(manifest);
   const visible = ADMIN_WORKSPACES.filter((workspace) => {
     const override = overrides.get(workspace.route);
+    if(isPersonnelSelfOnly(identity)&&workspace.key==='people')return false;
+    if(isPersonnelSelfOnly(identity)&&workspace.key==='integrations'&&!identity?.permissions.some(permission=>['integration','notification','loyalty','promotion','digital_service'].some(prefix=>permission.startsWith(`${prefix}.`))))return false;
+    if(workspace.key==='assets-fleet'&&!['/assets','/assets/maintenances','/assets/maintenance-catalog','/fleet/vehicles','/fleet/trips'].some(path=>canAccessApiPath(identity,path)))return false;
     return override?.hidden !== true && hasPermission(identity, workspace);
   }).map((workspace) => {
     const override = overrides.get(workspace.route);

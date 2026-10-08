@@ -3,7 +3,7 @@ import { clearLegacyOfflineKeys, readSnapshot, writeSnapshot, type StoreOutcome 
 export type OfflineTenderMethod = {
   code: string;
   name: string;
-  kind: 'CASH' | 'SETTLEMENT';
+  kind: 'CASH' | 'SETTLEMENT' | 'DEPOSIT';
   settlementAccountCode: string;
   settlementBehavior: 'IMMEDIATE' | 'CLEARING';
   requiresProvider: boolean;

@@ -78,7 +78,11 @@ function requireFile(relative, id) {
 
 function startService(name, workspace) {
   const out = fs.createWriteStream(path.join(logDir, `${name}.log`), { flags: 'w' });
-  const child = spawnNpm(['run', 'start', '-w', workspace], {
+  const frontendUrlKey = { storefront:'T360_STOREFRONT_URL', admin:'T360_ADMIN_URL', pos:'T360_POS_URL', employee:'T360_EMPLOYEE_URL' }[name];
+  const frontendUrl = frontendUrlKey ? runtimeEnv[frontendUrlKey] : undefined;
+  const args = ['run','start','-w',workspace];
+  if (frontendUrl) { const url = new URL(frontendUrl); if (!['localhost','127.0.0.1','[::1]'].includes(url.hostname)) throw new Error('Built Browser TEST services require a loopback URL.'); args.push('--','-p',url.port || (url.protocol === 'https:' ? '443' : '80')); }
+  const child = spawnNpm(args, {
     cwd: root, env: runtimeEnv, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32',
   });
   child.stdout.pipe(out); child.stderr.pipe(out);
@@ -177,7 +181,11 @@ async function main() {
     evidence.error = error instanceof Error ? error.message : String(error);
     throw error;
   } finally {
+    // Preserve the current diagnostic even if service shutdown receives a signal.
+    evidence.sourceIdentityAfter ||= sourceFingerprint(root);
+    fs.writeFileSync(wrapperEvidencePath, JSON.stringify({ ...evidence, status: 'FAIL', runtimeStatus: evidence.status, cleanupStatus: 'RUNNING' }, null, 2) + '\n');
     await stopAll();
+    evidence.cleanupStatus = 'PASS';
     evidence.sourceIdentityAfter ||= sourceFingerprint(root);
     evidence.finishedAt = new Date().toISOString();
     fs.writeFileSync(wrapperEvidencePath, JSON.stringify(evidence, null, 2) + '\n');

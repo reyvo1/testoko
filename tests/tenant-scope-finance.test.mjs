@@ -30,7 +30,13 @@ test('legacy finance tenant fields are optional and cannot become tenant authori
 
 test('finance transaction list and mutations remain company and branch scoped', () => {
   assert.match(financeService, /where: \{ id, companyId: scope\.companyId, branchId: scope\.branchId \}/);
-  assert.match(financeService, /companyId: scope\.companyId,\s*branchId: scope\.branchId,\s*\.\.\.\(type/);
+  const start = financeService.indexOf('  async list(');
+  const end = financeService.indexOf('\n  async ', start + 1);
+  assert.ok(start >= 0 && end > start, 'canonical Finance list must exist');
+  const list = financeService.slice(start, end);
+  assert.match(list, /where: \{\s*companyId: scope\.companyId,\s*branchId: scope\.branchId/);
+  assert.match(list, /\.\.\.\(type \? \{ type \} : \{\}\)/);
+  assert.match(list, /createdById: user\.sub/, 'Admin ownership must use the authenticated actor');
   assert.match(financeService, /scopedTransaction\(tx, user, scope, id\)/);
   assert.doesNotMatch(financeService, /findUnique\(\{ where: \{ id \} \}\)/);
 });

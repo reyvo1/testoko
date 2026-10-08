@@ -6,11 +6,15 @@ import { AccountingCoreService, OperationalTaxLineInput } from '../accounting-co
 import { AuthUser } from '../auth/auth.types';
 import { nextDocumentNumber } from '../common/numbering';
 import { consumeLocationReservations, releaseLocationReservations, reserveLocationStock } from '../common/location-inventory';
+import { retailAuthority, retailFeature, retailScope } from '../common/retail-feature';
+import { normalizeTenderPolicy, tenderPolicyMetadata, TenderPolicy } from '../common/tender-policy';
+import { CreateStaffOrderDto, StaffOrderCashDto } from './dto/staff-order.dto';
 import { serializableTx } from '../common/serializable-tx';
 import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { resolveLoyaltyTier } from '../common/loyalty-tier';
-import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { decodeCursor, decodeDateIdCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { resolveSellingUnitLine } from '../common/transaction-uom';
+import { inventoryLines, kitUnitCost, resolveKitSnapshot } from '../common/retail-kit';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { StorefrontCustomerService } from '../storefront-customer/storefront-customer.service';
@@ -135,7 +139,7 @@ export class OrdersService {
     });
   }
 
-  async create(dto: CreateOrderDto, headerIdempotencyKey?: string, customerSessionToken?: string) {
+  async create(dto: CreateOrderDto, headerIdempotencyKey?: string, customerSessionToken?: string, internal?: { user: AuthUser; customerId: string; shiftId: string; existingTx: Prisma.TransactionClient }) {
     if (!dto.items.length) throw new BadRequestException('Pesanan harus memiliki barang.');
     const bodyIdempotencyKey = dto.idempotencyKey?.trim();
     const headerKey = headerIdempotencyKey?.trim();
@@ -148,7 +152,7 @@ export class OrdersService {
     }
     if (idemKey.length > 200) throw new BadRequestException('Idempotency key maksimal 200 karakter.');
     const branchCode = this.normalizeBranchCode(dto.branchCode);
-    const customerIdentity = customerSessionToken
+    let customerIdentity = customerSessionToken
       ? await this.storefrontCustomers.authenticate(branchCode, customerSessionToken)
       : null;
 
@@ -161,9 +165,16 @@ export class OrdersService {
       if (customerIdentity && (customerIdentity.companyId !== branch.companyId || customerIdentity.branchId !== branch.id)) {
         throw new ForbiddenException('Sesi pelanggan tidak berlaku pada cabang storefront ini.');
       }
-      const scopeKey = `order:create:${branch.id}:${customerIdentity?.customerId ?? 'guest'}`;
+      if (internal) {
+        const scope = retailScope(internal.user);
+        if (scope.branchId !== branch.id || scope.companyId !== branch.companyId) throw new ForbiddenException('Cabang order staf tidak sesuai konteks.');
+        const customer = await tx.customer.findFirst({ where: { id: internal.customerId, companyId: scope.companyId } });
+        if (!customer) throw new NotFoundException('Pelanggan tidak tersedia.');
+        customerIdentity = { ...scope, customerId: customer.id, customer };
+      }
+      const scopeKey = internal ? `order:staff:${branch.id}:${internal.user.sub}` : `order:create:${branch.id}:${customerIdentity?.customerId ?? 'guest'}`;
       const { idempotencyKey: _bodyKey, ...idempotencyPayload } = dto;
-      const gate = await beginIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey, payload: idempotencyPayload });
+      const gate = await beginIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey, payload: internal ? { ...idempotencyPayload, customerId: internal.customerId, staffId: internal.user.sub, shiftId: internal.shiftId } : idempotencyPayload });
       if (gate.replay && gate.status === 'COMPLETED') return gate.response as never;
 
       const warehouse = dto.warehouseId
@@ -264,6 +275,7 @@ export class OrdersService {
         product: (typeof products)[number];
         line: Prisma.Decimal;
         conversion: Awaited<ReturnType<typeof resolveSellingUnitLine>>;
+        inventoryComponents: Awaited<ReturnType<typeof resolveKitSnapshot>>;
       }>;
       const prepared = [] as Array<{
         productId: string;
@@ -281,6 +293,7 @@ export class OrdersService {
         taxAmount: Prisma.Decimal;
         grossSubtotal: Prisma.Decimal;
         taxCodeId?: string;
+        inventoryComponents?: Prisma.InputJsonValue;
       }>;
 
       for (const input of dto.items) {
@@ -293,17 +306,14 @@ export class OrdersService {
           customerIdentity?.customer.customerType ?? 'RETAIL',
           transactionAt,
         );
-        const inventory = await tx.inventory.findUnique({
-          where: { warehouseId_productId: { warehouseId: warehouse.id, productId: product.id } },
-        });
-        if ((!inventory || inventory.available < conversion.baseQuantity) && !product.allowNegativeStock) {
-          throw new BadRequestException(
-            `Stok ${product.name} tidak mencukupi untuk ${conversion.unitQuantity} ${conversion.unitCode} (${conversion.baseQuantity} ${product.unit}).`,
-          );
+        const inventoryComponents = await resolveKitSnapshot(tx, branch.companyId, product);
+        for (const stockLine of inventoryLines({ productId: product.id, quantity: conversion.baseQuantity, inventoryComponents })) {
+          const inventory = await tx.inventory.findUnique({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId: stockLine.productId } } });
+          if ((!inventory || inventory.available < stockLine.quantity) && (inventoryComponents || !product.allowNegativeStock)) throw new BadRequestException(`Stok ${product.name}/komponen tidak mencukupi.`);
         }
         const line = conversion.sellingUnitPrice.mul(conversion.unitQuantity);
         rawSubtotal = rawSubtotal.add(line);
-        raw.push({ input, product, line, conversion });
+        raw.push({ input, product, line, conversion, inventoryComponents });
       }
 
       const promotion = await this.promotions.resolveSalePromotion(
@@ -353,7 +363,8 @@ export class OrdersService {
           sourceBarcode: item.conversion.sourceBarcode,
           quantity: item.conversion.baseQuantity,
           unitPrice: item.conversion.sellingUnitPrice,
-          unitCost: item.product.costPrice,
+          unitCost: item.inventoryComponents ? kitUnitCost(item.inventoryComponents) : item.product.costPrice,
+          ...(item.inventoryComponents ? { inventoryComponents: item.inventoryComponents as unknown as Prisma.InputJsonValue } : {}),
           subtotal: calc.gross,
           netSubtotal: calc.net,
           taxAmount: calc.tax,
@@ -370,6 +381,7 @@ export class OrdersService {
           branchId: branch.id,
           warehouseId: warehouse.id,
           customerId: customerIdentity?.customerId,
+          ...(internal ? { createdById: internal.user.sub, cashierShiftId: internal.shiftId } : {}),
           customerName: resolvedCustomerName,
           customerEmail: customerIdentity?.customer.email ?? dto.customerEmail,
           customerPhone: resolvedCustomerPhone,
@@ -393,7 +405,10 @@ export class OrdersService {
       }
 
       const reservationQuantities = new Map<string, number>();
-      for (const item of prepared) reservationQuantities.set(item.productId, (reservationQuantities.get(item.productId) ?? 0) + item.quantity);
+      for (const item of prepared) {
+        if (!item.inventoryComponents) reservationQuantities.set(item.productId, (reservationQuantities.get(item.productId) ?? 0) + item.quantity);
+        else for (const stockLine of inventoryLines(item)) reservationQuantities.set(stockLine.productId, (reservationQuantities.get(stockLine.productId) ?? 0) + stockLine.quantity);
+      }
       for (const [productId, quantity] of reservationQuantities) {
         await reserveLocationStock(tx, { warehouseId: warehouse.id, productId, quantity, sourceType: 'Order', sourceId: order.id });
         const reserved_ = await tx.inventory.updateMany({
@@ -424,7 +439,8 @@ export class OrdersService {
       await tx.auditLog.create({
         data: {
           companyId: branch.companyId,
-          action: 'CREATE_PUBLIC_ORDER',
+          action: internal ? 'CREATE_STAFF_ORDER' : 'CREATE_PUBLIC_ORDER',
+          ...(internal ? { userId: internal.user.sub } : {}),
           entityType: 'Order',
           entityId: order.id,
           payload: { branchId: branch.id, warehouseId: warehouse.id, fulfillmentType, shippingMethodCode: selectedCourier.code, shippingCost, promo: promotion.rule ? { ...promotion.rule, discount: promoDiscount.toFixed(2) } : null },
@@ -435,9 +451,71 @@ export class OrdersService {
         where: { id: order.id },
         include: { items: { include: { product: true } }, payments: true },
       });
-      const publicResult = this.withAccessToken(result);
+      const publicResult = internal ? { id: result.id, number: result.number, status: result.status, total: result.total, fulfillmentType: result.fulfillmentType } : this.withAccessToken(result);
       await completeIdempotent(tx, { companyId: branch.companyId, scope: scopeKey, key: idemKey, resourceType: 'Order', resourceId: order.id, response: publicResult });
       return publicResult;
+    }, { existingTx: internal?.existingTx });
+  }
+
+  async staffOrders(user: AuthUser, limitValue?: string, cursorValue?: string) {
+    retailAuthority(user,['SUPER_ADMIN','OWNER','ADMIN','CASHIER'],['sale.create']); const scope = retailScope(user);const limit = parsePageLimit(limitValue);const cursor = decodeDateIdCursor(cursorValue);
+    const rows = await this.prisma.order.findMany({ where:{ branchId:scope.branchId,createdById:user.sub,status:'PENDING_PAYMENT',branch:{companyId:scope.companyId},...(cursor ? {OR:[{createdAt:{lt:new Date(cursor.createdAt)}},{createdAt:new Date(cursor.createdAt),id:{lt:cursor.id}}]} : {}) },select:{id:true,number:true,status:true,total:true,cashierShiftId:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'desc'}],take:limit+1 });
+    return toCursorPage(rows,limit,row=>({createdAt:row.createdAt.toISOString(),id:row.id}));
+  }
+
+  async cancelStaff(id: string, dto: CancelOrderDto, user: AuthUser) {
+    retailAuthority(user,['SUPER_ADMIN','OWNER','ADMIN','CASHIER'],['sale.create']);const scope = retailScope(user);
+    if (!await this.prisma.order.findFirst({where:{id,branchId:scope.branchId,createdById:user.sub,branch:{companyId:scope.companyId}},select:{id:true}})) throw new NotFoundException('Order kasir tidak tersedia.');
+    // Canonical cancellation is an idempotent state transition and releases reservations atomically.
+    const row = await this.cancel(id,dto,user);return {id:row.id,number:row.number,status:row.status,total:row.total};
+  }
+
+  async createStaff(dto: CreateStaffOrderDto, user: AuthUser) {
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','CASHIER'], ['sale.create']);
+    const scope = retailScope(user);
+    return serializableTx(this.prisma, async (tx) => {
+      // The nested canonical create owns replay; wrapper validates current authority before lookup.
+      const createScope = `order:staff-orchestration:${scope.branchId}:${user.sub}`;
+      const gate = await beginIdempotent(tx, { companyId: scope.companyId, scope: createScope, key: dto.operationKey, payload: dto });
+      if (gate.replay && gate.status === 'COMPLETED') return gate.response;
+      const branch = await tx.branch.findFirst({ where: { id: scope.branchId, companyId: scope.companyId, isActive: true }, select: { code: true } });
+      if (!branch) throw new NotFoundException('Cabang tidak tersedia.');
+      const shift = await tx.cashierShift.findFirst({ where: { id: dto.cashierShiftId, userId: user.sub, status: 'OPEN', user: { branchId: scope.branchId } } });
+      if (!shift) throw new BadRequestException('Shift kasir sendiri harus terbuka.');
+      await retailFeature(tx, scope, 'pos_ship_later');
+      const result = await this.create({ branchCode: branch.code, customerName: '', warehouseId: dto.warehouseId, fulfillmentType: dto.fulfillmentType, address: dto.address, shippingMethodCode: dto.shippingMethodCode, items: dto.items, idempotencyKey: dto.operationKey }, undefined, undefined, { user, customerId: dto.customerId, shiftId: shift.id, existingTx: tx });
+      await completeIdempotent(tx, { companyId: scope.companyId, scope: createScope, key: dto.operationKey, resourceType: 'Order', response: result });
+      return result;
+    });
+  }
+
+  async staffCash(id: string, dto: StaffOrderCashDto, user: AuthUser) {
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','CASHIER'], ['sale.create']);
+    const scope = retailScope(user);
+    return serializableTx(this.prisma, async (tx) => {
+      const keyScope = `order:staff-cash:${scope.branchId}:${user.sub}`;
+      const gate = await beginIdempotent(tx, { companyId: scope.companyId, scope: keyScope, key: dto.operationKey, payload: { id, ...dto } });
+      if (gate.replay && gate.status === 'COMPLETED') return gate.response;
+      await retailFeature(tx, scope, 'pos_ship_later');
+      const order = await tx.order.findFirst({ where: { id, branchId: scope.branchId, createdById: user.sub, warehouse: { branch: { companyId: scope.companyId } } }, include: { payments: true, warehouse: { include: { branch: true } } } });
+      if (!order) throw new NotFoundException('Order kasir tidak tersedia.');
+      const shift = await tx.cashierShift.findFirst({ where: { id: order.cashierShiftId ?? '', userId: user.sub, status: 'OPEN' } });
+      if (!shift) throw new BadRequestException('Shift asal order harus terbuka.');
+      if (!['DRAFT','PENDING_PAYMENT'].includes(order.status) || order.payments.length !== 1 || order.payments[0].status !== 'PENDING') throw new BadRequestException('Pembayaran order telah berubah.');
+      if (!new Prisma.Decimal(dto.expectedAmount).equals(order.total)) throw new BadRequestException('Total order berubah; periksa jumlah sebelum menerima kas.');
+      const references = await tx.masterReference.findMany({ where: { companyId: scope.companyId, type: 'PAYMENT_METHOD', code: dto.tenderCode, isActive: true, OR: [{ branchId: scope.branchId }, { branchId: null }] }, take: 3 });
+      if (references.filter(row => row.branchId === scope.branchId).length > 1 || references.filter(row => row.branchId === null).length > 1) throw new BadRequestException('Konfigurasi tender ambigu.');
+      const reference = references.find(row => row.branchId === scope.branchId) ?? references.find(row => row.branchId === null);
+      if (!reference) throw new BadRequestException('Tender kas tidak tersedia.');
+      const policy = normalizeTenderPolicy(reference.code, reference.metadata);
+      if (policy.kind !== 'CASH' || policy.feeRatePercent || policy.requiresProvider || policy.requiresReference || policy.settlementBehavior !== 'IMMEDIATE') throw new BadRequestException('Order kasir mendukung kas immediate tanpa fee/provider.');
+      const account = await tx.account.findFirst({ where: { branchId: scope.branchId, code: policy.settlementAccountCode, type: 'ASSET', isActive: true } });
+      if (!account) throw new BadRequestException('Akun settlement kas tidak tersedia.');
+      await this.postPrepayment(tx, order, order.payments[0], reference.code, undefined, undefined, { code: reference.code, name: reference.name, policy });
+      const response = { id: order.id, number: order.number, status: 'PAID', total: order.total.toFixed(2) };
+      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'POST_STAFF_ORDER_CASH', entityType: 'Order', entityId: order.id, payload: { cashierShiftId: shift.id, tenderCode: reference.code } } });
+      await completeIdempotent(tx, { companyId: scope.companyId, scope: keyScope, key: dto.operationKey, resourceType: 'Order', resourceId: order.id, response });
+      return response;
     });
   }
 
@@ -540,6 +618,7 @@ export class OrdersService {
     paymentMethod: string,
     provider?: string,
     externalRef?: string,
+    tender?: { code: string; name: string; policy: TenderPolicy },
   ) {
     const companyId = order.warehouse.branch.companyId as string;
     const existing = await tx.accountingEvent.findUnique({
@@ -553,12 +632,12 @@ export class OrdersService {
       sourceId: payment.id,
       idempotencyKey: `order-prepayment:${order.id}`,
       amounts: { gross: order.total, settlement: order.total, customerAdvance: order.total },
-      accountCodes: { settlement: '1102', customerAdvance: '2105' },
+      accountCodes: { settlement: tender?.policy.settlementAccountCode ?? '1102', customerAdvance: '2105' },
       context: { orderId: order.id, paymentId: payment.id, paymentMethod, provider, externalRef },
     });
     await tx.payment.update({
       where: { id: payment.id },
-      data: { method: paymentMethod, provider, externalRef, status: 'PAID', paidAt: new Date(), accountingEventId: event.id },
+      data: { method: paymentMethod, provider, externalRef, ...(tender ? { methodName: tender.name, methodSnapshot: { version: 1, code: tender.code, name: tender.name, policy: tenderPolicyMetadata(tender.policy) }, settlementAccountCode: tender.policy.settlementAccountCode, settlementBehavior: tender.policy.settlementBehavior } : {}), status: 'PAID', paidAt: new Date(), accountingEventId: event.id },
     });
     await tx.order.update({ where: { id: order.id }, data: { status: 'PAID' } });
     await this.ensureOutboundWorkflow(tx, order.id);
@@ -838,9 +917,9 @@ export class OrdersService {
       const costTotal = order.items.reduce((sum, item) => sum.add(new Prisma.Decimal(item.unitCost).mul(item.quantity)), new Prisma.Decimal(0));
       const taxGroups = new Map<string, { base: Prisma.Decimal; tax: Prisma.Decimal }>();
       const fulfillmentQuantities = new Map<string, { quantity: number; productName: string }>();
-      for (const item of order.items) {
-        const current = fulfillmentQuantities.get(item.productId);
-        fulfillmentQuantities.set(item.productId, { quantity: (current?.quantity ?? 0) + item.quantity, productName: item.product.name });
+      for (const item of order.items) for (const stockLine of inventoryLines(item)) {
+        const current = fulfillmentQuantities.get(stockLine.productId);
+        fulfillmentQuantities.set(stockLine.productId, { quantity: (current?.quantity ?? 0) + stockLine.quantity, productName: item.product.name });
       }
       for (const [productId, value] of fulfillmentQuantities) {
         const allocations = await consumeLocationReservations(tx, { sourceType: 'Order', sourceId: order.id, warehouseId: order.warehouseId, productId, quantity: value.quantity });
@@ -856,8 +935,8 @@ export class OrdersService {
         } });
       }
       for (const item of order.items) {
-        if (item.product.trackBatch) await this.consumeBatches(tx, order.warehouseId, item.productId, item.quantity);
-        if (item.product.trackSerial) {
+        if (!item.inventoryComponents && item.product.trackBatch) await this.consumeBatches(tx, order.warehouseId, item.productId, item.quantity);
+        if (!item.inventoryComponents && item.product.trackSerial) {
           const serials = await tx.inventorySerial.findMany({ where: { warehouseId: order.warehouseId, productId: item.productId, status: 'RESERVED', referenceType: 'Shipment', referenceId: shipment.id }, take: item.quantity + 1 });
           if (serials.length !== item.quantity) throw new BadRequestException(`Serial ${item.product.name} harus discan tepat ${item.quantity} unit sebelum shipment.`);
           const serialUpdate = await tx.inventorySerial.updateMany({ where: { id: { in: serials.map((row) => row.id) }, status: 'RESERVED', referenceType: 'Shipment', referenceId: shipment.id }, data: { status: 'SOLD' } });
@@ -897,8 +976,9 @@ export class OrdersService {
           companyId: scope.companyId, branchId: scope.branchId,
           number: await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'TAX_ORDER', prefix: 'TAX-ORD' }),
           documentType: 'SALES_TAX_DOCUMENT', status: 'ISSUED', sourceType: 'Order', sourceId: order.id,
+          counterpartyTaxId: order.customerId ? (await tx.customer.findFirst({where:{id:order.customerId,companyId:scope.companyId},select:{taxIdNumber:true}}))?.taxIdNumber : null,
           counterpartyName: order.customerName, netAmount: new Prisma.Decimal(order.subtotal).add(order.shippingCost), taxAmount: order.tax, grossAmount: order.total,
-          taxPeriod: new Date().toISOString().slice(0, 7),
+          issueDate: event.businessDate ?? new Date(), taxPeriod: event.taxTransactions?.[0]?.taxPeriod ?? null,
         } });
         taxDocumentId = doc.id;
       }
@@ -938,9 +1018,9 @@ export class OrdersService {
       if (claim.count !== 1) throw new BadRequestException('Status order berubah saat pembatalan. Muat ulang lalu coba lagi.');
 
       const releaseQuantities = new Map<string, { quantity: number; productName: string }>();
-      for (const item of order.items) {
-        const current = releaseQuantities.get(item.productId);
-        releaseQuantities.set(item.productId, { quantity: (current?.quantity ?? 0) + item.quantity, productName: item.product.name });
+      for (const item of order.items) for (const stockLine of inventoryLines(item)) {
+        const current = releaseQuantities.get(stockLine.productId);
+        releaseQuantities.set(stockLine.productId, { quantity: (current?.quantity ?? 0) + stockLine.quantity, productName: item.product.name });
       }
       for (const [productId, value] of releaseQuantities) {
         await releaseLocationReservations(tx, { sourceType: 'Order', sourceId: order.id, warehouseId: order.warehouseId, productId, quantity: value.quantity });

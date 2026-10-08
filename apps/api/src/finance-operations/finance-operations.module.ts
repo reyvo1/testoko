@@ -3,5 +3,6 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module'
 import { PrismaModule } from '../prisma/prisma.module';
 import { FinanceOperationsController } from './finance-operations.controller';
 import { FinanceOperationsService } from './finance-operations.service';
-@Module({ imports: [PrismaModule, AccountingCoreModule], controllers: [FinanceOperationsController], providers: [FinanceOperationsService] })
+import { CustomerDepositController } from './customer-deposit.controller';
+@Module({ imports: [PrismaModule, AccountingCoreModule], controllers: [FinanceOperationsController, CustomerDepositController], providers: [FinanceOperationsService] })
 export class FinanceOperationsModule {}

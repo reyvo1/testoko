@@ -1,9 +1,11 @@
 'use client';
+import { CustomerCampaignWorkspace } from './retail-customer-workspaces';
 import { authFetch } from '../auth-fetch';
 // Loyalty/devices/notifications dan storefront fulfillment.
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePermissions } from '../permissions';
+import { commerceOrderReadPath, readOptional } from '../read-path-contract';
 import { Panel, Table, StatusChip, TableSkeleton, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -98,7 +100,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
 
   async function loadCommerceSnapshot() {
     return Promise.all([
-      readJson<CursorResponse<StoreOrder>>(`${API}/orders?limit=20`, token),
+      readOptional(identity, commerceOrderReadPath(identity) ?? '/orders', [] as CursorResponse<StoreOrder>, p => readJson<CursorResponse<StoreOrder>>(`${API}${p}?limit=20`, token)),
       readJson<CursorResponse<Shipment>>(`${API}/shipments?limit=15`, token),
       readJson<PromoRule[]>(`${API}/promotions?limit=100`, token),
       readJson<ProductPage>(`${API}/products?limit=200`, token),
@@ -485,7 +487,8 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
           ])} empty="Belum ada device." />
           {credential && <div className="notice success"><strong>SECRET SEKALI TAMPIL</strong><br/>Key ID: <code>{credential.keyId}</code><br/>Secret: <code>{credential.secret}</code><br/><small>Simpan pada secure store node toko. Setelah panel ini ditutup, server tidak akan menampilkan secret lagi.</small></div>}
         </Panel>}
-        {(showProviders || showNotifications) && <section className="grid2">
+        {showNotifications && <CustomerCampaignWorkspace token={token} />}
+        {(showProviders || showNotifications) && <section className={showProviders && showNotifications ? 'grid2' : 'formStack'}>
           {showProviders && <Panel eyebrow="PROVIDER" title="WhatsApp / Telegram" badge={`${providers.length} connection`}>
             <div className="formStack">
               <label>Channel<select value={providerForm.channel} onChange={(e) => setProviderForm({ ...providerForm, channel: e.target.value, name: e.target.value === 'TELEGRAM' ? 'Telegram Utama' : 'WhatsApp Utama' })}>{['TELEGRAM','WHATSAPP'].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>

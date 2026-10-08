@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { runAllRoleBrowserUat } from './lib/all-role-browser-uat.mjs';
+import { runP6cdBrowserUat } from './lib/p6cd-browser-uat.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -250,20 +252,29 @@ class Cdp {
         }
       }
       if (!message.id || !this.pending.has(message.id)) return;
-      const { resolve, reject } = this.pending.get(message.id); this.pending.delete(message.id);
+      const { resolve, reject, timer } = this.pending.get(message.id); this.pending.delete(message.id); clearTimeout(timer);
       if (message.error) reject(new Error(message.error.message || 'CDP error')); else resolve(message.result);
     });
   }
   call(method, params = {}) {
     const id = ++this.id;
-    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.ws.send(JSON.stringify({ id, method, params })); });
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 30000);
+      this.pending.set(id, { resolve, reject, timer });
+      try { this.ws.send(JSON.stringify({ id, method, params })); }
+      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }
+    });
   }
   on(method, handler) {
     if (!this.listeners.has(method)) this.listeners.set(method, new Set());
     this.listeners.get(method).add(handler);
     return () => this.listeners.get(method)?.delete(handler);
   }
-  close() { try { this.ws.close(); } catch {} }
+  close() {
+    for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(new Error('CDP connection closed.')); }
+    this.pending.clear();
+    try { this.ws.close(); } catch {}
+  }
 }
 
 async function waitExpression(cdp, expression, label, timeoutMs = 30000) {
@@ -297,8 +308,8 @@ async function navigateAdminContext(cdp, route, label, timeoutMs = 45000) {
   await waitExpression(cdp, `document.readyState === 'complete' && location.pathname === ${routeJson} && document.querySelector('#admin-main')?.getAttribute('data-admin-workspace') === ${workspaceJson} && document.querySelector('#admin-main')?.getAttribute('data-admin-view') === ${viewJson} && Boolean(document.querySelector(${activeTabSelectorJson}))`, label, timeoutMs);
 }
 
-async function evaluateValue(cdp, expression) {
-  const result = await cdp.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+async function evaluateValue(cdp, expression, { userGesture = false } = {}) {
+  const result = await cdp.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, userGesture });
   if (result?.exceptionDetails) {
     // exceptionDetails.text untuk SyntaxError hanya berisi kata "Uncaught" - namaexception-nya
     // ada di exception.className/description. Tanpa ini, satu backslash atau satu kurung yang
@@ -1355,6 +1366,7 @@ await waitExpression(cdp, `(() => {
     // menuntut kontrol pembayaran muncul pada total 0. Klik produk berstok lewat UI POS agar
     // jalur React/cart yang sama dengan kasir benar-benar dieksekusi. Assertion tender di bawah
     // tetap exact terhadap seluruh master runtime; tidak ada fallback/skip bila kode hilang.
+    await waitExpression(cdp, `[...document.querySelectorAll('button.productMain')].some(node=>!node.disabled && node.getClientRects().length>0)`, 'P6A POS loaded catalog with available stock', 45000);
     const p6aPosCartFixture = await evaluateValue(cdp, `(() => {
       const target=[...document.querySelectorAll('button.productMain')].find((node)=>!node.disabled && node.getClientRects().length>0);
       if (!target) return { clicked:false, enabledProducts:0 };
@@ -1394,6 +1406,48 @@ await waitExpression(cdp, `(() => {
     })()`);
     if (!p6aCartCleared) throw new Error('P6A POS UAT gagal membersihkan keranjang setelah verifikasi tender.');
     await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6A POS cart cleanup');
+    const p6bHost = new URL(apiUrl).hostname;
+    if (!['localhost', '127.0.0.1', '::1'].includes(p6bHost) || !/(GITHUB|LOCAL_UAT|STAGING|CI)/i.test(evidence.environment)) throw new Error('P6B browser fixtures require explicit non-production loopback runtime.');
+    const p6bPost = async (route, body) => {
+      const response = await http(`${apiUrl}${route}`, { method: 'POST', headers: { ...staffAuthHeaders, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const parsed = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(`P6B browser fixture ${route} failed (HTTP ${response.status}).`);
+      return parsed;
+    };
+    const p6bStamp = `${Date.now()}-${process.pid}`;
+    const p6bKey = `22${String(Date.now()).slice(-5)}`;
+    const p6bBody = `${p6bKey}00002`;
+    const p6bSum = [...p6bBody].reduce((sum, digit, index) => sum + Number(digit) * (index % 2 ? 3 : 1), 0);
+    const p6bLabel = p6bBody + (10 - p6bSum % 10) % 10;
+    const p6bProduct = await p6bPost('/products', { sku: `P6B-UAT-${p6bStamp}`, name: `P6B Weighed UAT ${p6bStamp}`, unit: uatUnitCode, costPrice: 2, salePrice: 4, productType: 'PHYSICAL', isActive: true });
+    await p6bPost(`/products/${p6bProduct.id}/retail-config`, { operationKey: `p6b-browser-policy-${p6bStamp}`, policy: { weight: { barcodeKey: p6bKey, baseUnitsPerEncodedUnit: 1 }, gallery: [{ url: '/uat/retail-product.png', alt: 'P6B browser raster fixture' }] } });
+    const p6bWarehouseResponse = await http(`${apiUrl}/inventory/warehouses`, { headers: staffAuthHeaders });
+    const p6bWarehouses = await p6bWarehouseResponse.json();
+    const p6bWarehouse = p6bWarehouses.find((row) => row.branchId === loginBody.user.branchId && row.isDefault) ?? p6bWarehouses.find((row) => row.branchId === loginBody.user.branchId);
+    if (!p6bWarehouseResponse.ok || !p6bWarehouse?.id) throw new Error('P6B browser fixture requires active tenant warehouse.');
+    await ensureStockThroughReceiving(apiUrl, staffAuthHeaders, { product: p6bProduct, warehouse: p6bWarehouse, quantity: 4 });
+    evidence.checks.push({ id: 'P6B_BROWSER_WEIGHT_FIXTURE', status: 'PASS', productId: p6bProduct.id, stockPath: 'production-receiving', productionTouched: false });
+
+    await evaluateValue(cdp, `(() => { const input=document.querySelector('input.search'); if(!input)throw new Error('POS barcode input missing'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(p6bLabel)}); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    // Send Enter immediately: the scanner must resolve the server catalog even before
+    // the debounced search has answered. This catches products beyond the first page.
+    await cdp.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await cdp.call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await waitExpression(cdp, `(() => { const item=[...document.querySelectorAll('.items .item')].find((row)=>(row.textContent||'').includes(${JSON.stringify(p6bProduct.name)})); return Boolean(item && item.querySelector('.qty span')?.textContent==='2' && document.querySelector('.cart')?.getAttribute('data-quote-state')==='ready' && Number(document.querySelector('.cart')?.getAttribute('data-quote-total'))===8); })()`, 'P6B immediate scale scan and authoritative quote', 45000);
+    evidence.checks.push({ id: 'P6B_POS_WEIGHT_LABEL_RUNTIME', status: 'PASS', baseQuantity: 2, authoritativeQuoteTotal: 8, scannerSearchRace: 'server-resolved' });
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan')).click(); return true; })()`);
+    await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6B scanner cart cleanup');
+    await evaluateValue(cdp, `(() => { const input=document.querySelector('input.search'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(p6bProduct.sku)}); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await waitExpression(cdp, `(() => { const button=[...document.querySelectorAll('button.productMain')].find((node)=>(node.textContent||'').includes(${JSON.stringify(p6bProduct.name)})); const image=button?.querySelector('img'); return Boolean(button && !button.disabled && image?.complete && image.naturalWidth>0); })()`, 'P6B POS configured gallery raster', 45000);
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button.productMain')].find((node)=>(node.textContent||'').includes(${JSON.stringify(p6bProduct.name)})).click(); return true; })()`);
+    await waitExpression(cdp, `Boolean([...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Berat '+${JSON.stringify(p6bProduct.name)})))`, 'P6B manual weigh form');
+    await evaluateValue(cdp, `(() => { const label=[...document.querySelectorAll('label')].find((node)=>(node.textContent||'').includes('Berat '+${JSON.stringify(p6bProduct.name)})); const input=label.querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'3'); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'')==='Tambahkan berat').click(); return true; })()`);
+    await waitExpression(cdp, `Boolean(document.querySelector('.items .item .qty span')?.textContent==='3' && document.querySelector('.cart')?.getAttribute('data-quote-state')==='ready' && Number(document.querySelector('.cart')?.getAttribute('data-quote-total'))===12)`, 'P6B manual integer base weight quote', 45000);
+    evidence.checks.push({ id: 'P6B_POS_MANUAL_WEIGHT_GALLERY_RUNTIME', status: 'PASS', baseQuantity: 3, authoritativeQuoteTotal: 12, galleryRasterLoaded: true });
+    await evaluateValue(cdp, `(() => { [...document.querySelectorAll('button')].find((node)=>(node.textContent||'').includes('Kosongkan')).click(); const input=document.querySelector('input.search'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,''); input.dispatchEvent(new Event('input',{bubbles:true})); return true; })()`);
+    await waitExpression(cdp, `!document.querySelector('.items .item')`, 'P6B final cart cleanup');
+    await runP6cdBrowserUat({cdp,apiUrl,adminUrl,posUrl,storefrontUrl,token:loginBody.accessToken,unit:uatUnitCode,branchId:loginBody.user.branchId,branchCode:loginBody.user.branchCode ?? (await (await http(`${apiUrl}/platform/manifest`,{headers:staffAuthHeaders})).json()).branch.code,evidence,http,evaluateValue,waitExpression,navigateAdminContext,assertResponsiveMatrix,captureSuccessScreenshot,ensureStockThroughReceiving});
     evidence.checks.push({ id: 'STAFF_MEMO_POS_SURFACE', status: 'PASS' });
     const posWorkspaces = await clickAllNavigation(cdp, '.posWorkspaceNav button', 'POS workspace');
     evidence.checks.push({ id: 'POS_ALL_WORKSPACES_RUNTIME', status: 'PASS', workspaces: posWorkspaces, matrix: await assertResponsiveMatrix(cdp, 'POS'), screenshot: await captureSuccessScreenshot(cdp, 'pos-workspaces-success') });
@@ -1401,7 +1455,7 @@ await waitExpression(cdp, `(() => {
 
     const p5PosScreenshots = [];
     for (const view of p5VisualSurfaceMap.pos?.views || []) {
-      const clicked = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.posWorkspaceNav button')].find((node) => { const text=(node.textContent||'').toLowerCase(); return (${JSON.stringify(view)}==='sale'&&text.includes('penjualan'))||(${JSON.stringify(view)}==='shift'&&text.includes('shift'))||(${JSON.stringify(view)}==='returns'&&text.includes('retur'))||(${JSON.stringify(view)}==='sync'&&text.includes('sinkronisasi')); }); if(!target)return false; target.click(); return true; })()`);
+      const clicked = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.posWorkspaceNav button')].find((node) => { const text=(node.textContent||'').toLowerCase(); return (${JSON.stringify(view)}==='sale'&&text.includes('penjualan'))||(${JSON.stringify(view)}==='shift'&&text.includes('shift'))||(${JSON.stringify(view)}==='returns'&&text.includes('retur'))||(${JSON.stringify(view)}==='sync'&&text.includes('sinkronisasi'))||(${JSON.stringify(view)}==='ppob'&&text.includes('ppob')); }); if(!target)return false; target.click(); return true; })()`);
       if (!clicked) throw new Error(`P5 POS workspace tidak dapat dibuka: ${view}`);
       await waitExpression(cdp, `document.querySelector('[data-visual-product="pos"]')?.getAttribute('data-visual-view') === ${JSON.stringify(view)}`, `P5 POS visual ${view}`);
       await assertViewportIntegrity(cdp, `P5 POS ${view}`, 1440, 900);
@@ -1451,6 +1505,8 @@ await waitExpression(cdp, `(() => {
       };
       evidence.checks.push(p5ScreenshotMatrix);
     }
+
+    await runAllRoleBrowserUat({cdp,apiUrl,adminUrl,posUrl,employeeUrl,token:loginBody.accessToken,evidence,http,evaluateValue,waitExpression,navigateAdminContext,assertResponsiveMatrix,assertViewportIntegrity,captureSuccessScreenshot});
 
     // A page that renders while throwing an uncaught JS exception is not a browser-UAT PASS.
     await sleep(500);

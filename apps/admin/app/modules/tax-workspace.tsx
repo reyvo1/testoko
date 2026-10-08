@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import CoretaxExportWorkspace from './coretax-export-workspace';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
+import { canReadPath, readOptional } from '../read-path-contract';
+import { canAccessApiPath } from '../../../../packages/contracts/src/api-access';
 import { Panel, StatusChip, Table, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -11,7 +14,7 @@ type Account = { id: string; code: string; name: string; type: string; isActive:
 type TaxCode = {
   id: string; code: string; version: number; name: string; scope: string; rate: string | number; inclusive: boolean; recoverable: boolean;
   payableAccountCode?: string | null; receivableAccountCode?: string | null; expenseAccountCode?: string | null;
-  effectiveFrom?: string | null; effectiveTo?: string | null; status: 'DRAFT'|'ACTIVE'|'INACTIVE'; legalReference?: string | null;
+  calculationRules?: { coretax?: { vatRatePercent?:string;otherTaxBaseNumerator?:string;otherTaxBaseDenominator?:string;bppuObjectCode?:string } }; effectiveFrom?: string | null; effectiveTo?: string | null; status: 'DRAFT'|'ACTIVE'|'INACTIVE'; legalReference?: string | null;
 };
 type TaxTransaction = {
   id: string; accountingEventId?: string | null; sourceType: string; sourceId: string; direction: string; transactionDate: string; taxPeriod?: string | null;
@@ -21,6 +24,7 @@ type TaxTransaction = {
 type TaxDocument = { id: string; number: string; documentType: string; status: string; sourceType: string; sourceId: string; issueDate: string; taxPeriod?: string | null; counterpartyName?: string | null; netAmount: string | number; taxAmount: string | number; grossAmount: string | number; externalReference?: string | null };
 type TaxReconciliation = {
   from: string; to: string;
+  businessCalendar: { timezone: string; from: string; to: string };
   directions: Array<{ direction: string; count: number; taxableBase: number; taxAmount: number }>;
   mappedAccountMovement: Array<{ code: string; name: string; type: string; debit: number; credit: number; net: number }>;
   integrity: { transactionCount: number; missingAccountingEvent: number; missingJournal: number; nonPosted: number; ok: boolean };
@@ -32,31 +36,25 @@ type TaxPreview = { taxCode: TaxCode | null; net: string | number; tax: string |
 const emptyForm = {
   code: '', version: 1, name: '', scope: 'SALE', ratePercent: '11', inclusive: false, recoverable: false,
   payableAccountCode: '', receivableAccountCode: '', expenseAccountCode: '', effectiveFrom: '', effectiveTo: '',
-  status: 'DRAFT' as 'DRAFT'|'ACTIVE', legalReference: '',
+  status: 'DRAFT' as 'DRAFT'|'ACTIVE', legalReference: '', coretaxVatRate:'',coretaxNumerator:'',coretaxDenominator:'',bppuObjectCode:'',
 };
 
 function isoDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
-function currentMonthRange() {
-  const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
-  const to = now.toISOString().slice(0, 10);
-  return { from, to };
-}
-
 export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: string; onOpenAccountingEvent?: (id: string) => void }) {
   // accounting-core.controller.ts: POST /accounting-core/tax-codes dan
   // PATCH /accounting-core/tax-codes/:id/status keduanya dijaga tax.manage. Endpoint
   // tax/preview hanya tax.view dan tidak menulis apa pun, jadi tetap dibiarkan terbuka.
-  const { canAll } = usePermissions(token);
-  const canManageTax = canAll('tax.manage');
-  const initialRange = currentMonthRange();
+  const { canAll, identity } = usePermissions(token);
+  const canReadTax = canReadPath(identity, '/accounting-core/tax-codes');
+  const canManageTax = canAll('tax.manage') && canAccessApiPath(identity, '/accounting-core/tax-codes','POST');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [codes, setCodes] = useState<TaxCode[]>([]);
   const [transactions, setTransactions] = useState<TaxTransaction[]>([]);
   const [documents, setDocuments] = useState<TaxDocument[]>([]);
   const [reconciliation, setReconciliation] = useState<TaxReconciliation | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [range, setRange] = useState(initialRange);
+  // Empty initial filters let Tax Core resolve the trusted company's current month.
+  const [range, setRange] = useState({ from: '', to: '' });
   const [direction, setDirection] = useState('');
   const [message, setMessage] = useState('');
   const [previewInput, setPreviewInput] = useState({ taxCodeId: '', amount: 0 });
@@ -76,27 +74,36 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
   }
 
   async function refresh() {
+    if (!canReadTax) return;
     try {
-      const qs = new URLSearchParams({ from: range.from, to: range.to, limit: '100' });
+      const dates = new URLSearchParams();
+      if (range.from) dates.set('from', range.from);
+      if (range.to) dates.set('to', range.to);
+      const qs = new URLSearchParams(dates);
+      qs.set('limit', '100');
       if (direction) qs.set('direction', direction);
       const [accountRows, taxCodes, ledger, docs, recon] = await Promise.all([
-        api<Account[]>('/accounting-core/accounts'),
+        readOptional(identity, '/accounting-core/accounts', [] as Account[], p => api<Account[]>(p)),
         api<TaxCode[]>('/accounting-core/tax-codes'),
         api<CursorPage<TaxTransaction>>(`/accounting-core/tax-transactions?${qs.toString()}`),
-        api<CursorPage<TaxDocument>>(`/accounting-core/tax-documents?from=${range.from}&to=${range.to}&limit=100`),
-        api<TaxReconciliation>(`/accounting-core/tax-reconciliation?from=${range.from}&to=${range.to}`),
+        api<CursorPage<TaxDocument>>(`/accounting-core/tax-documents?${dates.toString()}&limit=100`),
+        api<TaxReconciliation>(`/accounting-core/tax-reconciliation?${dates.toString()}`),
       ]);
+      if (!recon.businessCalendar?.from || !recon.businessCalendar?.to || !recon.businessCalendar?.timezone) throw new Error('Kalender perusahaan belum tersedia dari Tax Core.');
       setAccounts(accountRows);
       setCodes(taxCodes);
       setTransactions(ledger.items ?? []);
       setDocuments(docs.items ?? []);
       setReconciliation(recon);
+      if (!range.from && !range.to) {
+        setRange(current => current.from || current.to ? current : { from: recon.businessCalendar.from, to: recon.businessCalendar.to });
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Gagal memuat tax workspace.');
     }
   }
 
-  useEffect(() => { void refresh(); }, [token, range.from, range.to, direction]);
+  useEffect(() => { void refresh(); }, [token, canReadTax, range.from, range.to, direction]);
 
   async function saveTaxCode(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
@@ -109,6 +116,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
         payableAccountCode: form.payableAccountCode || undefined, receivableAccountCode: form.receivableAccountCode || undefined,
         expenseAccountCode: form.expenseAccountCode || undefined, effectiveFrom: form.effectiveFrom || undefined,
         effectiveTo: form.effectiveTo || undefined, status: form.status, legalReference: form.legalReference.trim() || undefined,
+        ...((form.coretaxVatRate || form.bppuObjectCode) ? {calculationRules:{coretax:{vatRatePercent:form.coretaxVatRate,otherTaxBaseNumerator:form.coretaxNumerator,otherTaxBaseDenominator:form.coretaxDenominator,bppuObjectCode:form.bppuObjectCode}}}:{}),
       }) });
       setMessage(`${form.code.toUpperCase()} v${form.version} tersimpan.`);
       setForm(emptyForm); await refresh();
@@ -122,6 +130,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
       inclusive: row.inclusive, recoverable: row.recoverable, payableAccountCode: row.payableAccountCode ?? '',
       receivableAccountCode: row.receivableAccountCode ?? '', expenseAccountCode: row.expenseAccountCode ?? '',
       effectiveFrom: '', effectiveTo: '', status: 'DRAFT', legalReference: row.legalReference ?? '',
+      coretaxVatRate:row.calculationRules?.coretax?.vatRatePercent??'',coretaxNumerator:row.calculationRules?.coretax?.otherTaxBaseNumerator??'',coretaxDenominator:row.calculationRules?.coretax?.otherTaxBaseDenominator??'',bppuObjectCode:row.calculationRules?.coretax?.bppuObjectCode??'',
     });
   }
 
@@ -147,8 +156,10 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
   const assets = activeAccounts.filter((row) => row.type === 'ASSET');
   const expenses = activeAccounts.filter((row) => row.type === 'EXPENSE');
 
+  if (!canReadTax) return <><CoretaxExportWorkspace token={token} documents={[]} /><p className="notice" role="status">Akun ini belum mempunyai akses ke konfigurasi dan ledger pajak. Data tersebut tidak ditampilkan.</p></>;
   return <>
     {message && <div className="notice">{message}</div>}
+    <CoretaxExportWorkspace token={token} documents={documents.filter(row=>row.status==='ISSUED')} />
     <section className="grid2">
       <Panel eyebrow="TAX CORE" title="Versioned Tax Configuration" badge={`${codes.length} version`}>
         <form className="formStack" onSubmit={saveTaxCode}>
@@ -164,6 +175,10 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
             <label>Utang pajak<select value={form.payableAccountCode} onChange={(e) => setForm({ ...form, payableAccountCode: e.target.value })}><option value="">—</option>{liabilities.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
             <label>Piutang pajak<select value={form.receivableAccountCode} onChange={(e) => setForm({ ...form, receivableAccountCode: e.target.value })}><option value="">—</option>{assets.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
             <label>Beban pajak<select value={form.expenseAccountCode} onChange={(e) => setForm({ ...form, expenseAccountCode: e.target.value })}><option value="">—</option>{expenses.map((a) => <option key={a.id} value={a.code}>{a.code} · {a.name}</option>)}</select></label>
+            <label>Tarif PPN statutory Coretax (%)<input inputMode="decimal" value={form.coretaxVatRate} onChange={e=>setForm({...form,coretaxVatRate:e.target.value})}/></label>
+            <label>Rasio DPP lain: pembilang<input inputMode="numeric" value={form.coretaxNumerator} onChange={e=>setForm({...form,coretaxNumerator:e.target.value})}/></label>
+            <label>Rasio DPP lain: penyebut<input inputMode="numeric" value={form.coretaxDenominator} onChange={e=>setForm({...form,coretaxDenominator:e.target.value})}/></label>
+            <label>Kode objek BPPU (withholding)<input value={form.bppuObjectCode} onChange={e=>setForm({...form,bppuObjectCode:e.target.value})}/></label>
             <label>Referensi hukum<input value={form.legalReference} onChange={(e) => setForm({ ...form, legalReference: e.target.value })} /></label>
           </section>
           <div className="actionRow"><label className="checkboxRow"><input type="checkbox" checked={form.inclusive} onChange={(e) => setForm({ ...form, inclusive: e.target.checked })} /> Inclusive</label><label className="checkboxRow"><input type="checkbox" checked={form.recoverable} onChange={(e) => setForm({ ...form, recoverable: e.target.checked })} /> Recoverable input</label>{canManageTax&&<button>Simpan version</button>}</div>
@@ -182,6 +197,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
 
       <Panel eyebrow="PERIODE PAJAK" title="Tax Reconciliation" badge={reconciliation?.integrity.ok ? 'PASS' : 'REVIEW'}>
         <div className="grid2"><label>Dari<input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></label><label>Sampai<input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></label></div>
+        {reconciliation && <p className="sectionHelp">Kalender perusahaan: {reconciliation.businessCalendar.timezone}.</p>}
         {reconciliation && <>
           <Table head={['Direction','Transaksi','Taxable Base','Tax']} rows={reconciliation.directions.map((row) => [row.direction, row.count, rupiah(row.taxableBase), rupiah(row.taxAmount)])} empty="Belum ada transaksi pajak pada periode ini." />
           <p className="sectionHelp">Integrity: {reconciliation.integrity.transactionCount} transaksi · missing event {reconciliation.integrity.missingAccountingEvent} · missing journal {reconciliation.integrity.missingJournal} · non-posted {reconciliation.integrity.nonPosted}. Tax document: {reconciliation.documents.count}, tax {rupiah(reconciliation.documents.taxAmount)}.</p>

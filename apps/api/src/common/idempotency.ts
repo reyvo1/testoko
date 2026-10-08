@@ -49,7 +49,11 @@ export async function beginIdempotent<T = unknown>(
     });
     return { replay: false };
   } catch (error) {
-    // race: row dibuat transaksi lain — perlakukan sebagai replay
+    // PostgreSQL aborts the whole interactive transaction after a unique violation.
+    // Preserve the original conflict so serializableTx retries the complete operation;
+    // querying this transaction again would hide P2002/P2034 behind an aborted-tx error.
+    if (!('$transaction' in tx) || !(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
+    // Outside a transaction, a standalone unique race can safely reread the receipt.
     const dup = await tx.idempotencyReceipt.findUnique({ where: { companyId_scope_key: { companyId: opts.companyId, scope: opts.scope, key: opts.key } } });
     if (!dup) throw error;
     if (dup.requestHash !== requestHash) throw new IdempotencyConflictError();

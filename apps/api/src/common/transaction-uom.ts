@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveProductUnitPrice } from './product-pricing';
+import { decodeWeightBarcode, readRetailPolicy } from './retail-policy';
 
 type DbClient = Prisma.TransactionClient | PrismaService;
 export type TransactionTenantScope = { companyId: string; branchId: string };
@@ -10,6 +11,7 @@ export type TransactionUomProduct = {
   id: string;
   unit: string;
   salePrice: Prisma.Decimal | number | string;
+  metadata?: Prisma.JsonValue | null;
 };
 
 export type TransactionUomInput = {
@@ -84,6 +86,16 @@ export async function resolveSellingUnitLine(
 
   if (input.barcodeCode?.trim()) {
     sourceBarcode = input.barcodeCode.trim();
+    let scaleLabel: ReturnType<typeof decodeWeightBarcode>;
+    const configuredWeight = readRetailPolicy(product.metadata).weight;
+    if (configuredWeight && sourceBarcode === configuredWeight.barcodeKey) throw new BadRequestException('Key PLU saja bukan label timbangan lengkap.');
+    try { scaleLabel = configuredWeight && sourceBarcode.startsWith(configuredWeight.barcodeKey) && sourceBarcode.length === 13 ? decodeWeightBarcode(sourceBarcode) : null; } catch (error) { throw new BadRequestException((error as Error).message); }
+    if (scaleLabel) {
+      const weight = readRetailPolicy(product.metadata).weight;
+      const quantity = scaleLabel.encodedQuantity * (weight?.baseUnitsPerEncodedUnit ?? 0);
+      if (!weight || weight.barcodeKey !== scaleLabel.barcodeKey || input.productUnitId || input.variantId || !Number.isSafeInteger(input.quantity) || input.quantity < quantity || input.quantity % quantity !== 0) throw new BadRequestException('Barcode/quantity timbangan tidak cocok dengan policy produk.');
+    }
+    const lookupCode = scaleLabel?.barcodeKey ?? sourceBarcode;
     const barcode = await client.productBarcode.findUnique({
       where: { code: sourceBarcode },
       select: {
@@ -95,7 +107,13 @@ export async function resolveSellingUnitLine(
         variant: { select: { isActive: true, salePrice: true } },
         productUnit: { select: { id: true, variantId: true, unitCode: true, quantityFactor: true, isActive: true, variant: { select: { isActive: true, salePrice: true } } } },
       },
-    });
+    }) ?? (scaleLabel ? await client.productBarcode.findUnique({
+      where: { code: lookupCode },
+      select: { productId: true, variantId: true, productUnitId: true, unitCode: true, quantityFactor: true,
+        variant: { select: { isActive: true, salePrice: true } },
+        productUnit: { select: { id: true, variantId: true, unitCode: true, quantityFactor: true, isActive: true, variant: { select: { isActive: true, salePrice: true } } } },
+      },
+    }) : null);
     if (!barcode || barcode.productId !== product.id) {
       throw new BadRequestException(`Barcode ${sourceBarcode} tidak valid untuk produk yang dipilih.`);
     }

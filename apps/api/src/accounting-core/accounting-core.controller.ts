@@ -11,7 +11,7 @@ import { CreateAccountDto, CreateAccountingCloseControlDto, CreatePostingRuleDto
   export class AccountingCoreController {
   constructor(private readonly accounting: AccountingCoreService) {}
 
-  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR') @Permissions('finance.view') @Get('accounts')
+  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR','ADMIN') @Permissions('finance.view') @Get('accounts')
   accounts(@CurrentUser() user: AuthUser) {
     return this.accounting.listAccounts(user);
   }

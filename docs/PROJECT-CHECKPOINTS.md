@@ -43,3 +43,20 @@ Hanya checkpoint terakhir yang dinyatakan resmi di release notes yang boleh menj
 - Menambahkan tombol pindah akun/chat, clipboard automation, pencatatan quality gate, dan perlindungan secret.
 - Tidak mengubah schema atau data bisnis.
 - Baseline resmi menggantikan RC0.5.2.1 untuk pekerjaan berikutnya.
+
+## Engineering evidence — P6B sequencing 2026-10-06
+
+This is engineering sequencing evidence, not a new formal release tag/checkpoint.
+P6B work item T360-20261006-090000, business commit
+12537b96547f9fd88849fa92902a65cf97d3ec7b, fingerprint
+0a5cb03bd41ac8f5bdeee4f51795f754ffa8743405297f85398cefbcd1689757,
+passed Governance 37363402271, CI 37363402348, Full System 37363589397 and
+Full Automated UAT 37363596627. Additive migration T360-20261006-p6b-retail-snapshots
+was rehearsed on TEST; no production database or backup was changed. Main remains
+P6A, P6B is draft PR #1. Existing device/provider certification and Human Stage-20
+remain PENDING. Rollback disables new product retail policies while preserving
+immutable snapshots and compensating posted effects through canonical returns.
+
+The operator authorizes combined P6C/P6D work item T360-20261006-125000 and all-menu
+UI/backend parity verification before one push. The formal checkpoint at the top
+of PROJECT-STATE remains unchanged until its actual release workflow passes.

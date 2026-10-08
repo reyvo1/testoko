@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { authFetch } from '../auth-fetch';
+import { usePermissions } from '../permissions';
+import { canReadPath } from '../read-path-contract';
+import { CustomerDepositWorkspace } from './retail-customer-workspaces';
 import { Panel, Table, StatusChip, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -44,6 +47,9 @@ type SettlementTrace = {
 const bucketLabel: Record<string, string> = { CURRENT: 'Current', '1_30': '1–30', '31_60': '31–60', '61_90': '61–90', '90_PLUS': '>90' };
 
 export default function FinanceDepthWorkspace({ token, mode }: { token: string; mode?: string | null }) {
+  const { identity } = usePermissions(token);
+  const allowed = canReadPath(identity, '/finance-operations/ar-aging');
+  const relevant = !mode || ['receivables','payables','banking'].includes(mode);
   const [ar, setAr] = useState<AgingResponse | null>(null);
   const [ap, setAp] = useState<AgingResponse | null>(null);
   const [cashBank, setCashBank] = useState<CashBankPosition[]>([]);
@@ -57,6 +63,7 @@ export default function FinanceDepthWorkspace({ token, mode }: { token: string; 
   }
 
   async function refresh() {
+    if (!allowed || !relevant) return;
     try {
       const [arData, apData, cashData] = await Promise.all([
         api<AgingResponse>('/finance-operations/ar-aging'),
@@ -67,7 +74,7 @@ export default function FinanceDepthWorkspace({ token, mode }: { token: string; 
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Gagal memuat finance depth.'); }
   }
 
-  useEffect(() => { void refresh(); }, [token]);
+  useEffect(() => { void refresh(); }, [token, allowed, relevant]);
 
   async function loadTrace(referenceType?: string, referenceId?: string) {
     if (!referenceType || !referenceId) return;
@@ -82,7 +89,11 @@ export default function FinanceDepthWorkspace({ token, mode }: { token: string; 
   const showBank = !mode || mode === 'banking';
   const buckets = (aging: AgingResponse | null) => ['CURRENT','1_30','31_60','61_90','90_PLUS'].map((key) => [bucketLabel[key], aging?.asOfBuckets[key]?.count ?? 0, rupiah(Number(aging?.asOfBuckets[key]?.amount ?? 0))]);
 
+  if (!relevant) return null;
+  if (!allowed) return <>{showAr && <CustomerDepositWorkspace token={token} />}<p className="notice" role="status">Akun ini belum mempunyai akses ke aging dan posisi kas/bank. Data keuangan tersebut tidak ditampilkan.</p></>;
+
   return <>
+    {showAr && <CustomerDepositWorkspace token={token} />}
     {showAr && <Panel eyebrow="AR AGING" title="Piutang Pelanggan per Umur" badge={`${ar?.openDocuments ?? 0} dokumen`}>
       <Table head={['Bucket','Dokumen','Outstanding']} rows={buckets(ar)} empty="Belum ada aging piutang." />
       <Table head={['Order','Pelanggan','Umur','Bucket','Sisa','Trace']} rows={(ar?.rows ?? []).map((row) => [

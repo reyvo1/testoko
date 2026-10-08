@@ -45,7 +45,7 @@ export default function AutomationWorkspace({ token, mode = 'automation' }: { to
         // report.export plus an @Roles list. Both degrade independently so one refusal does not
         // discard the automation job history alongside them.
         readOptional(identity, '/platform/business-rules', [] as BusinessRule[], () => api<BusinessRule[]>(token, '/platform/business-rules')),
-        api<AutomationJob[]>(token, `/platform/automation-jobs${suffix}`),
+        readOptional(identity, '/platform/automation-jobs', [] as AutomationJob[], p => api<AutomationJob[]>(token, `${p}${suffix}`)),
         readOptional(identity, '/reports/schedules', [] as ReportSchedule[], () => api<ReportSchedule[]>(token, '/reports/schedules')),
       ]);
       setRules(r); setJobs(j); setSchedules(s); setMessage('');

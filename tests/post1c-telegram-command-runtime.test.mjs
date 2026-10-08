@@ -136,8 +136,8 @@ function seed() {
 let service;
 let CommandClass;
 test('the real command service loads against the real mobile-ops service', async () => {
-  const { MobileOpsService } = await load('apps/api/src/mobile-ops/mobile-ops.service.ts', { platform: 'node' });
-  const mod = await load('apps/api/src/mobile-ops/telegram-command.service.ts', { platform: 'node' });
+  const { MobileOpsService } = await load('apps/api/src/mobile-ops/mobile-ops.service.ts', { platform: 'node', external:['@prisma/client'] });
+  const mod = await load('apps/api/src/mobile-ops/telegram-command.service.ts', { platform: 'node', external:['@prisma/client'] });
   const { TelegramCommandService } = mod;
   CommandClass = TelegramCommandService;
   const { PrismaClient } = await import('@prisma/client');

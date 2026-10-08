@@ -70,7 +70,7 @@ test('UI-P7 mobile navigation stays inside the viewport and keeps touch targets 
   }
   assert.match(shells.admin, /className="adminPrimaryNavigation"/);
   assert.match(shells.admin, /adminSidebarSubdomains/);
-  assert.match(css.pos, /\.posWorkspaceNav\s*\{?\s*@apply[^}]*\bgrid\b[^}]*\bgrid-cols-4\b/);
+  assert.match(css.pos, /\.posWorkspaceNav\s*\{?\s*@apply[^}]*\bgrid\b[^}]*\bgrid-cols-3\b[^}]*\bsm:grid-cols-5\b/);
   assert.match(css.storefront, /\.mobileNav\{@apply[^}]*grid-cols-4/);
   assert.match(css.employee, /\.employeeMobileNav\{@apply[^}]*grid grid-cols-4/);
   assert.match(css.admin + css.pos + css.storefront + css.employee, /min-height:\s*44px|min-h-11|min-h-\[44px\]/);

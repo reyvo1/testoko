@@ -14,6 +14,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
 import { Panel, StatusChip, Table } from '../ui';
+import BranchContinuityControls from './branch-continuity-controls';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -64,6 +65,8 @@ export default function BranchSyncView({ token }: { token: string }) {
   // through querySelector couples the handler to markup and silently posts 0 if the selector misses.
   const [received, setReceived] = useState<Record<string, number>>({});
   const [peers, setPeers] = useState<PeerRow[]>([]);
+  const [peerForm, setPeerForm] = useState({peerNodeId:'',direction:'BIDIRECTIONAL',sharedSecretRef:''});
+  const [departureId, setDepartureId] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'CENTRAL' | 'BRANCH'>('BRANCH');
@@ -169,9 +172,19 @@ export default function BranchSyncView({ token }: { token: string }) {
     finally { setBusy(false); }
   }
 
+  async function registerPeer(event:FormEvent) {
+    event.preventDefault();if(!peersOf||!canManage||busy)return;setBusy(true);
+    try {await req(token,`/branch-sync/nodes/${peersOf}/peers`,{method:'POST',body:JSON.stringify(peerForm)});setPeerForm({peerNodeId:'',direction:'BIDIRECTIONAL',sharedSecretRef:''});await openPeers(peersOf);setMsg('Peer terdaftar; secret tidak ditampilkan kembali.');}
+    catch(error){setMsg(error instanceof Error?error.message:'Peer gagal didaftarkan.');}finally{setBusy(false);}
+  }
+  async function recordDeparture(event:FormEvent) {
+    event.preventDefault();if(!canManage||busy)return;setBusy(true);
+    try {await req(token,`/branch-transfer/transfers/${departureId}/departure`,{method:'POST',body:'{}'});setDepartureId('');await loadContinuity();setMsg('Keberangkatan tercatat dengan eventId transfer yang sama.');}
+    catch(error){setMsg(error instanceof Error?error.message:'Keberangkatan gagal dicatat.');}finally{setBusy(false);}
+  }
   return <section className="stack">
     <Panel eyebrow="POST-1A EDGE TOPOLOGY" title="Branch & central node" badge={`${nodes.length} node`}>
-      <p className="sectionHelp">Setiap node adalah server TOKO360. CENTRAL imperio; BRATCH ber originates. Satu tenant hanya boleh punya satu CENTRAL aktif — dua central akan menggandakan setiap transaksi yang terkonsolidasi.</p>
+      <p className="sectionHelp">Setiap node adalah server TOKO360. CENTRAL mengonsolidasikan event; BRANCH menjalankan operasi toko. Satu tenant hanya boleh punya satu CENTRAL aktif — dua central akan menggandakan setiap transaksi yang terkonsolidasi.</p>
       <Table
         head={['Code', 'Nama', 'Role', 'Heartbeat', 'Status']}
         rows={nodes.map((n) => [
@@ -207,6 +220,7 @@ export default function BranchSyncView({ token }: { token: string }) {
         ])}
         empty="Belum ada data kesehatan"
       />
+      <div className="actionRow">{nodes.map(n=><button key={`${n.id}-peers`} type="button" className="secondary" disabled={busy} onClick={()=>void openPeers(n.id)}>Peer · {n.code}</button>)}</div>
       {canManage && <div className="actionRow">
         {(health?.nodes ?? []).map((h) => <button key={`${h.nodeId}-dl`} type="button" className="secondary" onClick={() => void openDeadLetters(h.nodeId)}>Dead letter · {h.code}</button>)}
         {(health?.nodes ?? []).map((h) => <button key={`${h.nodeId}-cf`} type="button" className="secondary" onClick={() => void openConflicts(h.nodeId)}>Konflik · {h.code}</button>)}
@@ -216,6 +230,7 @@ export default function BranchSyncView({ token }: { token: string }) {
 
     {peersOf && <Panel eyebrow="PEER REGISTRY" title="Peer node" badge={String(peers.length)}>
       <p className="sectionHelp">Secret peer disimpan terenkripsi dan tidak pernah ditampilkan lagi di layar ini. Menonaktifkan peer menghentikan sinkronisasi ke arah itu tanpa mencabut event yang sudah diantrikan.</p>
+      {canManage&&<form className="formStack" onSubmit={registerPeer}><label>Node peer<select required value={peerForm.peerNodeId} onChange={e=>setPeerForm({...peerForm,peerNodeId:e.target.value})}><option value="">Pilih node berbeda</option>{nodes.filter(n=>n.id!==peersOf&&n.isActive).map(n=><option key={n.id} value={n.id}>{n.code} · {n.name}</option>)}</select></label><label>Arah<select value={peerForm.direction} onChange={e=>setPeerForm({...peerForm,direction:e.target.value})}><option>PUSH</option><option>PULL</option><option>BIDIRECTIONAL</option></select></label><label>Secret bersama<input type="password" autoComplete="new-password" required minLength={8} maxLength={200} value={peerForm.sharedSecretRef} onChange={e=>setPeerForm({...peerForm,sharedSecretRef:e.target.value})}/></label><button disabled={busy||!peerForm.peerNodeId}>Daftarkan peer</button></form>}
       <Table
         head={['Peer', 'Arah', 'Last sync', 'Error', 'Status', 'Aksi']}
         rows={peers.map((p) => [
@@ -251,7 +266,7 @@ export default function BranchSyncView({ token }: { token: string }) {
     </Panel>)}
 
     {Object.entries(conflicts).map(([nodeId, rows]) => <Panel key={`cf-${nodeId}`} eyebrow="CONFLICT" title={`Konflik rekonsiliasi · ${nodeId.slice(0, 8)}`} badge={String(rows.length)}>
-      <p className="sectionHelp">Konflik arise ketika dua node sama-sama meyakini state mereka benar — cabang menjual unit terakhir saat transfer masuk. Sistem sengaja tidak memilih pemenang: KEEP_LOCAL dan KEEP_REMOTE ditolak API, dan setiap konflik naik sebagai MANUAL_REVIEW. Memilih salah satu secara otomatis berarti menghapus penjualan yang sudah terjadi tanpa jejak.</p>
+      <p className="sectionHelp">Konflik muncul ketika dua node sama-sama meyakini state mereka benar — cabang menjual unit terakhir saat transfer masuk. Sistem sengaja tidak memilih pemenang: KEEP_LOCAL dan KEEP_REMOTE ditolak API, dan setiap konflik naik sebagai MANUAL_REVIEW. Memilih salah satu secara otomatis berarti menghapus penjualan yang sudah terjadi tanpa jejak.</p>
       <Table
         head={['Event', 'Agregat', 'Base', 'Remote', 'Strategi', 'Diputuskan oleh']}
         rows={rows.map((c) => [
@@ -269,7 +284,7 @@ export default function BranchSyncView({ token }: { token: string }) {
     </Panel>)}
 
     {Object.keys(recovery).length > 0 && <Panel eyebrow="RECOVERY" title="Rencana pemulihan server" badge="SETELAH PENGGANTIAN SERVER">
-      <p className="sectionHelp">Server yang diganti kembali dengan database kosong. Pemulihan selalu derives dari cursor, tidak pernah menyalin tabel lintas node.</p>
+      <p className="sectionHelp">Server yang diganti kembali dengan database kosong. Pemulihan selalu menggunakan cursor, tidak pernah menyalin tabel lintas node.</p>
       <pre className="codeBlock">{JSON.stringify(recovery, null, 2)}</pre>
     </Panel>}
 
@@ -292,7 +307,7 @@ export default function BranchSyncView({ token }: { token: string }) {
     </Panel>
 
     <Panel eyebrow="OFFLINE CAPABILITY" title="Kontrak flow offline-capable" badge={`${capabilities.filter((c) => c.offlineCapable).length} diizinkan`}>
-      <p className="sectionHelp">Flow yang offline-capable wajib menyebut apa yang operator korbankan. Flow yang tidak dideklarasi apa pun ditolak saat cabang terputus — default-nya tidak mengizinkan, jadi flow baru tidak bisabuta hanya karena belum terdaftar.</p>
+      <p className="sectionHelp">Flow yang offline-capable wajib menyebut apa yang operator korbankan. Flow yang tidak dideklarasi apa pun ditolak saat cabang terputus — default-nya tidak mengizinkan, jadi flow baru tidak berjalan tanpa kebijakan hanya karena belum terdaftar.</p>
       <Table
         head={['Flow', 'Offline?', 'Otoritatif lokal?', 'Dampak degraded']}
         rows={capabilities.map((c) => [
@@ -305,8 +320,10 @@ export default function BranchSyncView({ token }: { token: string }) {
       />
     </Panel>
 
+    <BranchContinuityControls token={token} nodes={nodes} capabilities={capabilities} onChange={loadContinuity}/>
     <Panel eyebrow="INTER-BRANCH TRANSFER" title="Transfer lintas cabang menunggu" badge={String(transfers.length)}>
       <p className="sectionHelp">Barang yang sudah berangkat tercatat IN_TRANSIT sejak meninggalkan gudang asal — stok itu ada di tidak satu pun tempat sebagai inventory siap pakai. Konfirmasi kedatangan hanya mencatat jumlah fisik yang dihitung; posting inventory tetap lewat alur receive yang sudah ada. Pembatalan wajib beralasan dan tidak mengembalikan stok secara otomatis.</p>
+      {canManage&&<form className="formStack" onSubmit={recordDeparture}><p className="sectionHelp">Catat keberangkatan transfer yang sudah SHIPPED atau PARTIALLY_RECEIVED dari menu Transfer Stok. Ini hanya melacak event lintas cabang; pengiriman dan penerimaan stok tetap melalui alur kanonik.</p><label>ID transfer terkirim<input required value={departureId} onChange={e=>setDepartureId(e.target.value)}/></label><button disabled={busy||!departureId}>Catat keberangkatan</button></form>}
       <Table
         head={['Transfer', 'State', 'Kirim', 'Terima', 'Tujuan', 'Alasan/selisih', 'Aksi']}
         rows={transfers.map((t) => [
@@ -320,13 +337,12 @@ export default function BranchSyncView({ token }: { token: string }) {
             ? <div key={`${t.transferId}-a`} className="actionRow">
                 <input
                   key={`${t.transferId}-i`}
-                  type="number" min={0} defaultValue={t.sourceQuantity}
+                  type="number" min={0} value={received[t.transferId] ?? t.sourceQuantity} onChange={e=>setReceived(values=>({...values,[t.transferId]:Number(e.target.value)}))}
                   aria-label={`Jumlah diterima untuk ${t.transferId}`}
                   style={{ width: '5rem' }}
                 />
                 <button type="button" className="secondary" disabled={busy} onClick={() => {
-                  const el = document.querySelector<HTMLInputElement>(`input[aria-label="Jumlah diterima untuk ${t.transferId}"]`);
-                  void ackArrival(t.transferId, Number(el?.value ?? 0));
+                  void ackArrival(t.transferId, received[t.transferId] ?? t.sourceQuantity);
                 }}>Konfirmasi</button>
                 <button type="button" className="secondary" disabled={busy} onClick={() => { setAbandon(t); setAbandonReason(''); }}>Batalkan</button>
               </div>

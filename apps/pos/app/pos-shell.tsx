@@ -4,16 +4,17 @@ import type { ReactNode } from 'react';
 import { CreditCard, History, RefreshCw, Store, Wifi, WifiOff, CircleGauge, MoonStar, SunMedium } from 'lucide-react';
 import { useT360Theme } from './theme-client';
 
-export type PosWorkspace = 'SALE' | 'SHIFT' | 'RETURNS' | 'SYNC';
+export type PosWorkspace = 'SALE' | 'SHIFT' | 'RETURNS' | 'PPOB' | 'SYNC';
 
 const WORKSPACES: Array<{ id: PosWorkspace; label: string; description: string; icon: typeof CreditCard }> = [
   { id: 'SALE', label: 'Penjualan', description: 'Scan produk, susun keranjang, quote server, dan selesaikan pembayaran.', icon: CreditCard },
   { id: 'SHIFT', label: 'Shift & Kas', description: 'Kontrol shift kasir, expected cash, kas masuk/keluar, dan penutupan.', icon: Store },
   { id: 'RETURNS', label: 'Retur', description: 'Cari transaksi asli dan buat retur auditable melalui jalur canonical.', icon: History },
+  { id: 'PPOB', label: 'PPOB', description: 'Katalog pulsa, paket data, token dan voucher serta status transaksi layanan digital.', icon: CreditCard },
   { id: 'SYNC', label: 'Sinkronisasi', description: 'Pantau antrean offline, konflik, retry, dan pemulihan koneksi.', icon: RefreshCw },
 ];
 
-export function PosShell({ workspace, onWorkspaceChange, apiOnline, queueCount, conflictCount, companyName, branchName, warehouseControl, children }: { workspace: PosWorkspace; onWorkspaceChange: (workspace: PosWorkspace) => void; apiOnline: boolean; queueCount: number; conflictCount: number; companyName: string; branchName: string; warehouseControl: ReactNode; children: ReactNode; }) {
+export function PosShell({ workspace, onWorkspaceChange, apiOnline, queueCount, conflictCount, companyName, branchName, warehouseControl, allowedWorkspaces, children }: { workspace: PosWorkspace; onWorkspaceChange: (workspace: PosWorkspace) => void; apiOnline: boolean; queueCount: number; conflictCount: number; companyName: string; branchName: string; warehouseControl: ReactNode; allowedWorkspaces?: PosWorkspace[]; children: ReactNode; }) {
   const { theme, toggleTheme } = useT360Theme();
   const activeMeta = WORKSPACES.find((item) => item.id === workspace) ?? WORKSPACES[0];
   return (
@@ -31,7 +32,7 @@ export function PosShell({ workspace, onWorkspaceChange, apiOnline, queueCount, 
 
         <div className="mx-auto w-full max-w-[1720px] px-3 pb-3 sm:px-5 lg:px-6">
           <nav className="posWorkspaceNav" aria-label="Workspace POS">
-            {WORKSPACES.map(({ id, label, icon: Icon }) => {
+            {WORKSPACES.filter(item => !allowedWorkspaces || allowedWorkspaces.includes(item.id)).map(({ id, label, icon: Icon }) => {
               const badge = id === 'SYNC' ? queueCount : id === 'RETURNS' ? conflictCount : 0;
               const active = workspace === id;
               return (

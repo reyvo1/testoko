@@ -149,7 +149,7 @@ test('reopening a draft resumes it rather than starting a second count', () => {
   // resume path stopped returning the raw row (it now returns the row with the opname attached).
   // What matters is that resume returns the STORED line count, not a fresh zero — assert on the
   // behaviour, not on which local variable it happens to read.
-  const resume = service.slice(service.indexOf('if (existing)'), service.indexOf('this.prisma.mobileOpnameDraft.create'));
+  const resume = service.slice(service.indexOf('if (existing)'), service.indexOf('tx.mobileOpnameDraft.create'));
   assert.match(resume, /resumed: true/);
   assert.match(resume, /lineCount: this\.lineCount\((?:existing|draft)\.lines\)/);
   assert.doesNotMatch(resume, /lineCount: 0/, 'a resumed draft must not report an empty count');
@@ -160,9 +160,9 @@ test('reopening a draft resumes it rather than starting a second count', () => {
 
 test('rescanning the same barcode adds to the line instead of duplicating it', () => {
   // A hundred counts of the same unit is a hundred units, not a hundred lines.
-  assert.match(service, /const existing = lines\.find\(\(l\) => l\.key === key\);\s*if \(existing\) existing\.quantity \+= dto\.quantity;/);
-  assert.match(service, /if \(!dto\.barcode\?\.trim\(\) && !dto\.sku\?\.trim\(\)\) \{\s*throw new BadRequestException\('Scan harus membawa barcode atau SKU\.'\)/);
-  assert.match(service, /if \(!Number\.isFinite\(dto\.quantity\) \|\| dto\.quantity <= 0\) \{[\s\S]*throw new BadRequestException\('Kuantitas hasil hitung harus bilangan positif\.'\)/);
+  assert.match(service, /const existing\s*=\s*lines\.find\(line\s*=>\s*line\.key===key\);[\s\S]*existing\.quantity\+=dto\.quantity;/);
+  assert.match(service, /if \(!dto\.barcode\?\.trim\(\) && !dto\.sku\?\.trim\(\)\)\s*throw new BadRequestException\('Scan harus membawa barcode atau SKU\.'\)/);
+  assert.match(service, /if \(!Number\.isInteger\(dto\.quantity\) \|\| dto\.quantity <= 0\)\s*throw new BadRequestException\('Kuantitas hasil hitung harus bilangan bulat positif\.'\)/);
 });
 
 test('a discarded draft is kept, not deleted', () => {
@@ -251,8 +251,8 @@ test('submitting a draft actually writes the counts into the canonical opname it
   assert.match(body, /resolveDraftLines\(companyId, lines\)/, 'barcode and UOM identity must be resolved server-side before writing counts');
   assert.match(body, /ambiguousBatch/, 'multi-batch allocation must fail closed rather than guess a batch');
   // It must be one transaction: counts applied and the draft marked SUBMITTED together, or neither.
-  assert.match(body, /this\.prisma\.\$transaction\(async \(tx\) => \{/, 'counts and draft status must commit together');
-  assert.ok(body.indexOf('$transaction') < body.indexOf("status: 'SUBMITTED'"), 'the write must be inside the transaction that marks the draft');
+  assert.match(body, /serializableTx\(this\.prisma,async \(tx\) => \{/, 'counts and draft status must commit together');
+  assert.ok(body.indexOf('serializableTx') < body.indexOf("status: 'SUBMITTED'"), 'the write must be inside the transaction that marks the draft');
   // And it still must not reach past the count: no status transition on the opname, no inventory write.
   assert.doesNotMatch(body, /stockOpname\.update\(\{ where: \{ id: opname\.id \}, data: \{ status:/, 'submitDraft must not advance the opname past counting');
   assert.doesNotMatch(body, /inventory\.(create|update|upsert)|inventoryMovement\.create/);

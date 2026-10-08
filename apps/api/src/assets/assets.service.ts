@@ -5,6 +5,8 @@ import { AuthUser } from '../auth/auth.types';
 import { parseBusinessDateBoundary } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { consumeAvailableLocationStock } from '../common/location-inventory';
+import { retailAuthority } from '../common/retail-feature';
+import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssignAssetDto, CompleteMaintenanceDto, CreateAssetCategoryDto, CreateAssetDto, CreateAssetMaintenancePlanDto, CreateMaintenanceWorkOrderDto, DisposeAssetDto, RunDepreciationDto, TransferAssetDto, UpdateAssetMaintenancePlanDto } from './dto/assets.dto';
 
@@ -23,6 +25,24 @@ export class AssetsService {
       });
     }
     return { companyId: user.companyId, branchId: user.branchId };
+  }
+
+  async maintenanceCatalog(user: AuthUser, limitValue?: string, cursorValue?: string, search?: string) {
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','WAREHOUSE'], ['asset.maintenance']);
+    const scope = this.requireTenantScope(user);
+    const limit = parsePageLimit(limitValue);
+    const cursor = decodeCursor<{code:string;id:string}>(cursorValue);
+    if (cursor && (typeof cursor.code !== 'string' || typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 200)) throw new BadRequestException('Cursor aset tidak valid.');
+    if (search !== undefined && typeof search !== 'string') throw new BadRequestException('Pencarian aset tidak valid.');
+    const filters: Prisma.AssetWhereInput[] = [];
+    if (cursor) filters.push({ OR:[{code:{gt:cursor.code}},{code:cursor.code,id:{gt:cursor.id}}] });
+    if (search?.trim()) filters.push({ OR:[{code:{contains:search.trim()}},{name:{contains:search.trim()}}] });
+    const rows = await this.prisma.asset.findMany({
+      where:{companyId:scope.companyId,branchId:scope.branchId,status:{in:['ACTIVE','IDLE','IN_MAINTENANCE','DAMAGED']},AND:filters},
+      select:{id:true,code:true,name:true,assetType:true,status:true},
+      orderBy:[{code:'asc'},{id:'asc'}],take:limit+1,
+    });
+    return toCursorPage(rows,limit,row=>({code:row.code,id:row.id}));
   }
 
   private async denyTenantAccess(

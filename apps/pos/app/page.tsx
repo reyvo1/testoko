@@ -9,15 +9,20 @@ import { T360ThemeToggle } from './theme-client';
 import { calculateOfflineQuote, getOrCreateDeviceCode, loadOfflineQueue, loadOfflineSnapshot, nextOfflineSequence, OfflineQueueItem, OfflineTaxCode, OfflineTenderMethod, reservedOfflineQuantity, persistOfflineSnapshot, saveOfflineQueue } from '../lib/offline';
 import { asCatalogFetcher, loadCatalog, loadCatalogPage, searchCatalog } from '../lib/catalog';
 import { isOfflineStoreAvailable } from '../lib/offline-store';
+import { decodeWeightBarcode, type RetailPolicy } from '../../api/src/common/retail-policy';
 import { createBarcodeListener, fuzzyRank } from '../lib/barcode';
 import { planPickup, pickupVoucherLines, type CrossBranchStock, type PickupQuote } from '../lib/click-collect';
 import { useSupervisorApproval } from '../lib/supervisor';
 import { openRawBtReceipt } from '../lib/printing';
+import { RetailExchangePanel, ShipLaterPanel, ReceiptDeliveryControls, retailPermission } from './retail-operations';
 import StaffMemoWidget from './staff-memo';
+import PosDigitalServices from './digital-services';
+import { posIdentity, posWorkspaces } from '../lib/pos-access';
+import { canAccessApiPath } from '../../../packages/contracts/src/api-access';
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 type ProductVariant = { id: string; code: string; name: string; sku?: string | null; salePrice?: string | number | null; costPrice?: string | number | null; isDefault: boolean; isActive: boolean };
-type Product = { id: string; sku: string; barcode?: string | null; variants?: ProductVariant[]; units?: Array<{ id: string; variantId?: string | null; unitCode: string; quantityFactor: number; isDefaultSale: boolean; variant?: { id: string; code: string; name: string } | null }>; barcodes?: Array<{ code: string; variantId?: string | null; productUnitId?: string | null; unitCode?: string | null; quantityFactor?: string | number }>; name: string; unit: string; salePrice: string | number; effectiveSalePrice?: string | number; salesTaxCodeId?: string | null; categoryName?: string; inventories: Array<{ warehouseId: string; available: number }> };
+type Product = { retailAvailabilityError?: string | null; retailPolicy?: RetailPolicy; id: string; sku: string; barcode?: string | null; variants?: ProductVariant[]; units?: Array<{ id: string; variantId?: string | null; unitCode: string; quantityFactor: number; isDefaultSale: boolean; variant?: { id: string; code: string; name: string } | null }>; barcodes?: Array<{ code: string; variantId?: string | null; productUnitId?: string | null; unitCode?: string | null; quantityFactor?: string | number }>; name: string; unit: string; salePrice: string | number; effectiveSalePrice?: string | number; salesTaxCodeId?: string | null; categoryName?: string; inventories: Array<{ warehouseId: string; available: number }> };
 type Warehouse = { id: string; name: string; code: string };
 type CursorPage<T> = { items: T[]; pageInfo: { limit: number; nextCursor: string | null; hasMore: boolean } };
 type RuntimeManifest = { company?: { id: string; name: string }; branch?: { id: string; code?: string; name: string }; features: Record<string, { enabled: boolean }> };
@@ -28,7 +33,7 @@ type CashMovement = { id: string; cashierShiftId: string; type: 'CASH_IN' | 'CAS
 type ShiftRecap = { shift: { id: string; openedAt: string; closedAt?: string | null; status: string; cashier: string }; openingCash: number; closingCash: number | null; expectedCash: number | null; difference: number | null; sales: { count: number; total: number; tax: number; cogs: number }; payments: Record<string, number>; paymentBreakdown?: Array<{ method: string; methodName: string; settlementAccountCode: string; settlementBehavior: string; grossAmount: number; feeAmount: number; netSettlementAmount: number; feeAccountCode: string | null }>; refunds: { count: number; cashTotal: number }; cashMovements: { cashIn: number; cashOut: number } };
 type SaleQuote = { subtotal: string | number; discount: string | number; promoDiscount?: string | number; appliedPromo?: { id: string; code: string; name: string; type: string } | null; loyaltyDiscount: string | number; totalDiscount: string | number; net: string | number; tax: string | number; total: string | number; redeemPoints: number; items?: Array<{ productId: string; barcodeCode?: string | null; variantId?: string | null; unitCode: string; unitQuantity: number; quantityFactor: number; baseQuantity: number; sellingUnitPrice: string | number; baseUnitPrice: string | number; lineSubtotal: string | number }> };
 type SplitPayment = { method: string; amount: number; provider?: string; externalRef?: string };
-type RecentSale = { id: string; number: string; warehouseId: string; subtotal: string | number; discount: string | number; tax: string | number; total: string | number; createdAt: string; items: Array<{ id: string; productId: string; quantity: number; unitPrice: string | number; netSubtotal: string | number; product: { name: string; sku?: string } }> };
+type RecentSale = { customerId?: string | null; id: string; number: string; warehouseId: string; subtotal: string | number; discount: string | number; tax: string | number; total: string | number; createdAt: string; items: Array<{ id: string; productId: string; quantity: number; unitPrice: string | number; netSubtotal: string | number; product: { name: string; sku?: string } }> };
 type SaleReturnRow = { id: string; number: string; saleId: string; status: string; refundMethod?: string | null; refundAmount: string | number; inspectionId?: string | null; createdAt: string };
 type HeldSale = { id: string; cashierSub: string; label: string; createdAt: string; warehouseId: string; customerId: string; discount: number; serviceFee?: number; redeemPoints: number; promoCode: string; paymentMethod: string; paymentProvider?: string; paymentReference?: string; splitEnabled?: boolean; splitPayments?: SplitPayment[]; onAccountAmount?: number; items: Array<{ productId: string; quantity: number; productUnitId?: string; variantId?: string; barcodeCode?: string }> };
 type OfflineConfig = { serverTime: string; branchId: string; shift: CashierShift | null; taxCodes: OfflineTaxCode[]; tenderMethods: OfflineTenderMethod[]; policy: { paymentMethods: string[]; loyaltyRedeemAllowed: boolean; maxOfflineAgeMinutes: number; note: string } };
@@ -98,6 +103,8 @@ export default function PosPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [weighProduct, setWeighProduct] = useState<Product | null>(null);
+  const [weighQuantity, setWeighQuantity] = useState('');
   const [search, setSearch] = useState('');
   // Catalog paging state. Without it the grid silently showed only the first 100 products.
   const [catalogCursor, setCatalogCursor] = useState<string | null>(null);
@@ -212,7 +219,9 @@ export default function PosPage() {
   const [offlineMaxAgeMinutes, setOfflineMaxAgeMinutes] = useState(1440);
   const [offlineClockOffsetMs, setOfflineClockOffsetMs] = useState(0);
   const pendingPaymentRef = useRef<{ fingerprint: string; key: string } | null>(null);
-  const [workspace, setWorkspace] = useState<PosWorkspace>('SALE');
+  const [requestedWorkspace, setWorkspace] = useState<PosWorkspace>('SALE');
+  const allowedWorkspaces = posWorkspaces(token);
+  const workspace = allowedWorkspaces.includes(requestedWorkspace) ? requestedWorkspace : allowedWorkspaces[0] ?? 'PPOB';
   const [lastReceipt, setLastReceipt] = useState<{ number: string; total: number } | null>(null);
 
   /**
@@ -245,6 +254,7 @@ export default function PosPage() {
     setHeldSales(loadHeldSales());
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     if (saved) {
+      if (!posWorkspaces(saved).includes('SALE')) { setToken(saved); return; }
       // Async now: IndexedDB first, legacy localStorage as fallback. Kept inside the effect so the
       // cached catalog can arrive after the first paint instead of blocking it.
       void (async () => {
@@ -356,8 +366,8 @@ export default function PosPage() {
   async function loadReturnWorkspace(activeToken: string) {
     try {
       const [salesPage, returns] = await Promise.all([
-        api<CursorPage<RecentSale>>('/sales?limit=20', undefined, activeToken),
-        api<SaleReturnRow[]>('/returns/sales', undefined, activeToken),
+        canAccessApiPath(posIdentity(activeToken), '/sales') ? api<CursorPage<RecentSale>>('/sales?limit=20', undefined, activeToken) : Promise.resolve({ items: [] as RecentSale[] }),
+        canAccessApiPath(posIdentity(activeToken), '/returns/sales') ? api<SaleReturnRow[]>('/returns/sales', undefined, activeToken) : Promise.resolve([] as SaleReturnRow[]),
       ]);
       setRecentSales(salesPage.items);
       setSaleReturns(returns);
@@ -371,6 +381,12 @@ export default function PosPage() {
 
   async function loadData(activeToken: string) {
     try {
+      if (!posWorkspaces(activeToken).includes('SALE')) {
+        setProducts([]); setWarehouses([]); setCustomers([]); setShift(null); setRecentSales([]); setSaleReturns([]);
+        setManifest(await api<RuntimeManifest>('/platform/manifest', undefined, activeToken));
+        if (posWorkspaces(activeToken).includes('RETURNS')) await loadReturnWorkspace(activeToken);
+        return;
+      }
       const [catalog, warehouseData, runtime, customerData, offlineConfig] = await Promise.all([
         // Walk the cursor. A single limit=100 call left every product past the hundredth
         // unreachable, with no error — pageInfo was in the type and never read.
@@ -494,6 +510,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   // 20% mirrors SUPERVISOR_DISCOUNT_RATIO in sales.service.ts. Duplicated deliberately: a cashier
   // should learn the rule before paying, not from a server rejection afterwards.
   const discountNeedApproval = subtotalFallback > 0 && discount / subtotalFallback > 0.2;
+  const [reservedStaffOrder,setReservedStaffOrder] = useState(false);
   const [receiptBusy, setReceiptBusy] = useState<string | null>(null);
 
   /**
@@ -503,12 +520,19 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
    * endpoint already exists and renders an HTML page; what was missing was any way to reach it for a
    * sale other than the last one. Opened in a new tab so the operator's cart is not lost.
    */
-  function reprintReceipt(saleNumber: string) {
+  async function reprintReceipt(saleNumber: string) {
     if (!saleNumber) { setMessage('Nomor struk tidak valid untuk dicetak ulang.'); return; }
     setReceiptBusy(saleNumber);
-    const opened = window.open(`${API}/receipts/${encodeURIComponent(saleNumber)}`, '_blank', 'noopener,noreferrer');
-    setMessage(opened ? `Struk ${saleNumber} dibuka di tab baru untuk dicetak.` : `Popup diblokir browser. Buka manual: ${API}/receipts/${encodeURIComponent(saleNumber)}`);
-    setReceiptBusy(null);
+    // Reserve a tab during the click so the authenticated request does not trigger a popup block.
+    const opened = window.open('about:blank', '_blank');
+    if (opened) opened.opener = null;
+    try {
+      const link = await api<{ path: string }>(`/sales/${encodeURIComponent(saleNumber)}/receipt-link`);
+      if (!opened) throw new Error('Izinkan popup untuk membuka struk, kemudian coba lagi.');
+      opened.location.replace(`${API}${link.path}`);
+      setMessage(`Struk ${saleNumber} dibuka untuk dicetak. Tautan berlaku satu jam.`);
+    } catch (error) { opened?.close(); setMessage(error instanceof Error ? error.message : 'Struk belum dapat dibuka.'); }
+    finally { setReceiptBusy(null); }
   }
 
   function rawBtReceipt(saleNumber: string) {
@@ -557,7 +581,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     if (splitEnabled || onAccountAmount > 0 || !offlineTender?.allowOffline) return { quote: null as SaleQuote | null, error: 'Mode offline hanya mengizinkan satu tender yang ditandai boleh offline pada konfigurasi server.' };
     if (offlineTender.requiresProvider && !paymentProvider.trim()) return { quote: null as SaleQuote | null, error: `Tender ${offlineTender.name} mewajibkan provider.` };
     if (offlineTender.requiresReference && !paymentReference.trim()) return { quote: null as SaleQuote | null, error: `Tender ${offlineTender.name} mewajibkan referensi eksternal.` };
-    if (cart.some((item) => item.quantityFactor !== 1 || item.barcodeCode)) return { quote: null as SaleQuote | null, error: 'Penjualan unit/kemasan hasil scan membutuhkan server online agar konversi dan harga divalidasi authoritative.' };
+    if (cart.some((item) => item.quantityFactor !== 1 || item.barcodeCode || item.product.retailPolicy?.weight || item.product.retailPolicy?.kitRecipeId)) return { quote: null as SaleQuote | null, error: 'Penjualan unit/kemasan hasil scan membutuhkan server online agar konversi dan harga divalidasi authoritative.' };
     if (promoCode.trim()) return { quote: null as SaleQuote | null, error: 'Promo membutuhkan koneksi server.' };
     if (redeemPoints > 0) return { quote: null as SaleQuote | null, error: 'Penukaran poin membutuhkan koneksi server.' };
     try {
@@ -683,7 +707,8 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
    */
   function cartItemUnitPrice(item: CartItem) { return variantPrice(item.product, shownVariant(item.product, item.variantId)); }
   function cartLineKey(item: Pick<CartItem, 'product' | 'barcodeCode' | 'productUnitId' | 'variantId'>) { return `${item.product.id}:${item.productUnitId ?? item.barcodeCode ?? item.variantId ?? 'BASE'}`; }
-  function add(product: Product, quantity = 1, conversion?: { unitCode?: string | null; quantityFactor?: string | number; productUnitId?: string; variantId?: string; barcodeCode?: string }) {
+  function add(product: Product, quantity = 1, conversion?: { weighedQuantity?: boolean; unitCode?: string | null; quantityFactor?: string | number; productUnitId?: string; variantId?: string; barcodeCode?: string }) {
+    if (product.retailPolicy?.weight && !conversion?.weighedQuantity && !conversion?.barcodeCode && !conversion?.productUnitId) { setWeighProduct(product); setWeighQuantity(''); return; }
     const factor = Number(conversion?.quantityFactor ?? 1);
     if (!Number.isSafeInteger(factor) || factor < 1) { setMessage('Konversi unit produk tidak valid.'); return; }
     const unitCode = (conversion?.unitCode || product.unit).trim().toUpperCase();
@@ -694,6 +719,9 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     const lineKey = `${product.id}:${productUnitId ?? barcodeCode ?? variantId ?? 'BASE'}`;
     const delta = Math.max(1, Math.trunc(quantity));
     const stock = available(product);
+    const weightedLabel = Boolean(barcodeCode && product.retailPolicy?.weight && barcodeCode.length === 13 && barcodeCode.startsWith(product.retailPolicy.weight.barcodeKey));
+    const usedBase = cart.filter((item) => item.product.id === product.id).reduce((sum, item) => sum + item.quantity * item.quantityFactor, 0);
+    if (weightedLabel && usedBase + delta * factor > stock) { setMessage('Stok tidak cukup untuk seluruh berat label.'); return; }
     setCart((current) => {
       const existing = current.find((item) => cartLineKey(item) === lineKey);
       const usedOtherBase = current.filter((item) => item.product.id === product.id && cartLineKey(item) !== lineKey).reduce((sum, item) => sum + item.quantity * item.quantityFactor, 0);
@@ -705,10 +733,26 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
         : [...current, { product, quantity: nextQuantity, unitCode, quantityFactor: factor, ...(productUnitId ? { productUnitId } : {}), ...(variantId ? { variantId } : {}), ...(barcodeCode ? { barcodeCode } : {}) }];
     });
   }
-  function scanExactBarcode(raw: string) {
+  async function scanExactBarcode(raw: string) {
     const code = raw.trim();
     if (!code) return false;
-    for (const product of products) {
+    let candidates = [...products, ...(serverMatches ?? [])];
+    if (apiOnline && token) {
+      try { candidates = await searchCatalog<Product>(asCatalogFetcher(api), token, code); }
+      catch { setMessage('Barcode belum dapat diverifikasi server. Ulangi scan.'); return true; }
+    }
+    const exact = candidates.filter((product) => product.barcode === code || product.barcodes?.some((item) => item.code === code));
+    const weighted = !exact.length && code.length === 13 ? candidates.find((product) => product.retailPolicy?.weight?.barcodeKey === code.slice(0, 7)) : undefined;
+    if (weighted?.retailPolicy?.weight) {
+      let label: ReturnType<typeof decodeWeightBarcode>;
+      try { label = decodeWeightBarcode(code); } catch (error) { setMessage((error as Error).message); return true; }
+      if (!label) return false;
+      if (!apiOnline) { setMessage('Barang timbang membutuhkan validasi server online.'); return true; }
+      const quantity = label.encodedQuantity * weighted.retailPolicy.weight.baseUnitsPerEncodedUnit;
+      add(weighted, quantity, { barcodeCode: code }); setSearch(''); setMessage(`${weighted.name}: ${quantity} ${weighted.unit}. Harga dan stok dikonfirmasi server.`); return true;
+    }
+    for (const product of exact) {
+      if (product.retailPolicy?.weight?.barcodeKey === code) { setMessage('Scan label timbangan lengkap, bukan key PLU.'); return true; }
       const alternate = product.barcodes?.find((item) => item.code === code);
       if (product.barcode !== code && !alternate) continue;
       const factor = Number(alternate?.quantityFactor ?? 1);
@@ -733,6 +777,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
       const target = current.find((item) => cartLineKey(item) === lineKey);
       if (!target) return current;
       if (quantity <= 0) return current.filter((item) => cartLineKey(item) !== lineKey);
+      if (target.barcodeCode && target.product.retailPolicy?.weight && target.barcodeCode.length === 13 && target.barcodeCode.startsWith(target.product.retailPolicy.weight.barcodeKey)) { const label = decodeWeightBarcode(target.barcodeCode); const weight = target.product.retailPolicy?.weight; if (label && weight && quantity % (label.encodedQuantity * weight.baseUnitsPerEncodedUnit) !== 0) { setMessage('Quantity label timbang harus kelipatan berat label.'); return current; } }
       const stock = available(target.product);
       const usedOtherBase = current.filter((item) => item.product.id === target.product.id && cartLineKey(item) !== lineKey).reduce((sum, item) => sum + item.quantity * item.quantityFactor, 0);
       const maxUnitQuantity = Math.max(0, Math.floor((stock - usedOtherBase) / target.quantityFactor));
@@ -1016,6 +1061,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   return <PosShell
     workspace={workspace}
     onWorkspaceChange={setWorkspace}
+    allowedWorkspaces={allowedWorkspaces}
     apiOnline={apiOnline}
     queueCount={ownedOfflineQueue.length}
     conflictCount={pendingSaleReturns.length}
@@ -1023,12 +1069,12 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     branchName={manifest?.branch?.name ?? manifest?.branch?.code ?? 'Cabang aktif'}
     warehouseControl={<><label>Gudang/toko<select value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setCart([]); }}>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>{ownedOfflineQueue.length > 0 && <button className="syncButton" disabled={!apiOnline || syncBusy} onClick={() => void syncOfflineQueue(token, hasOfflineConflict)}><RefreshCw size={14} className={syncBusy ? 'spin' : ''} /> {syncBusy ? 'SYNC...' : 'SYNC'}</button>}<button className="logout" onClick={() => void logout()}>Keluar</button></>}
   >
-    <StaffMemoWidget token={token} />
+    {allowedWorkspaces.includes('SALE') && <StaffMemoWidget token={token} />}
     {message && <div className={`notice ${(message.includes('berhasil') || message.includes('tersimpan')) ? 'toastLike success' : 'toastLike error'}`}>{(message.includes('berhasil') || message.includes('tersimpan')) ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {message}</div>}
     {/* Receipt history. Without this, a customer who lost the slip minutes after paying has no way
         to get it again: the only receipt control was for the sale just completed, and it disappears
         on the next transaction. */}
-    {recentSales.length > 0 && <section className="receiptHistory" aria-label="Riwayat struk">
+    {workspace !== 'PPOB' && recentSales.length > 0 && <section className="receiptHistory" aria-label="Riwayat struk">
       <h3>Struk transaksi</h3>
       <p className="panelNote">Cetak ulang struk yang hilang. Struk dibuka di tab baru agar keranjang tidak hilang.</p>
       <ul>
@@ -1037,18 +1083,19 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
             <span><strong>{sale.number}</strong><small>{new Date(sale.createdAt).toLocaleString('id-ID')} · {money(sale.total)}</small></span>
             <button type="button" className="secondary" onClick={() => reprintReceipt(sale.number)} disabled={receiptBusy === sale.number}>
               {receiptBusy === sale.number ? 'MEMBUKA…' : 'Cetak ulang'}
-            </button><button type="button" className="secondary" onClick={() => rawBtReceipt(sale.number)}>RawBT 58mm</button>
+            </button><button type="button" className="secondary" onClick={() => rawBtReceipt(sale.number)}>RawBT 58mm</button>{sale.customerId && manifest?.features.customer_campaign?.enabled && retailPermission(token,['SUPER_ADMIN','OWNER','ADMIN','CASHIER','FINANCE'],['sale.view']) && <ReceiptDeliveryControls api={api} saleId={sale.id} />}
           </li>
         ))}
       </ul>
     </section>}
-    {lastReceipt && <section className="receiptReady" aria-label="Struk transaksi terakhir"><div><strong>Struk {lastReceipt.number} siap</strong><small>{money(lastReceipt.total)} · dapat dibuka, dicetak, atau dibagikan dari halaman struk digital.</small></div><div className="rowActions"><button type="button" className="secondary" onClick={() => window.open(`${API}/receipts/${encodeURIComponent(lastReceipt.number)}`, '_blank', 'noopener,noreferrer')}>BUKA STRUK DIGITAL</button><button type="button" className="secondary" onClick={() => rawBtReceipt(lastReceipt.number)}>RAWBT 58MM</button><button type="button" className="clear" onClick={() => setLastReceipt(null)}>TUTUP</button></div></section>}
+    {lastReceipt && <section className="receiptReady" aria-label="Struk transaksi terakhir"><div><strong>Struk {lastReceipt.number} siap</strong><small>{money(lastReceipt.total)} · dapat dibuka, dicetak, atau dibagikan dari halaman struk digital.</small></div><div className="rowActions"><button type="button" className="secondary" onClick={() => void reprintReceipt(lastReceipt.number)} disabled={receiptBusy === lastReceipt.number}>BUKA STRUK DIGITAL</button><button type="button" className="secondary" onClick={() => rawBtReceipt(lastReceipt.number)}>RAWBT 58MM</button><button type="button" className="clear" onClick={() => setLastReceipt(null)}>TUTUP</button></div></section>}
 
+    {workspace === 'PPOB' && <PosDigitalServices api={api} token={token} online={apiOnline} />}
     {workspace === 'SALE' && <>
     {ownedHeldSales.length > 0 && <section className="heldPanel"><strong>Transaksi Hold ({ownedHeldSales.length})</strong><div className="heldList">{ownedHeldSales.map((held) => <div key={held.id} className="heldItem"><div><b>{held.label}</b><small>{new Date(held.createdAt).toLocaleString('id-ID')} · {held.items.reduce((sum, item) => sum + item.quantity, 0)} item</small></div><button onClick={() => recallHeld(held.id)}>PANGGIL</button><button className="clear" onClick={() => deleteHeld(held.id)}>HAPUS</button></div>)}</div></section>}
 
 
-    <div className="layout">
+    <fieldset className="layout" disabled={reservedStaffOrder} style={{minWidth:0,border:0,padding:0,margin:0}}>
       <section className="catalog"><div className="searchWrap"><Search size={15} className="searchIcon" /><input className="search" placeholder="Cari nama, SKU, atau scan barcode..." value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void scanExactBarcode(search); } }} autoFocus /></div>
         <div className="chips">{categories.slice(0, 8).map((cat) => <button key={cat} className={cat === category ? 'chip active' : 'chip'} onClick={() => setCategory(cat)}>{cat}</button>)}</div>
         <div className="products">
@@ -1056,11 +1103,12 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
           {catalogReady && !products.length && <div className="emptyState"><div className="emptyIcon"><PackageSearch size={28} strokeWidth={1.6} /></div><h4>Katalog belum tersedia</h4><p>Belum ada produk aktif untuk terminal ini atau data gagal dimuat.</p></div>}
           {products.length > 0 && !visibleProducts.length && <div className="emptyState"><div className="emptyIcon"><PackageSearch size={28} strokeWidth={1.6} /></div><h4>Tidak ada produk cocok</h4><p>Coba kata kunci lain atau ganti kategori.</p></div>}
           {(catalogHasMore || serverSearchBusy) && <div className="catalogFooter" role="status">{serverSearchBusy ? 'Mencari di server…' : `Menampilkan ${products.length} produk. Katalog belum lengkap.`}{catalogHasMore && <button type="button" className="secondary" onClick={() => void loadMoreCatalog()} disabled={catalogLoadingMore}>{catalogLoadingMore ? 'MEMUAT…' : 'Muat lagi katalog'}</button>}</div>}
-          {visibleProducts.map((product) => { const variants = activeVariants(product); const variant = shownVariant(product, variantChoice[product.id]); const units = variantUnits(product, variant); return <div className="product" key={product.id}><button className="productMain" onClick={() => add(product, 1, variant ? { variantId: variant.id } : undefined)} disabled={available(product) <= 0}><div className="productIcon" aria-hidden="true"><Package size={24} strokeWidth={1.7} /></div><strong>{product.name}</strong><small>{product.sku} · stok {available(product)} {product.unit}</small><span>{money(variantPrice(product, variant))}</span></button>{variants.length > 1 && <label className="variantPick"><span className="srOnly">Jenis {product.name}</span><select aria-label={`Jenis ${product.name}`} value={variant?.id ?? ''} onChange={(event) => setVariantChoice((current) => ({ ...current, [product.id]: event.target.value }))}>{variants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{apiOnline && units.length > 0 && <div className="unitActions">{units.map((unit) => <button type="button" key={unit.id} onClick={() => add(product,1,{unitCode:unit.unitCode,quantityFactor:unit.quantityFactor,productUnitId:unit.id,variantId:(unit.variantId ?? variant?.id) ?? undefined})}>{unit.unitCode} × {unit.quantityFactor}</button>)}</div>}</div>; })}
+          {visibleProducts.map((product) => { const variants = activeVariants(product); const variant = shownVariant(product, variantChoice[product.id]); const units = variantUnits(product, variant); return <div className="product" key={product.id}><button className="productMain" title={product.name} onClick={() => add(product, 1, variant ? { variantId: variant.id } : undefined)} disabled={available(product) <= 0}><div className="productIcon">{product.retailPolicy?.gallery[0] ? <img src={product.retailPolicy.gallery[0].url} alt={product.retailPolicy.gallery[0].alt} loading="lazy" width={48} height={48} style={{objectFit:"contain"}}/> : <Package size={24} strokeWidth={1.7}/>}</div><strong>{product.name}</strong><small>{product.sku} · stok {available(product)} {product.unit}</small>{product.retailAvailabilityError && <small role="status">{product.retailAvailabilityError}</small>}<span>{money(variantPrice(product, variant))}</span></button>{variants.length > 1 && <label className="variantPick"><span className="srOnly">Jenis {product.name}</span><select aria-label={`Jenis ${product.name}`} value={variant?.id ?? ''} onChange={(event) => setVariantChoice((current) => ({ ...current, [product.id]: event.target.value }))}>{variants.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{apiOnline && units.length > 0 && <div className="unitActions">{units.map((unit) => <button type="button" key={unit.id} onClick={() => add(product,1,{unitCode:unit.unitCode,quantityFactor:unit.quantityFactor,productUnitId:unit.id,variantId:(unit.variantId ?? variant?.id) ?? undefined})}>{unit.unitCode} × {unit.quantityFactor}</button>)}</div>}</div>; })}
         </div>
       </section>
-      <aside className="cart"><div className="cartTitle"><div><span>TRANSAKSI</span><h2><ShoppingCart size={17} style={{verticalAlign:'-3px'}} /> Keranjang kasir</h2></div><div className="rowActions"><button className="clear" disabled={!cart.length} onClick={holdCart}>HOLD</button><button className="clear" onClick={() => setCart([])}><Trash2 size={14} /> Kosongkan</button></div></div>
-        <div className="items">{!cart.length && <div className="emptyState"><div className="emptyIcon"><ScanBarcode size={26} strokeWidth={1.6} /></div><h4>Keranjang kosong</h4><p>Scan atau pilih produk untuk memulai transaksi.</p></div>}{cart.map((item) => { const key = cartLineKey(item); const serverLine = activeQuote?.items?.find((line) => line.productId === item.product.id && (line.barcodeCode ?? undefined) === item.barcodeCode && (line.variantId ?? undefined) === item.variantId); const linePrice = Number(serverLine?.sellingUnitPrice ?? cartItemUnitPrice(item) * item.quantityFactor); const cartVariant = item.variantId ? shownVariant(item.product, item.variantId) : undefined; return <div className="item" key={key}><div><strong>{item.product.name}{cartVariant && <span className="variantTag"> · {cartVariant.name}</span>}</strong><small>{item.quantityFactor > 1 ? `${item.unitCode} · 1 = ${item.quantityFactor} ${item.product.unit}` : item.unitCode} · {money(linePrice)}</small><button type="button" className="linkButton" onClick={() => void openCollectFor(item.product.id, item.product.name, item.quantity)}>Ambil di cabang lain</button></div><div className="qty"><button aria-label="Kurangi" onClick={() => change(key, item.quantity - 1)}><Minus size={13} /></button><span>{item.quantity}</span><button aria-label="Tambah" onClick={() => change(key, item.quantity + 1)}><Plus size={13} /></button></div><strong>{money(linePrice * item.quantity)}</strong></div>; })}</div>
+      <aside className="cart" data-quote-state={quoteLoading ? "loading" : quoteError ? "error" : quote ? "ready" : "empty"} data-quote-total={quote?.total ?? ""}><div className="cartTitle"><div><span>TRANSAKSI</span><h2><ShoppingCart size={17} style={{verticalAlign:'-3px'}} /> Keranjang kasir</h2></div><div className="rowActions"><button className="clear" disabled={!cart.length} onClick={holdCart}>HOLD</button><button className="clear" onClick={() => setCart([])}><Trash2 size={14} /> Kosongkan</button></div></div>
+        {weighProduct && <form className="formStack" onSubmit={(event) => { event.preventDefault(); const quantity=Number(weighQuantity); if (!apiOnline || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > available(weighProduct)) { setMessage('Berat harus tepat dalam base unit dan stok mencukupi; server online wajib.'); return; } add(weighProduct,quantity,{weighedQuantity:true,variantId:variantChoice[weighProduct.id]}); setWeighProduct(null); }}><label>Berat {weighProduct.name} ({weighProduct.unit})<input required autoFocus type="number" min="1" step="1" value={weighQuantity} onChange={(event) => setWeighQuantity(event.target.value)}/></label><small>Contoh: 0,250 KG = 250 GR. Harga mengikuti master per {weighProduct.unit}.</small><div className="actions"><button type="submit">Tambahkan berat</button><button type="button" className="secondary" onClick={() => setWeighProduct(null)}>Batal</button></div></form>}
+        <div className="items">{!cart.length && <div className="emptyState"><div className="emptyIcon"><ScanBarcode size={26} strokeWidth={1.6} /></div><h4>Keranjang kosong</h4><p>Scan atau pilih produk untuk memulai transaksi.</p></div>}{cart.map((item) => { const key = cartLineKey(item); const label = item.barcodeCode && item.product.retailPolicy?.weight && item.barcodeCode.length === 13 && item.barcodeCode.startsWith(item.product.retailPolicy.weight.barcodeKey) ? decodeWeightBarcode(item.barcodeCode) : null; const quantityStep = label && item.product.retailPolicy?.weight ? label.encodedQuantity * item.product.retailPolicy.weight.baseUnitsPerEncodedUnit : 1; const serverLine = activeQuote?.items?.find((line) => line.productId === item.product.id && (line.barcodeCode ?? undefined) === item.barcodeCode && (line.variantId ?? undefined) === item.variantId); const linePrice = Number(serverLine?.sellingUnitPrice ?? cartItemUnitPrice(item) * item.quantityFactor); const cartVariant = item.variantId ? shownVariant(item.product, item.variantId) : undefined; return <div className="item" key={key}><div><strong>{item.product.name}{cartVariant && <span className="variantTag"> · {cartVariant.name}</span>}</strong><small>{item.quantityFactor > 1 ? `${item.unitCode} · 1 = ${item.quantityFactor} ${item.product.unit}` : item.unitCode} · {money(linePrice)}</small><button type="button" className="linkButton" onClick={() => void openCollectFor(item.product.id, item.product.name, item.quantity)}>Ambil di cabang lain</button></div><div className="qty"><button aria-label="Kurangi" onClick={() => change(key, item.quantity - quantityStep)}><Minus size={13} /></button><span>{item.quantity}</span><button aria-label="Tambah" onClick={() => change(key, item.quantity + quantityStep)}><Plus size={13} /></button></div><strong>{money(linePrice * item.quantity)}</strong></div>; })}</div>
         <div className="summary"><div><span><UserRound size={13} style={{verticalAlign:'-2px'}} /> Pelanggan</span><select value={customerId} onChange={(e) => setCustomerId(e.target.value)}><option value="">Tanpa pelanggan</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}</select></div>
           {customerWarning && <small className="fieldWarning">{customerWarning}</small>}
           {customerId && loyaltyPoints > 0 && <label className="redeem"><Coins size={13} style={{verticalAlign:'-2px'}} /> Tukar poin (saldo {loyaltyPoints})<input type="number" min={0} max={loyaltyPoints} value={redeemPoints} disabled={!apiOnline} onChange={(e) => setRedeemPoints(Math.min(loyaltyPoints, Math.max(0, Math.floor(Number(e.target.value) || 0))))} /></label>}
@@ -1083,19 +1131,21 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
           <div className="paymentModeHeader"><strong><CreditCard size={13} style={{verticalAlign:'-2px'}} /> Pembayaran</strong><button type="button" className="clear" disabled={!apiOnline || tenderTarget <= 0} onClick={() => { const next = !splitEnabled; setSplitEnabled(next); if (next) setSplitPayments([{ method: tenderMethods[0]?.code ?? '', amount: tenderTarget }, { method: tenderMethods[1]?.code ?? tenderMethods[0]?.code ?? '', amount: 0 }]); }}>{splitEnabled ? 'SATU METODE' : 'SPLIT PAYMENT'}</button></div>
           <label>Piutang pelanggan{!apiOnline ? ' · hanya online' : ''}<input type="number" min="0" max={Number(displayTotal)} disabled={!apiOnline || !customerId} value={onAccountAmount} onChange={(e) => setOnAccountAmount(Math.min(Number(displayTotal), Math.max(0, Number(e.target.value) || 0)))} /></label>
           {onAccountAmount > 0 && !customerId && <small className="fieldWarning">Pilih pelanggan untuk menggunakan piutang.</small>}
-          {tenderTarget > 0 && (!splitEnabled ? <><label>Metode pembayaran{!apiOnline ? ' · sesuai kebijakan offline server' : ''}<select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setPaymentProvider(''); setPaymentReference(''); }}>{tenderMethods.map((item) => <option key={item.code} value={item.code} disabled={!apiOnline && !item.allowOffline}>{item.name} · {item.code}{!apiOnline && !item.allowOffline ? ' (online)' : ''}</option>)}</select></label>{selectedTender?.requiresProvider&&<label>Provider<input required value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} placeholder="Provider pembayaran" /></label>}{selectedTender?.requiresReference&&<label>Referensi eksternal<input required value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Nomor/reference provider" /></label>}{selectedTender&&<small>{selectedTender.kind==='CASH'?'Kas fisik':selectedTender.settlementBehavior==='CLEARING'?'Masuk akun clearing':'Settlement langsung'} · akun {selectedTender.settlementAccountCode}{selectedTender.feeRatePercent>0?` · fee ${selectedTender.feeRatePercent}%`:''}</small>}</>
+          {tenderTarget > 0 && (!splitEnabled ? <><label>Metode pembayaran{!apiOnline ? ' · sesuai kebijakan offline server' : ''}<select value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setPaymentProvider(''); setPaymentReference(''); }}>{tenderMethods.map((item) => <option key={item.code} value={item.code} disabled={!apiOnline && !item.allowOffline}>{item.name} · {item.code}{!apiOnline && !item.allowOffline ? ' (online)' : ''}</option>)}</select></label>{selectedTender?.requiresProvider&&<label>Provider<input required value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} placeholder="Provider pembayaran" /></label>}{selectedTender?.requiresReference&&<label>Referensi eksternal<input required value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Nomor/reference provider" /></label>}{selectedTender&&<small>{selectedTender.kind==='CASH'?'Kas fisik':selectedTender.kind==='DEPOSIT'?'Deposit pelanggan':selectedTender.settlementBehavior==='CLEARING'?'Masuk akun clearing':'Settlement langsung'} · akun {selectedTender.settlementAccountCode}{selectedTender.feeRatePercent>0?` · fee ${selectedTender.feeRatePercent}%`:''}</small>}</>
             : <div className="splitPayments">{splitPayments.map((entry, index) => { const tender=tenderMethods.find((item)=>item.code===entry.method); return <div className="splitRow" key={`${index}-${entry.method}`}><select value={entry.method} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { method: e.target.value, amount:item.amount } : item))}>{tenderMethods.map((item)=><option key={item.code} value={item.code}>{item.name} · {item.code}</option>)}</select><input type="number" min="0" value={entry.amount} onChange={(e) => setSplitPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Math.max(0, Number(e.target.value) || 0) } : item))} />{tender?.requiresProvider&&<input value={entry.provider??''} onChange={(e)=>setSplitPayments((current)=>current.map((item,i)=>i===index?{...item,provider:e.target.value}:item))} placeholder="Provider"/>}{tender?.requiresReference&&<input value={entry.externalRef??''} onChange={(e)=>setSplitPayments((current)=>current.map((item,i)=>i===index?{...item,externalRef:e.target.value}:item))} placeholder="Referensi"/>}{splitPayments.length > 2 && <button className="clear iconOnly" aria-label="Hapus metode pembayaran" onClick={() => setSplitPayments((current) => current.filter((_, i) => i !== index))}><X size={16} /></button>}</div>;})}<button className="clear inlineIcon" onClick={() => setSplitPayments((current) => [...current, { method: tenderMethods[0]?.code ?? '', amount: 0 }])}><Plus size={15} />Metode</button><small className={splitReady ? '' : 'fieldWarning'}>Tender {money(splitTotal)} dari {money(tenderTarget)}{normalizedOnAccountDisplay>0?` · piutang ${money(normalizedOnAccountDisplay)}`:''}{splitReady ? '' : ' · harus sama persis'}</small></div>)}
           {tenderTarget <= 0 && <small>Seluruh total dicatat sebagai piutang pelanggan; tidak ada tender yang dibebankan sekarang.</small>}
+
           <button className="pay" disabled={!cart.length || !warehouseId || !shift || !activeQuote || quoteLoading || !!activeQuoteError || paying || !splitReady} onClick={pay}>{paying ? 'MEMPROSES...' : shift ? (apiOnline ? 'BAYAR' : 'SIMPAN TRANSAKSI OFFLINE') : 'BUKA SHIFT DULU'}</button>
         </div>
       </aside>
-    </div>
+    </fieldset>
 
+          {apiOnline && manifest?.features.pos_ship_later?.enabled && retailPermission(token, ['SUPER_ADMIN','OWNER','ADMIN','CASHIER'], ['sale.create']) && <ShipLaterPanel api={api} warehouseId={warehouseId} customerId={customerId} cashierShiftId={shift?.id ?? ''} items={cart.map(item => ({ productId:item.product.id,quantity:item.quantity,productUnitId:item.productUnitId,variantId:item.variantId,barcodeCode:item.barcodeCode }))} cashTenders={tenderMethods.filter(t => t.kind === 'CASH' && !t.requiresProvider && !t.requiresReference && !t.feeRatePercent)} onReserved={setReservedStaffOrder} onComplete={async () => { setCart([]); await loadData(token); }} />}
     </>}
     {workspace === 'SHIFT' && <>
     <section className="shiftPanel">
       <div className="shiftIdentity"><Store size={18} /><div><strong>{shift ? 'Shift kasir aktif' : 'Shift belum dibuka'}</strong><small>{shift ? `Dibuka ${new Date(shift.openedAt).toLocaleString('id-ID')} · kas awal ${money(shift.openingCash)}` : 'Buka shift sebelum menerima transaksi.'}</small></div></div>
-      {shift ? <div className="shiftActions"><label>Kas fisik saat tutup<input type="number" min="0" value={closingCash} onChange={(e) => setClosingCash(Math.max(0, Number(e.target.value) || 0))} /></label><button className="shiftClose" disabled={shiftBusy || cart.length > 0 || paying || !apiOnline || ownedOfflineQueue.length > 0} onClick={closeShift}>{shiftBusy ? 'MEMPROSES...' : 'TUTUP SHIFT'}</button></div>
+      {shift ? <div className="shiftActions"><label>Kas fisik saat tutup<input type="number" min="0" value={closingCash} onChange={(e) => setClosingCash(Math.max(0, Number(e.target.value) || 0))} /></label><button className="shiftClose" disabled={shiftBusy || cart.length > 0 || reservedStaffOrder || paying || !apiOnline || ownedOfflineQueue.length > 0} onClick={closeShift}>{shiftBusy ? 'MEMPROSES...' : 'TUTUP SHIFT'}</button></div>
         : <div className="shiftActions"><label>Kas awal<input type="number" min="0" value={openingCash} onChange={(e) => setOpeningCash(Math.max(0, Number(e.target.value) || 0))} /></label><button disabled={shiftBusy} onClick={openShift}>{shiftBusy ? 'MEMPROSES...' : 'BUKA SHIFT'}</button></div>}
       {shift && <div className="cashMovementBar"><label>Nominal kas<input type="number" min="0" value={cashMovementAmount} onChange={(e) => setCashMovementAmount(Math.max(0, Number(e.target.value) || 0))} /></label><label>Alasan<input value={cashMovementReason} maxLength={240} onChange={(e) => setCashMovementReason(e.target.value)} placeholder="Contoh: uang kecil / biaya parkir" /></label><button disabled={cashMovementBusy || cashMovementAmount <= 0 || !cashMovementReason.trim() || !apiOnline} onClick={() => void recordCashMovement('CASH_IN')}>KAS MASUK</button><button className="shiftClose" disabled={cashMovementBusy || cashMovementAmount <= 0 || !cashMovementReason.trim() || !apiOnline} onClick={() => void recordCashMovement('CASH_OUT')}>KAS KELUAR</button></div>}
     </section>
@@ -1112,13 +1162,14 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
 
     </>}
     {workspace === 'RETURNS' && <>
+    {apiOnline && manifest?.features.retail_exchange?.enabled && retailPermission(token, ['SUPER_ADMIN','OWNER','ADMIN'], ['sale.create','sale.return','sale.refund']) && <RetailExchangePanel api={api} returns={saleReturns} products={products} warehouseId={warehouseId} cashierShiftId={shift?.id ?? ''} onComplete={() => loadData(token)} />}
     <details className="returnPanel">
       <summary>RETUR / REFUND PENJUALAN {pendingSaleReturns.length ? `· ${pendingSaleReturns.length} menunggu proses` : ''}</summary>
       {!apiOnline ? <small>Retur hanya tersedia saat server online.</small> : <div className="returnWorkspace">
         <label>Transaksi asal<select value={returnSaleId} onChange={(e) => { setReturnSaleId(e.target.value); setReturnQty({}); }}><option value="">Pilih transaksi terbaru</option>{recentSales.map((sale) => <option key={sale.id} value={sale.id}>{sale.number} · {new Date(sale.createdAt).toLocaleString('id-ID')} · {money(sale.total)}</option>)}</select></label>
         {selectedReturnSale && <div className="returnItems">{selectedReturnSale.items.map((item) => <label key={item.id}>{item.product.name} · dibeli {item.quantity}<input type="number" min="0" max={item.quantity} value={returnQty[item.id] ?? 0} onChange={(e) => setReturnQty((current) => ({ ...current, [item.id]: Math.min(item.quantity, Math.max(0, Math.floor(Number(e.target.value) || 0))) }))} /></label>)}</div>}
         <label>Alasan retur<input value={returnReason} maxLength={240} onChange={(e) => setReturnReason(e.target.value)} placeholder="Contoh: barang rusak / salah item" /></label>
-        <label>Metode refund<select value={returnRefundMethod} onChange={(e) => setReturnRefundMethod(e.target.value)}><option value="ORIGINAL">Ikuti tender/piutang asal</option><option value="RECEIVABLE">Kurangi piutang</option>{tenderMethods.filter((item)=>item.refundBehavior!=='DISABLED').map((item)=><option key={item.code} value={item.code}>{item.name} · {item.code}</option>)}</select></label>
+        <label>Metode refund<select value={returnRefundMethod} onChange={(e) => setReturnRefundMethod(e.target.value)}><option value="ORIGINAL">Ikuti tender/piutang asal</option><option value="RECEIVABLE">Kurangi piutang</option>{tenderMethods.filter((item)=>item.refundBehavior!=='DISABLED' && item.kind !== 'DEPOSIT').map((item)=><option key={item.code} value={item.code}>{item.name} · {item.code}</option>)}</select></label>
         <button disabled={returnBusy || !returnSaleId || !returnReason.trim()} onClick={() => void submitSaleReturn()}>{returnBusy ? 'MEMPROSES...' : 'AJUKAN RETUR'}</button>
         {saleReturns.slice(0, 5).map((row) => <small key={row.id}>{row.number} · {money(row.refundAmount)} · {row.status}</small>)}
       </div>}

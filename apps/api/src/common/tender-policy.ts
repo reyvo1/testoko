@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 
-export type TenderKind = 'CASH' | 'SETTLEMENT';
+export type TenderKind = 'CASH' | 'SETTLEMENT' | 'DEPOSIT';
 export type TenderSettlementBehavior = 'IMMEDIATE' | 'CLEARING';
 export type TenderRefundBehavior = 'ORIGINAL' | 'CASH' | 'SETTLEMENT' | 'RECEIVABLE' | 'DISABLED';
 
@@ -59,7 +59,7 @@ export function normalizeTenderPolicy(code: string, metadata: Prisma.JsonValue |
   const rawRate = source.feeRatePercent;
   const feeRatePercent = rawRate === undefined || rawRate === null || rawRate === '' ? fallback.feeRatePercent : Number(rawRate);
 
-  if (!['CASH', 'SETTLEMENT'].includes(kind)) throw new Error('kind tender harus CASH atau SETTLEMENT.');
+  if (!['CASH', 'SETTLEMENT', 'DEPOSIT'].includes(kind)) throw new Error('kind tender harus CASH, SETTLEMENT atau DEPOSIT.');
   if (!['IMMEDIATE', 'CLEARING'].includes(settlementBehavior)) throw new Error('settlementBehavior tender harus IMMEDIATE atau CLEARING.');
   if (!['ORIGINAL', 'CASH', 'SETTLEMENT', 'RECEIVABLE', 'DISABLED'].includes(refundBehavior)) throw new Error('refundBehavior tender tidak valid.');
   if (!ACCOUNT_CODE.test(settlementAccountCode)) throw new Error('settlementAccountCode tender wajib berupa kode akun yang valid.');
@@ -81,6 +81,7 @@ export function normalizeTenderPolicy(code: string, metadata: Prisma.JsonValue |
     feeRatePercent,
     ...(feeAccountCode ? { feeAccountCode } : {}),
   };
+  if (policy.kind === 'DEPOSIT' && (policy.allowOffline || policy.allowCashChange || policy.requiresProvider || policy.requiresReference || policy.feeRatePercent !== 0 || policy.settlementBehavior !== 'IMMEDIATE' || policy.refundBehavior !== 'ORIGINAL' || !source.settlementAccountCode)) throw new Error('Deposit wajib online, tanpa fee/provider/kembalian, immediate dan refund ORIGINAL.');
   if (policy.kind !== 'CASH' && policy.allowCashChange) throw new Error('allowCashChange hanya boleh aktif untuk tender kind CASH.');
   if (policy.refundBehavior === 'CASH' && !policy.refundAccountCode) throw new Error('refundAccountCode wajib untuk refundBehavior CASH.');
   return policy;

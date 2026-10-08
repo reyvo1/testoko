@@ -5,6 +5,8 @@ import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { serializableTx } from '../common/serializable-tx';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlatformService } from '../platform/platform.service';
+import { retailAuthority } from '../common/retail-feature';
 import { CreateDigitalServiceTransactionDto } from './dto/digital-services.dto';
 
 type Scope = { companyId: string; branchId: string };
@@ -13,7 +15,7 @@ type TxCursor = { createdAt: string; id: string };
 
 @Injectable()
 export class DigitalServicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly platform: PlatformService) {}
   private scope(user: AuthUser): Scope {
     if (!user.companyId || !user.branchId) throw new ForbiddenException({ code: 'TENANT_CONTEXT_REQUIRED', message: 'Company dan branch aktif wajib tersedia.' });
     return { companyId: user.companyId, branchId: user.branchId };
@@ -22,18 +24,29 @@ export class DigitalServicesService {
     return { companyId: scope.companyId, type: 'PPOB', provider: { equals: 'DIGIFLAZZ' }, status: 'CONNECTED', OR: [{ branchId: scope.branchId }, { branchId: null }] };
   }
   private async integration(scope: Scope) {
-    const integration = await this.prisma.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: 'desc' }, { updatedAt: 'desc' }] });
+    const integration = await this.prisma.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }] });
     if (!integration) throw new BadRequestException('IntegrationConnection PPOB DIGIFLAZZ berstatus CONNECTED belum dikonfigurasi untuk tenant/branch ini.');
     return integration;
   }
 
+  async status(user: AuthUser) {
+    const scope = this.scope(user);
+    const integration = await this.prisma.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }] });
+    return { enabled: await this.platform.featureEnabled(user, 'digital_services_ppob'),
+      connected: Boolean(integration), hasCredentials: Boolean(integration?.encryptedSecrets),
+      integrationId: integration?.id ?? null, provider: integration?.provider ?? 'DIGIFLAZZ', certification: 'PENDING',
+      cashPosting: 'NOT_IMPLEMENTED', kind: 'PREPAID' };
+  }
+
   async products(user: AuthUser, search?: string, category?: string, limitValue?: string, cursorValue?: string) {
     const scope = this.scope(user); const limit = parsePageLimit(limitValue); const cursor = decodeCursor<ProductCursor>(cursorValue);
+    const integration = await this.prisma.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }] });
+    if (!integration) return toCursorPage([], limit, (row: { name: string; id: string }) => ({ name: row.name, id: row.id }));
     const filters: Prisma.DigitalServiceProductWhereInput[] = [];
     if (search?.trim()) filters.push({ OR: [{ providerSku: { contains: search.trim() } }, { name: { contains: search.trim() } }, { brand: { contains: search.trim() } }] });
     if (category?.trim()) filters.push({ category: category.trim() });
     if (cursor) filters.push({ OR: [{ name: { gt: cursor.name } }, { name: cursor.name, id: { gt: cursor.id } }] });
-    const rows = await this.prisma.digitalServiceProduct.findMany({ where: { companyId: scope.companyId, active: true, integration: this.integrationWhere(scope), AND: filters.length ? filters : undefined }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: limit + 1 });
+    const rows = await this.prisma.digitalServiceProduct.findMany({ where: { companyId: scope.companyId, integrationId: integration.id, active: true, kind: 'PREPAID', buyerProductStatus: true, sellerProductStatus: true, AND: filters.length ? filters : undefined }, orderBy: [{ name: 'asc' }, { id: 'asc' }], take: limit + 1 });
     return toCursorPage(rows, limit, (row) => ({ name: row.name, id: row.id }));
   }
 
@@ -64,25 +77,38 @@ export class DigitalServicesService {
 
   async createTransaction(dto: CreateDigitalServiceTransactionDto, user: AuthUser) {
     const scope = this.scope(user);
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','CASHIER'], ['digital_service.manage']);
     return serializableTx(this.prisma, async (tx) => {
       const existing = await tx.digitalServiceTransaction.findUnique({ where: { companyId_idempotencyKey: { companyId: scope.companyId, idempotencyKey: dto.idempotencyKey.trim() } } });
-      if (existing) return existing;
-      const integration = await tx.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: 'desc' }, { updatedAt: 'desc' }] });
+      if (existing) {
+        if (existing.branchId !== scope.branchId || existing.requestedById !== user.sub) throw new ForbiddenException('Operation key transaksi digital berada di luar konteks kasir/cabang ini.');
+        if (existing.providerSku !== dto.providerSku.trim() || existing.customerNo !== dto.customerNo.trim()
+          || (dto.maxPrice != null && !new Prisma.Decimal(existing.maxPrice ?? 0).equals(dto.maxPrice))
+          || (dto.expectedSellingPrice != null && !new Prisma.Decimal(existing.sellingPrice).equals(dto.expectedSellingPrice))) {
+          throw new BadRequestException('Operation key sudah digunakan dengan isi transaksi digital berbeda.');
+        }
+        return existing;
+      }
+      if (!await this.platform.featureEnabled(user, 'digital_services_ppob', tx)) throw new ForbiddenException('Fitur PPOB belum aktif untuk kasir/cabang ini.');
+      const integration = await tx.integrationConnection.findFirst({ where: this.integrationWhere(scope), orderBy: [{ branchId: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }] });
       if (!integration) throw new BadRequestException('IntegrationConnection PPOB DIGIFLAZZ CONNECTED belum tersedia.');
-      const product = await tx.digitalServiceProduct.findFirst({ where: { companyId: scope.companyId, integrationId: integration.id, providerSku: dto.providerSku.trim(), active: true, buyerProductStatus: true, sellerProductStatus: true } });
+      if (!integration.encryptedSecrets) throw new BadRequestException('Credential provider PPOB belum tersedia. Hubungi Admin.');
+      const product = await tx.digitalServiceProduct.findFirst({ where: { companyId: scope.companyId, integrationId: integration.id, providerSku: dto.providerSku.trim(), kind: 'PREPAID', active: true, buyerProductStatus: true, sellerProductStatus: true } });
       if (!product) throw new BadRequestException('Produk digital tidak tersedia/aktif pada katalog provider yang tersinkron.');
+      if (dto.expectedSellingPrice != null && !new Prisma.Decimal(product.salePrice).equals(dto.expectedSellingPrice)) throw new BadRequestException('Harga jual katalog berubah. Muat ulang katalog dan konfirmasi harga baru.');
       const maxPrice = dto.maxPrice == null ? product.costPrice : new Prisma.Decimal(dto.maxPrice);
       if (product.costPrice && maxPrice && new Prisma.Decimal(product.costPrice).greaterThan(maxPrice)) throw new BadRequestException('Harga beli provider saat ini melebihi batas maxPrice transaksi.');
       const number = await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'DIGITAL_SERVICE', prefix: 'PPOB' });
       const row = await tx.digitalServiceTransaction.create({ data: { companyId: scope.companyId, branchId: scope.branchId, integrationId: integration.id, requestedById: user.sub, providerSku: product.providerSku, customerNo: dto.customerNo.trim(), number, idempotencyKey: dto.idempotencyKey.trim(), kind: product.kind, sellingPrice: product.salePrice, maxPrice: maxPrice ?? undefined, requestData: { providerSku: product.providerSku, customerNo: dto.customerNo.trim() } } });
       await tx.eventOutbox.create({ data: { companyId: scope.companyId, eventType: 'digital-service.transaction.requested', aggregateType: 'DigitalServiceTransaction', aggregateId: row.id, payload: { companyId: scope.companyId, branchId: scope.branchId, transactionId: row.id, integrationId: integration.id } } });
-      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'CREATE_DIGITAL_SERVICE_TRANSACTION', entityType: 'DigitalServiceTransaction', entityId: row.id, payload: { branchId: scope.branchId, number, providerSku: product.providerSku, customerNo: dto.customerNo.trim() } } });
+      await tx.auditLog.create({ data: { companyId: scope.companyId, userId: user.sub, action: 'CREATE_DIGITAL_SERVICE_TRANSACTION', entityType: 'DigitalServiceTransaction', entityId: row.id, payload: { branchId: scope.branchId, number, providerSku: product.providerSku } } });
       return row;
     });
   }
 
   async recheck(id: string, user: AuthUser) {
     const scope = this.scope(user);
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','CASHIER'], ['digital_service.manage']);
     return serializableTx(this.prisma, async (tx) => {
       const row = await tx.digitalServiceTransaction.findFirst({ where: { id, companyId: scope.companyId, branchId: scope.branchId } });
       if (!row) throw new NotFoundException('Transaksi digital tidak ditemukan.');

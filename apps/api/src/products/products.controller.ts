@@ -9,6 +9,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { BulkImportProductsDto } from './dto/bulk-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+import { RetailProductDto } from './dto/retail-product.dto';
 
 @ApiTags('products')
 @Controller('products')
@@ -72,6 +73,14 @@ import { ProductsService } from './products.service';
   @Permissions('product.update')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto, @CurrentUser() user: AuthUser) {
     return this.products.update(id, dto, user);
+  }
+
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN', 'OWNER', 'ADMIN')
+  @Permissions('product.update')
+  @Post(':id/retail-config')
+  configureRetail(@Param('id') id: string, @Body() dto: RetailProductDto, @CurrentUser() user: AuthUser) {
+    return this.products.configureRetail(id, dto, user);
   }
 
   @ApiBearerAuth()

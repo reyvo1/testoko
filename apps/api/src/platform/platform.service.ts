@@ -10,6 +10,7 @@ import {
 } from './dto/platform.dto';
 import { PluginRegistryService } from './plugin-registry.service';
 import { SecretProtectorService } from './secret-protector.service';
+import { RETAIL_FEATURE_CATALOG } from './retail-feature-catalog';
 
 const json = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
 type DbClient = Prisma.TransactionClient | PrismaService;
@@ -144,6 +145,19 @@ export class PlatformService {
     }
   }
 
+  async featureEnabled(user: AuthUser, key: string, db: DbClient = this.prisma): Promise<boolean> {
+    const scope = this.requireTenantScope(user);
+    const flags = await db.featureFlag.findMany({ where: { key, OR: [
+      { companyId: null, branchId: null, userId: null },
+      { companyId: scope.companyId, branchId: null, userId: null },
+      { companyId: scope.companyId, branchId: scope.branchId, userId: null },
+      { companyId: scope.companyId, branchId: scope.branchId, userId: user.sub },
+    ] }, orderBy: { updatedAt: 'asc' } });
+    flags.sort((left, right) => this.configRank(left) - this.configRank(right));
+    const flag = flags.at(-1);
+    return flag ? this.rolloutEnabled(flag, scope.companyId, scope.branchId, user.sub) : false;
+  }
+
   private async resolveManifestTenant(
     user: AuthUser | undefined,
     branchCode?: string,
@@ -234,6 +248,9 @@ export class PlatformService {
     flags.sort((left, right) => this.configRank(left) - this.configRank(right));
     settings.sort((left, right) => this.configRank(left) - this.configRank(right));
     const featureMap: Record<string, { enabled: boolean; configuredEnabled: boolean; config: Record<string, unknown> }> = {};
+    for (const [key, config] of Object.entries(RETAIL_FEATURE_CATALOG)) {
+      featureMap[key] = { enabled: false, configuredEnabled: false, config: { ...config } };
+    }
     for (const flag of flags) {
       const prior = featureMap[flag.key];
       const priorConfig = prior?.config ?? {};
@@ -245,6 +262,10 @@ export class PlatformService {
         configuredEnabled: flag.enabled,
         config: { ...priorConfig, ...nextConfig },
       };
+    }
+    // Scoped account/provider settings remain editable; readiness descriptions are server-owned.
+    for (const [key, config] of Object.entries(RETAIL_FEATURE_CATALOG)) {
+      featureMap[key].config = { ...featureMap[key].config, ...config };
     }
     const settingMap = Object.fromEntries(settings.map((setting) => [`${setting.namespace}.${setting.key}`, setting.value]));
     return {

@@ -1,4 +1,6 @@
 'use client';
+import { isPersonnelSelfOnly } from '../../../packages/contracts/personnel-authority.cjs';
+import { canReadPath } from './read-path-contract';
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,6 +23,8 @@ import SetupReadinessView from './modules/setup-readiness';
 import ApiKeysView from './modules/api-keys';
 import BranchSyncView from './modules/branch-sync';
 import MobileOpsView from './modules/mobile-ops';
+import MobileStockCount from './modules/mobile-stock-count';
+import EmployeeSelfLanding from './modules/employee-self-landing';
 import SecurityView from './modules/security';
 import DataGovernanceView from './modules/data-governance';
 import AutomationWorkspace from './modules/automation-workspace';
@@ -29,6 +33,7 @@ import ReportingWorkspace from './modules/reporting-workspace';
 import OrganizationAdminView from './modules/organization-admin';
 import AccessControlView from './modules/access-control';
 import PlatformControlView from './modules/platform-control';
+import RetailFeatureControls from './modules/retail-feature-controls';
 import DashboardOverview from './dashboard-overview';
 import AdminAppShell from './app-shell';
 import { canReadAdminFeed, settleAdminFeed } from './bootstrap-data';
@@ -169,7 +174,8 @@ export default function AdminPage() {
   const [attentionCount, setAttentionCount] = useState(0);
   const navigation = useMemo(() => resolveAdminNavigation(manifest, identity), [manifest, identity]);
   const navItems = useMemo(() => navigation.flatMap((group) => group.items), [navigation]);
-  const activeWorkspace = useMemo(() => ADMIN_WORKSPACES.find((item) => item.label === activeNav) ?? workspaceFromPath(pathname), [activeNav, pathname]);
+  const selfOnly=isPersonnelSelfOnly(identity)&&navigation.every(group=>group.items.length===0);
+  const activeWorkspace = useMemo(() => selfOnly?{...ADMIN_WORKSPACES[0],title:'Layanan karyawan',description:'Profil dan layanan pribadi melalui Portal Karyawan.'}:ADMIN_WORKSPACES.find((item) => item.label === activeNav) ?? workspaceFromPath(pathname), [activeNav, pathname,selfOnly]);
   const activeDomainView = useMemo(() => resolvedDomainViewFromPath(pathname, activeWorkspace, manifest, identity), [pathname, activeWorkspace, manifest, identity]);
 
   function canRootAction(permission: string, roles: string[]) {
@@ -209,7 +215,7 @@ export default function AdminPage() {
     const actor = identityFromAccessToken(activeToken);
     const allowed = (feed: string) => canReadAdminFeed(actor, feed);
     const emptyPage = <T,>(): CursorPage<T> => ({ items: [], pageInfo: { limit: 100, nextCursor: null, hasMore: false } });
-    const read = <T,>(path: string, fallback: T, enabled = true) => settleAdminFeed(() => request<T>(path, undefined, activeToken), fallback, enabled);
+    const read = <T,>(path: string, fallback: T, enabled = true) => settleAdminFeed(() => request<T>(path, undefined, activeToken), fallback, enabled && canReadPath(actor,path));
     const [d, p, s, w, pr, po, r, i, im, m, an, bc] = await Promise.all([
       read<Dashboard | null>('/reports/dashboard', null, allowed('reports')),
       read('/products?limit=100', emptyPage<Product>()),
@@ -475,12 +481,13 @@ export default function AdminPage() {
       onNavigate={navigateTo}
       onReload={() => void loadAll(token)}
       onLogout={() => void logout()}
-      headerAction={activeWorkspace.key === 'dashboard' ? <button type="button" className="btnGhost" onClick={() => window.print()}>Cetak ringkasan</button> : undefined}
+      headerAction={<>{canAll('employee.self')&&<a className="btnGhost" href={process.env.NEXT_PUBLIC_EMPLOYEE_PORTAL_URL??'http://localhost:3003'}>Portal saya</a>}{!selfOnly&&activeWorkspace.key === 'dashboard'&&<button type="button" className="btnGhost" onClick={() => window.print()}>Cetak ringkasan</button>}</>}
     >
           <StaffMemoWidget token={token} />
-          {loadErrors.length > 0 && <section className="notice" role="alert"><strong>Sebagian data belum tersedia</strong><p>Gagal memuat: {loadErrors.join(', ')}. Data ini tidak boleh dianggap sebagai saldo nol.</p><button type="button" className="secondary" onClick={() => void loadAll(token)}>Coba lagi</button></section>}
-          {!canAccessWorkspace && <section className="emptyState"><h2>Ruang kerja tidak tersedia</h2><p>Pilih menu yang tersedia untuk hak akses akun Anda.</p></section>}
-          {canAccessWorkspace && <>
+          {!selfOnly&&loadErrors.length > 0 && <section className="notice" role="alert"><strong>Sebagian data belum tersedia</strong><p>Gagal memuat: {loadErrors.join(', ')}. Data ini tidak boleh dianggap sebagai saldo nol.</p><button type="button" className="secondary" onClick={() => void loadAll(token)}>Coba lagi</button></section>}
+          {!selfOnly&&!canAccessWorkspace && <section className="emptyState"><h2>Ruang kerja tidak tersedia</h2><p>Pilih menu yang tersedia untuk hak akses akun Anda.</p></section>}
+          {selfOnly&&<EmployeeSelfLanding token={token}/>}
+          {!selfOnly&&canAccessWorkspace && <>
           {activeWorkspace.key === 'dashboard' && (
             <DashboardOverview
               dashboard={dashboard}
@@ -541,7 +548,7 @@ export default function AdminPage() {
             </section>}
           </>}
 
-          {activeWorkspace.key === 'inventory-control' && <><OperationsView token={token} mode={(activeDomainView?.key ?? 'overview') as 'overview'|'traceability'|'transfers'|'stocktake'|'returns'} />{(!activeDomainView || activeDomainView.key === 'overview') && <section className="panel"><div className="panelTitle"><div><span className="eyebrow">INVENTORY LEDGER</span><h2>Canonical inventory movements</h2></div><span>{inventoryMovements.length} movement</span></div><div className="table"><div className="tr th"><span>Waktu / Referensi</span><span>Produk / Gudang</span><span>Movement / Saldo</span></div>{inventoryMovements.slice(0,50).map((movement) => <div className="tr" key={movement.id}><span><strong>{new Date(movement.createdAt).toLocaleString('id-ID')}</strong><small>{movement.referenceType ?? '-'}:{movement.referenceId ?? '-'}</small></span><span><strong>{movement.product.name}</strong><small>{movement.warehouse.name}</small></span><span><strong>{movement.type} · {movement.quantity > 0 ? '+' : ''}{movement.quantity}</strong><small>balance {movement.balanceAfter}</small></span></div>)}</div></section>} </>}
+          {activeWorkspace.key === 'inventory-control' && <>{activeDomainView?.key==='stocktake'&&<MobileStockCount token={token}/>}<OperationsView token={token} mode={(activeDomainView?.key ?? 'overview') as 'overview'|'traceability'|'transfers'|'stocktake'|'returns'} />{(!activeDomainView || activeDomainView.key === 'overview') && <section className="panel"><div className="panelTitle"><div><span className="eyebrow">INVENTORY LEDGER</span><h2>Canonical inventory movements</h2></div><span>{inventoryMovements.length} movement</span></div><div className="table"><div className="tr th"><span>Waktu / Referensi</span><span>Produk / Gudang</span><span>Movement / Saldo</span></div>{inventoryMovements.slice(0,50).map((movement) => <div className="tr" key={movement.id}><span><strong>{new Date(movement.createdAt).toLocaleString('id-ID')}</strong><small>{movement.referenceType ?? '-'}:{movement.referenceId ?? '-'}</small></span><span><strong>{movement.product.name}</strong><small>{movement.warehouse.name}</small></span><span><strong>{movement.type} · {movement.quantity > 0 ? '+' : ''}{movement.quantity}</strong><small>balance {movement.balanceAfter}</small></span></div>)}</div></section>} </>}
           {activeWorkspace.key === 'operations-control' && (activeDomainView?.key === 'delivery' ? <DeliveryLifecycle token={token} /> : <OperationsControlView token={token} mode={(activeDomainView?.key ?? 'inspections') as 'inspections'|'evidence'|'gate-pass'} />)}
           {activeWorkspace.key === 'master-data' && (activeDomainView?.key === 'bulk-labels' ? <ProductBulkLabelsView token={token} /> : <MasterDataView token={token} mode={activeDomainView?.key ?? 'products'} />)}
           {activeWorkspace.key === 'manufacturing' && <ManufacturingView token={token} />}
@@ -576,6 +583,7 @@ export default function AdminPage() {
               <p className="sectionHelp">Flag runtime bukan bukti product-completeness. Maturity dan ownership di bawah menjelaskan capability sebenarnya; FOUNDATION/ADAPTER_REQUIRED tidak boleh dibaca sebagai modul produksi selesai.</p>
               <div className="table">{manifest?.modules.map((module) => { const feature = module.featureKey ? manifest.features[module.featureKey] : undefined; const enabled = module.isCore || !module.featureKey || feature?.enabled; const maturity = feature?.config?.maturityClass ?? (module.isCore ? 'OPERATIONAL' : 'UNKNOWN'); const help = feature?.config?.helpText ?? module.description ?? 'Capability core runtime.'; const configurable = feature?.config?.configurable !== false; return <div className="receipt" key={module.code}><div><strong>{module.name}</strong><small>{module.category} · {module.code}</small><small>Maturity: {maturity} · Ownership: {feature?.config?.ownership ?? (module.isCore ? 'TOKO360_RUNTIME' : 'UNDECLARED')}</small><small>{help}</small></div>{module.featureKey ? <div className="actionRow"><span className={enabled?'okText':''}>{enabled?'ENABLED':'DISABLED'}</span><button type="button" className="secondary" disabled={!configurable || !canRootAction('platform.configure', ['SUPER_ADMIN', 'OWNER', 'ADMIN'])} onClick={() => setFeatureChange({ key: module.featureKey!, enabled: !enabled })}>{enabled ? 'Nonaktifkan' : 'Aktifkan'}</button></div> : <span className="okText">CORE</span>}</div>; })}</div>
             </section>}
+            {(!activeDomainView || activeDomainView.key === 'features') && manifest?.company?.id && manifest.branch?.id && <RetailFeatureControls token={token} companyId={manifest.company.id} branchId={manifest.branch.id} onSaved={() => loadAll(token)} />}
             {activeDomainView?.key === 'setup' && <SetupReadinessView token={token} />}
             {activeDomainView?.key === 'users' && <AccessControlView token={token} canManageRoles={Boolean(identity?.roles.includes('SUPER_ADMIN'))} actorId={identity?.sub} />}
             {(['platform','custom-fields','approvals','webhooks','ui-config','audit-ops'] as const).includes(activeDomainView?.key as never) && activeDomainView && <PlatformControlView token={token} mode={activeDomainView.key as 'platform'|'custom-fields'|'approvals'|'webhooks'|'ui-config'|'audit-ops'} />}

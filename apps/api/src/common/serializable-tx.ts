@@ -18,8 +18,10 @@ function isRetryable(error: unknown): boolean {
 export async function serializableTx<T>(
   prisma: PrismaClient,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  opts?: { maxRetry?: number },
+  opts?: { maxRetry?: number; existingTx?: Prisma.TransactionClient },
 ): Promise<T> {
+  // Internal orchestration only: the outer transaction owns commit and whole-operation retry.
+  if (opts?.existingTx) return fn(opts.existingTx);
   const maxRetry = opts?.maxRetry ?? MAX_RETRY;
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition

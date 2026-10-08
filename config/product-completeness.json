@@ -103,7 +103,7 @@
       "id": "feature:sales_return",
       "kind": "FEATURE",
       "key": "sales_return",
-      "title": "POS request → inspection → refund/restock/accounting/loyalty correction",
+      "title": "POS request \u2192 inspection \u2192 refund/restock/accounting/loyalty correction",
       "default": "on",
       "sourceMaturity": "implemented-core-workflow",
       "status": "IMPLEMENTED_RUNTIME_PENDING",
@@ -610,6 +610,81 @@
       "operatorSurfaceRequired": true,
       "evidence": [],
       "notes": "P6A source implements master-backed tender policy, immutable payment snapshots, canonical Accounting Core settlement/MDR posting, exact split tender, explicit customer AR/on-account settlement and original-tender refund allocation. This engineering label does not advance canonical currentPhase; P5/Human Stage-20 remain pending until their own acceptance authority is satisfied."
+    },
+    {
+      "id": "feature:retail_weight_media_kit",
+      "kind": "FEATURE",
+      "key": "retail_weight_media_kit",
+      "title": "Weighted goods, product gallery and virtual kits",
+      "default": "Opt-in per-product retail policy; disabled by default",
+      "sourceMaturity": "implemented",
+      "status": "RUNTIME_VERIFIED",
+      "operatorSurfaceRequired": true,
+      "evidence": [
+        "https://github.com/reyvo1/testoko/actions/runs/37363589397",
+        "https://github.com/reyvo1/testoko/actions/runs/37363596627"
+      ],
+      "notes": "P6B exact source 12537b9 passed all four GitHub gates. Physical device vendor certification and Human Stage-20 remain separate."
+    },
+    {
+      "id": "feature:retail_exchange",
+      "kind": "FEATURE",
+      "key": "retail_exchange",
+      "title": "Direct retail exchanges",
+      "default": "Off; explicit tenant/branch configuration required",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Combined T360-20261006-125000 work item; canonical P5/Human Stage-20 and production-provider certification remain separate. Exact-source CI/browser required."
+    },
+    {
+      "id": "feature:customer_deposit",
+      "kind": "FEATURE",
+      "key": "customer_deposit",
+      "title": "Customer liability deposits",
+      "default": "Off; explicit tenant/branch configuration required",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Combined T360-20261006-125000 work item; canonical P5/Human Stage-20 and production-provider certification remain separate. Exact-source CI/browser required."
+    },
+    {
+      "id": "feature:customer_campaign",
+      "kind": "FEATURE",
+      "key": "customer_campaign",
+      "title": "Consent-bound campaigns and receipts",
+      "default": "Off; explicit tenant/branch configuration required",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Combined T360-20261006-125000 work item; canonical P5/Human Stage-20 and production-provider certification remain separate. Exact-source CI/browser required."
+    },
+    {
+      "id": "feature:pos_ship_later",
+      "kind": "FEATURE",
+      "key": "pos_ship_later",
+      "title": "POS staff order fulfillment",
+      "default": "Off; explicit tenant/branch configuration required",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Combined T360-20261006-125000 work item; canonical P5/Human Stage-20 and production-provider certification remain separate. Exact-source CI/browser required."
+    },
+    {
+      "id": "feature:tax_export",
+      "kind": "FEATURE",
+      "key": "tax_export",
+      "title": "Versioned Coretax XML exports",
+      "default": "Off; explicit tenant/branch configuration required",
+      "sourceMaturity": "implemented",
+      "status": "IMPLEMENTED_RUNTIME_PENDING",
+      "operatorSurfaceRequired": true,
+      "evidence": [],
+      "notes": "Combined T360-20261006-125000 work item; canonical P5/Human Stage-20 and production-provider certification remain separate. Exact-source CI/browser required."
     }
   ],
   "legacyFunctionalPhases": [

@@ -1,5 +1,6 @@
 import { PrismaClient, AccountType, Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { RETAIL_FEATURE_CATALOG } from '../src/platform/retail-feature-catalog';
 
 const prisma = new PrismaClient();
 
@@ -383,6 +384,7 @@ async function main() {
     ['fleet_delivery', true, 'implemented-foundation'], ['quality_inspection', true, 'implemented-foundation'],
     ['gate_pass', true, 'implemented-foundation'], ['operations_automation', true, 'worker-ready'],
     ['fleet_gps', false, 'adapter-ready'], ['manufacturing', true, 'implemented-production-ledger'], ['ppob', true, 'adapter-ready-digiflazz'],
+    ...Object.entries(RETAIL_FEATURE_CATALOG).map(([key, config]): [string, boolean, string] => [key, false, String(config.maturity)]),
   ];
   const maturityTruth = (maturity: string) => {
     const normalized = maturity.toLowerCase();
@@ -413,7 +415,12 @@ async function main() {
   };
   for (const [key, enabled, maturity] of featureDefaults) {
     const existing = await prisma.featureFlag.findFirst({ where: { companyId: company.id, branchId: null, userId: null, key } });
-    const data = { companyId: company.id, key, enabled, config: { maturity, configurable: true, ...maturityTruth(maturity) } };
+    const data = { companyId: company.id, key, enabled, config: { maturity, configurable: true, ...maturityTruth(maturity), ...(RETAIL_FEATURE_CATALOG[key] ?? {}) } };
+    if (existing && RETAIL_FEATURE_CATALOG[key]) {
+      data.enabled = existing.enabled;
+      const prior = existing.config && typeof existing.config === 'object' && !Array.isArray(existing.config) ? existing.config : {};
+      data.config = { ...prior, ...data.config };
+    }
     if (existing) await prisma.featureFlag.update({ where: { id: existing.id }, data });
     else await prisma.featureFlag.create({ data });
   }

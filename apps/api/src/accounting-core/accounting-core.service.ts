@@ -1,10 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountType, Prisma, TaxTransactionDirection } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
-import { businessMonthStart, parseBusinessDateBoundary } from '../common/business-time';
+import { businessDateKey, businessMonthStart, parseBusinessDateBoundary } from '../common/business-time';
 import { nextDocumentNumber } from '../common/numbering';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
+import { reservedDepositAccounts } from '../common/customer-deposit';
 import { CreateAccountDto, CreateAccountingCloseControlDto, CreatePostingRuleDto, CreateTaxCodeDto, PostManualAccountingEventDto, UpdateAccountDto } from './dto/accounting-core.dto';
 
 export interface OperationalEventLineInput {
@@ -380,7 +381,14 @@ export class AccountingCoreService {
     const from = parseBusinessDateBoundary(fromValue, businessMonthStart(now, company.timezone), company.timezone, false);
     const to = parseBusinessDateBoundary(toValue, now, company.timezone, true);
     if (from > to) throw new BadRequestException('Rentang tanggal pajak tidak valid.');
-    return { from, to };
+    return {
+      from, to,
+      businessCalendar: {
+        timezone: company.timezone,
+        from: businessDateKey(from, company.timezone),
+        to: businessDateKey(to, company.timezone),
+      },
+    };
   }
 
   async listTaxTransactions(user: AuthUser, fromValue?: string, toValue?: string, directionValue?: string, limitValue?: string, cursorValue?: string) {
@@ -422,7 +430,7 @@ export class AccountingCoreService {
 
   async taxReconciliation(user: AuthUser, fromValue?: string, toValue?: string) {
     const scope = this.requireTenantScope(user);
-    const { from, to } = await this.taxDateRange(scope.companyId, fromValue, toValue);
+    const { from, to, businessCalendar } = await this.taxDateRange(scope.companyId, fromValue, toValue);
     const transactions = await this.prisma.taxTransaction.findMany({
       where: { companyId: scope.companyId, branchId: scope.branchId, transactionDate: { gte: from, lte: to } },
       orderBy: [{ transactionDate: 'asc' }, { id: 'asc' }],
@@ -455,7 +463,7 @@ export class AccountingCoreService {
     const nonPosted = transactions.filter((row) => row.status !== 'POSTED').length;
     const documents = await this.prisma.taxDocument.aggregate({ where: { companyId: scope.companyId, branchId: scope.branchId, issueDate: { gte: from, lte: to }, status: { not: 'CANCELLED' } }, _count: true, _sum: { taxAmount: true, netAmount: true, grossAmount: true } });
     return {
-      from, to, companyId: scope.companyId, branchId: scope.branchId,
+      from, to, businessCalendar, companyId: scope.companyId, branchId: scope.branchId,
       directions: [...byDirection.entries()].map(([direction, value]) => ({ direction, count: value.count, taxableBase: Number(value.taxableBase), taxAmount: Number(value.taxAmount) })),
       mappedAccountMovement: [...accountMovement.entries()].map(([code, value]) => ({ code, ...value, debit: Number(value.debit), credit: Number(value.credit), net: Number(value.debit.sub(value.credit)) })),
       integrity: { transactionCount: transactions.length, missingAccountingEvent, missingJournal, nonPosted, ok: missingAccountingEvent === 0 && missingJournal === 0 && nonPosted === 0 },
@@ -637,7 +645,11 @@ export class AccountingCoreService {
     }
 
     const businessDate = input.businessDate ?? new Date();
+    let taxPeriod: string | undefined;
     if (input.taxLines?.length) {
+      const company = await client.company.findUnique({ where: { id: input.companyId }, select: { timezone: true } });
+      if (!company?.timezone) throw new BadRequestException('Kalender company untuk posting pajak belum tersedia.');
+      taxPeriod = businessDateKey(businessDate, company.timezone).slice(0, 7);
       const taxCodeIds = [...new Set(input.taxLines.map((line) => line.taxCodeId))];
       const taxCodes = await client.taxCode.findMany({
         where: { id: { in: taxCodeIds }, companyId: input.companyId },
@@ -750,6 +762,10 @@ export class AccountingCoreService {
     const accountMap = new Map(accounts.map((account) => [account.code, account]));
     const missing = codes.filter((code) => !accountMap.has(code));
     if (missing.length) throw new BadRequestException(`Akun belum dikonfigurasi: ${missing.join(', ')}.`);
+    if (accounts.some(account => account.type === 'LIABILITY')) {
+      const depositAccounts = await reservedDepositAccounts(client, { companyId:input.companyId,branchId:input.branchId });
+      if (codes.some(code => depositAccounts.has(code)) && !input.lines?.some(line => line.itemType === 'CustomerDeposit' && line.itemId)) throw new BadRequestException('Jurnal akun deposit memerlukan alur dan atribusi pelanggan canonical.');
+    }
 
     let debitTotal = new Prisma.Decimal(0);
     let creditTotal = new Prisma.Decimal(0);
@@ -780,7 +796,7 @@ export class AccountingCoreService {
         companyId: input.companyId, branchId: input.branchId, accountingEventId: event.id,
         sourceType: input.sourceType, sourceId: input.sourceId, taxCodeId: tax.taxCodeId,
         direction: tax.direction, transactionDate: businessDate,
-        taxPeriod: businessDate.toISOString().slice(0, 7),
+        taxPeriod: taxPeriod!,
         taxableBase: new Prisma.Decimal(tax.taxableBase), taxAmount: new Prisma.Decimal(tax.taxAmount),
         status: 'POSTED', counterpartyType: tax.counterpartyType, counterpartyId: tax.counterpartyId,
         documentNumber: tax.documentNumber, metadata: tax.metadata,
@@ -831,6 +847,11 @@ export class AccountingCoreService {
           });
         }
         return existing;
+      }
+
+      const depositAccounts = await reservedDepositAccounts(tx, scope);
+      if ((dto.lines ?? []).some((line) => line.itemType === 'CustomerDeposit') || Object.values(dto.accountCodes ?? {}).some((code) => depositAccounts.has(String(code)))) {
+        throw new BadRequestException('Gunakan alur deposit pelanggan untuk akun liability deposit.');
       }
 
       const event = await this.postOperationalEvent(tx, {

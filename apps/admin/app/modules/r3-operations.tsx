@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
+import { readOptional } from '../read-path-contract';
 import { Panel, StatusChip, Table, TableSkeleton, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -61,7 +62,7 @@ export default function R3OperationsView({ token, mode = 'connections' }: { toke
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const { canAll } = usePermissions(token);
+  const { canAll, identity } = usePermissions(token);
 
   const marketplaceIntegrations = useMemo(
     () => integrations.filter((row) => row.type === 'MARKETPLACE' || /market/i.test(`${row.type} ${row.provider}`)),
@@ -70,7 +71,7 @@ export default function R3OperationsView({ token, mode = 'connections' }: { toke
 
   async function refreshCore() {
     const [paymentRows, outletRows, cashierRows, deviceRows, integrationRows, marketplaceRows] = await Promise.all([
-      request<PaymentProviderEvent[]>(token, '/payments/provider-events?limit=100'),
+      readOptional(identity, '/payments/provider-events?limit=100', [] as PaymentProviderEvent[], p => request<PaymentProviderEvent[]>(token, p)),
       request<OutletOverview>(token, '/reports/multi-outlet'),
       request<CashierTargets>(token, '/sales/cashier-targets'),
       request<CursorResponse<Device>>(token, '/devices?limit=100'),

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
 
-class OrderItemDto {
+export class OrderItemDto {
   @ApiProperty() @IsString() productId!: string;
   @ApiProperty({ example: 1, description: 'Jumlah dalam unit transaksi yang dipilih. Tanpa productUnitId/barcodeCode berarti base unit produk.' }) @IsInt() @Min(1) quantity!: number;
   @ApiPropertyOptional({ description: 'ProductUnit authoritative untuk UOM/kemasan storefront.' }) @IsOptional() @IsString() productUnitId?: string;

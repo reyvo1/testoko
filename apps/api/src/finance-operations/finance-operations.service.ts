@@ -1,3 +1,6 @@
+import { customerDepositBalance, depositAccount, depositSettlement, reservedDepositAccounts } from '../common/customer-deposit';
+import { retailAuthority, retailScope } from '../common/retail-feature';
+import { CreateCustomerDepositDto } from './dto/customer-deposit.dto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { FinanceTransactionType, Prisma, TaxTransactionDirection } from '@prisma/client';
 import { AccountingCoreService } from '../accounting-core/accounting-core.service';
@@ -5,7 +8,7 @@ import { AuthUser } from '../auth/auth.types';
 import { parseBusinessDateBoundary } from '../common/business-time';
 import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { nextDocumentNumber } from '../common/numbering';
-import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { decodeCursor, decodeDateIdCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { serializableTx } from '../common/serializable-tx';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApproveFinanceTransactionDto, CreateFinanceTransactionDto } from './dto/finance-operations.dto';
@@ -775,11 +778,13 @@ export class FinanceOperationsService {
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId);
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<{ transactionDate: string; id: string }>(cursorValue);
+    if (cursor && (typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 200 || typeof cursor.transactionDate !== 'string' || !Number.isFinite(Date.parse(cursor.transactionDate)))) throw new BadRequestException('Cursor transaksi keuangan tidak valid.');
     const validatedStatus = validatedFinanceStatus(status);
     const rows = await this.prisma.operationalFinanceTransaction.findMany({
       where: {
         companyId: scope.companyId,
         branchId: scope.branchId,
+        ...(user.roles?.includes('ADMIN') && !user.roles.some(role => ['SUPER_ADMIN','OWNER','FINANCE','AUDITOR'].includes(role)) ? { createdById: user.sub } : {}),
         ...(type ? { type } : {}),
         ...(validatedStatus ? { status: validatedStatus as never } : {}),
         ...(cursor ? { OR: [
@@ -793,7 +798,35 @@ export class FinanceOperationsService {
     return toCursorPage(rows, limit, (item) => ({ transactionDate: item.transactionDate.toISOString(), id: item.id }));
   }
 
-  async create(dto: CreateFinanceTransactionDto, user: AuthUser, headerIdempotencyKey?: string) {
+  async depositCustomers(user: AuthUser, limitValue?: string, cursorValue?: string) {
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','FINANCE'], ['finance.create','sale.view']);
+    const scope = retailScope(user); const limit = parsePageLimit(limitValue); const cursor = decodeDateIdCursor(cursorValue);
+    const rows = await this.prisma.customer.findMany({where:{companyId:scope.companyId,...(cursor ? {OR:[{createdAt:{lt:new Date(cursor.createdAt)}},{createdAt:new Date(cursor.createdAt),id:{lt:cursor.id}}]} : {})},select:{id:true,name:true,createdAt:true},orderBy:[{createdAt:'desc'},{id:'desc'}],take:limit+1});
+    return toCursorPage(rows,limit,row=>({createdAt:row.createdAt.toISOString(),id:row.id}));
+  }
+
+  async depositBalance(user: AuthUser, customerId: string, accountCode?: string) {
+    const scope = retailScope(user);
+    return serializableTx(this.prisma, async (tx) => {
+      const account = await depositAccount(tx, scope, false, accountCode);
+      const balance = await customerDepositBalance(tx, scope, customerId, account.code);
+      return { customerId, accountCode: account.code, posted: balance.posted.toFixed(2), reserved: balance.reserved.toFixed(2), available: balance.available.toFixed(2) };
+    });
+  }
+
+  async createCustomerDeposit(dto: CreateCustomerDepositDto, user: AuthUser) {
+    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','FINANCE'], ['finance.create']);
+    const scope = retailScope(user);
+    if (!dto.operationKey?.trim() || dto.operationKey.length > 160 || !['CREDIT','REFUND'].includes(dto.kind) || !Number.isFinite(dto.amount) || dto.amount <= 0 || dto.amount > 1000000000000 || !new Prisma.Decimal(dto.amount).equals(new Prisma.Decimal(dto.amount).toDecimalPlaces(2))) throw new BadRequestException('Operation key/nominal deposit tidak valid.');
+    const account = await depositAccount(this.prisma, scope, false, dto.kind === 'REFUND' ? dto.depositAccountCode : undefined);
+    const settlement = await depositSettlement(this.prisma, scope, dto.settlementAccountCode, dto.externalRef);
+    return this.create({ type: 'OTHER', paymentMethod: settlement.code, description: dto.kind === 'CREDIT' ? 'Penerimaan deposit pelanggan' : 'Refund deposit pelanggan', amount: dto.amount,
+      debitAccountCode: dto.kind === 'CREDIT' ? dto.settlementAccountCode : account.code, creditAccountCode: dto.kind === 'CREDIT' ? account.code : dto.settlementAccountCode,
+      counterpartyType: 'CUSTOMER', counterpartyId: dto.customerId, referenceType: dto.kind === 'CREDIT' ? 'CustomerDepositCredit' : 'CustomerDepositRefund', referenceId: dto.customerId,
+      requireApproval: true, metadata: { purpose: 'CUSTOMER_DEPOSIT', depositSettlement: settlement }, evidence: dto.externalRef ? { settlementReference: dto.externalRef } : undefined, idempotencyKey: `deposit:${scope.branchId}:${dto.operationKey}` } as CreateFinanceTransactionDto, user, undefined, { customerDeposit: true });
+  }
+
+  async create(dto: CreateFinanceTransactionDto, user: AuthUser, headerIdempotencyKey?: string, options: { customerDeposit?: boolean } = {}) {
     const scope = this.requireTenantScope(user);
     await this.assertRequestedScope(this.prisma, user, scope, dto.companyId, dto.branchId);
     const bodyIdempotencyKey = dto.idempotencyKey?.trim();
@@ -849,7 +882,9 @@ export class FinanceOperationsService {
           && existing.taxAccountCode === (dto.taxAccountCode ?? null)
           && existing.paymentMethod === (dto.paymentMethod ?? null)
           && existing.referenceType === (dto.referenceType ?? null)
-          && existing.referenceId === (dto.referenceId ?? null);
+          && existing.referenceId === (dto.referenceId ?? null)
+          && existing.counterpartyType === (dto.counterpartyType ?? null)
+          && existing.counterpartyId === (dto.counterpartyId ?? null);
         if (!sameIdentity) {
           throw new ConflictException('Idempotency key sudah digunakan untuk transaksi keuangan dengan payload berbeda.');
         }
@@ -986,6 +1021,22 @@ export class FinanceOperationsService {
         });
         if (!settlementAccount) throw new BadRequestException('Pembayaran pajak wajib mengkredit akun aset aktif pada branch (Kas/Bank).');
         if (gross.lessThanOrEqualTo(0)) throw new BadRequestException('Nominal pembayaran pajak harus lebih dari nol.');
+      }
+
+      const protectedAccounts = await reservedDepositAccounts(tx, scope);
+      const depositReference = dto.referenceType === 'CustomerDepositCredit' || dto.referenceType === 'CustomerDepositRefund';
+      if (!options.customerDeposit && (depositReference || dto.metadata?.purpose === 'CUSTOMER_DEPOSIT' || protectedAccounts.has(dto.debitAccountCode) || protectedAccounts.has(dto.creditAccountCode))) throw new BadRequestException('Gunakan alur deposit pelanggan resmi untuk akun liability deposit.');
+      if (options.customerDeposit) {
+        if (!depositReference || !dto.counterpartyId || dto.counterpartyType !== 'CUSTOMER' || dto.referenceId !== dto.counterpartyId || dto.type !== 'OTHER' || dto.taxCodeId) throw new BadRequestException('Referensi deposit tidak valid.');
+        const refund = dto.referenceType === 'CustomerDepositRefund';
+        const account = await depositAccount(tx, scope, !refund, refund ? dto.debitAccountCode : undefined);
+        if (account.code !== (refund ? dto.debitAccountCode : dto.creditAccountCode)) throw new BadRequestException('Akun deposit tidak sesuai konfigurasi.');
+        const settlement = await tx.account.findFirst({ where: { branchId: scope.branchId, code: refund ? dto.creditAccountCode : dto.debitAccountCode, type: 'ASSET', isActive: true, branch: { companyId: scope.companyId } } });
+        const approvedSettlement = await depositSettlement(tx, scope, refund ? dto.creditAccountCode : dto.debitAccountCode, typeof dto.evidence?.settlementReference === 'string' ? dto.evidence.settlementReference : undefined);
+        if (dto.paymentMethod !== approvedSettlement.code) throw new BadRequestException('Snapshot metode settlement deposit berubah.');
+        if (!settlement || gross.lessThanOrEqualTo(0)) throw new BadRequestException('Settlement deposit memerlukan aset aktif dan nominal positif.');
+        const balance = await customerDepositBalance(tx, scope, dto.counterpartyId, account.code);
+        if (refund && gross.greaterThan(balance.available)) throw new BadRequestException('Saldo deposit tersedia tidak cukup untuk refund.');
       }
 
       const created = await tx.operationalFinanceTransaction.create({ data: {
@@ -1126,9 +1177,28 @@ export class FinanceOperationsService {
     const scope = this.requireTenantScope(user);
     return serializableTx(this.prisma, async (tx) => {
       const row = await this.scopedTransaction(tx, user, scope, id);
+      if (['POSTED','PAID'].includes(row.status) && ['CustomerDepositCredit','CustomerDepositRefund'].includes(row.referenceType ?? '')) return row;
       if (!['DRAFT','APPROVED'].includes(row.status)) {
         throw new BadRequestException(`Transaksi tidak dapat diposting dari status ${row.status}.`);
       }
+      let depositCashierShiftId: string | undefined;
+      const isDeposit = ['CustomerDepositCredit','CustomerDepositRefund'].includes(row.referenceType ?? '');
+      if (isDeposit) {
+        if (row.type !== 'OTHER' || row.counterpartyType !== 'CUSTOMER' || !row.counterpartyId || row.referenceId !== row.counterpartyId || !row.taxAmount.isZero()) throw new BadRequestException('Dokumen deposit tidak valid.');
+        const refund = row.referenceType === 'CustomerDepositRefund';
+        await depositAccount(tx, scope, false, refund ? row.debitAccountCode : row.creditAccountCode);
+        const settlement = await tx.account.findFirst({ where: { branchId: scope.branchId, code: refund ? row.creditAccountCode : row.debitAccountCode, type: 'ASSET', isActive: true, branch: { companyId: scope.companyId } } });
+        const balance = await customerDepositBalance(tx, scope, row.counterpartyId, refund ? row.debitAccountCode : row.creditAccountCode, row.id);
+        if (!settlement || (refund && row.grossAmount.greaterThan(balance.available))) throw new BadRequestException('Settlement/saldo deposit tidak tersedia saat posting.');
+        const snapshot = (row.metadata as Record<string, unknown> | null)?.depositSettlement as { kind?: string; accountCode?: string } | undefined;
+        if (!snapshot || !['CASH','SETTLEMENT'].includes(snapshot.kind ?? '') || snapshot.accountCode !== (refund ? row.creditAccountCode : row.debitAccountCode)) throw new BadRequestException('Snapshot settlement deposit tidak valid.');
+        if (snapshot.kind === 'CASH') {
+          const shift = await tx.cashierShift.findFirst({ where: { userId: user.sub, status: 'OPEN', user: { branchId: scope.branchId, branch: { companyId: scope.companyId } } }, orderBy: { openedAt: 'desc' }, select: { id: true } });
+          depositCashierShiftId = shift?.id;
+        }
+        if (row.status !== 'APPROVED') throw new BadRequestException('Deposit harus disetujui sebelum posting.');
+      }
+      if (!isDeposit) { const protectedAccounts = await reservedDepositAccounts(tx, scope); if (protectedAccounts.has(row.debitAccountCode) || protectedAccounts.has(row.creditAccountCode)) throw new BadRequestException('Akun deposit hanya dapat diposting lewat dokumen deposit pelanggan.'); }
       const eventType = this.resolveEventType(row.type);
       const isExpense = row.type === 'OPERATING_EXPENSE';
       const isIncome = row.type === 'OTHER_INCOME';
@@ -1229,6 +1299,7 @@ export class FinanceOperationsService {
           counterpartyId: row.counterpartyId ?? undefined,
           documentNumber: row.number,
         }] : undefined,
+        lines: isDeposit ? [{ itemType: 'CustomerDeposit', itemId: row.counterpartyId!, grossAmount: row.grossAmount }] : undefined,
         context: { transactionType: row.type, paymentMethod: row.paymentMethod, postedById: user.sub },
       });
       await tx.auditLog.create({
@@ -1257,7 +1328,7 @@ export class FinanceOperationsService {
       });
       const posted = await tx.operationalFinanceTransaction.update({
         where: { id: row.id },
-        data: { status: 'POSTED', accountingEventId: event.id, postedAt: new Date() },
+        data: { status: 'POSTED', accountingEventId: event.id, postedAt: new Date(), ...(depositCashierShiftId ? { depositCashierShiftId } : {}) },
       });
       if (isCustomerReceipt && customerReceivable) {
         const receivedAfter = customerReceivable.received.add(row.grossAmount);

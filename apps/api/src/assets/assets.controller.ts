@@ -19,6 +19,9 @@ import { AssignAssetDto, CompleteMaintenanceDto, CreateAssetCategoryDto, CreateA
   ) { return this.assets.list(user, companyId, branchId); }
 
 
+  @Roles('SUPER_ADMIN','OWNER','ADMIN','WAREHOUSE') @Permissions('asset.maintenance') @Get('maintenance-catalog')
+  maintenanceCatalog(@CurrentUser() user: AuthUser, @Query('limit') limit?: string, @Query('cursor') cursor?: string, @Query('search') search?: string) { return this.assets.maintenanceCatalog(user, limit, cursor, search); }
+
   @Roles('SUPER_ADMIN','OWNER','ADMIN','FINANCE','AUDITOR') @Permissions('asset.view') @Get('summary')
   summary(@CurrentUser() user: AuthUser) { return this.assets.summary(user); }
 

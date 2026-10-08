@@ -33,6 +33,9 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
+      CUSTOMER_VERIFICATION_DEBUG_CODE: 'true'
+      STOREFRONT_PUBLIC_URL: http://localhost:3000
+      PUBLIC_API_URL: http://localhost:4000/api/v1
       CI: 'true'
       DATABASE_PROFILE: postgresql
       DATABASE_URL: postgresql://toko360:toko360_ci_password@localhost:5432/toko360_staging?schema=public
@@ -322,6 +325,16 @@ jobs:
         id: p2a_multi_uom
         continue-on-error: true
         run: npm run ci:p2a:multi-uom-probe
+
+      - name: Exercise P6B weighted goods and historical kit inventory accounting
+        id: p6b_retail_products
+        run: npm run ci:p6b:probe
+      - name: Exercise P6C P6D canonical exchange deposit consent fulfillment and XML worker
+        id: p6cd_retail_completion
+        run: npm run ci:p6cd:probe
+        env:
+          STOREFRONT_PUBLIC_URL: http://localhost:3000
+          PUBLIC_API_URL: http://localhost:4000/api/v1
 
       - name: Exercise P2 payroll methods split-period accounting and recovery lifecycle
         id: p2_payroll

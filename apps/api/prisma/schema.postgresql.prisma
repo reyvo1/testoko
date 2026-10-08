@@ -97,6 +97,11 @@ model ReportJob {
   format        String   @default("CSV")
   filters       Json?
   status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  maxAttempts   Int      @default(6)
+  leaseOwner    String?
+  leaseExpiresAt DateTime?
+  nextAttemptAt DateTime?
   progress      Int      @default(0)
   outputUrl     String?
   errorMessage  String?
@@ -109,6 +114,7 @@ model ReportJob {
   @@unique([scheduleId, scheduledFor])
   @@index([companyId, status, createdAt])
   @@index([status, createdAt])
+  @@index([reportType, status, nextAttemptAt])
   @@index([scheduleId, createdAt])
 }
 
@@ -854,6 +860,7 @@ model Customer {
   company   Company? @relation(fields: [companyId], references: [id])
   sales     Sale[]
   orders    Order[]
+  communicationPreference CustomerCommunicationPreference?
   account   CustomerAccount?
   sessions  CustomerSession[]
   verificationTokens CustomerVerificationToken[]
@@ -864,6 +871,7 @@ model Customer {
   @@unique([companyId, email])
   @@index([companyId, name, id])
   @@index([companyId, phone])
+  @@index([companyId, createdAt, id])
 }
 
 model CustomerAccount {
@@ -1034,6 +1042,7 @@ model SaleItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   subtotal  Decimal @db.Decimal(18, 2)
   netSubtotal Decimal @default(0) @db.Decimal(18, 2)
   taxAmount Decimal @default(0) @db.Decimal(18, 2)
@@ -1050,6 +1059,8 @@ model Order {
   number        String      @unique
   branchId      String
   warehouseId   String
+  createdById   String?
+  cashierShiftId String?
   customerId    String?
   customerName  String
   customerEmail String?
@@ -1084,6 +1095,7 @@ model Order {
   @@index([customerId, createdAt])
   @@index([customerPhone])
   @@index([createdAt, id])
+  @@index([cashierShiftId, createdAt])
 }
 
 model OrderItem {
@@ -1096,6 +1108,7 @@ model OrderItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity  Int
   unitPrice Decimal @db.Decimal(18, 2)
   unitCost  Decimal @db.Decimal(18, 2)
@@ -1899,6 +1912,7 @@ model OrderReturnItem {
   unitQuantity  Int?
   quantityFactor Int      @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity      Int
   condition     String   @default("GOOD")
   restock       Boolean  @default(true)
@@ -1949,6 +1963,7 @@ model SaleReturnItem {
   unitQuantity Int?
   quantityFactor Int @default(1)
   sourceBarcode String?
+  inventoryComponents Json?
   quantity  Int
   condition String     @default("GOOD")
   restock   Boolean    @default(true)
@@ -4183,6 +4198,7 @@ model OperationalFinanceTransaction {
   debitAccountCode  String
   creditAccountCode String
   taxAccountCode    String?
+  depositCashierShiftId String?
   paymentMethod     String?
   referenceType     String?
   referenceId       String?
@@ -4204,6 +4220,8 @@ model OperationalFinanceTransaction {
   @@index([companyId, type, status, transactionDate])
   @@index([counterpartyType, counterpartyId, transactionDate])
   @@index([referenceType, referenceId])
+  @@index([depositCashierShiftId, postedAt])
+  @@index([companyId, branchId, counterpartyId, debitAccountCode, status])
 }
 
 model PromoRule {
@@ -4774,4 +4792,66 @@ enum MobileDraftStatus {
   POSTED
   // Set aside by the operator. Kept rather than deleted: a discarded count is evidence too.
   DISCARDED
+}
+
+
+// P6C orchestration and consent only; canonical financial/inventory ledgers remain authoritative.
+model RetailExchange {
+  id String @id @default(uuid())
+  companyId String
+  branchId String
+  saleReturnId String @unique
+  replacementSaleId String @unique
+  cashierShiftId String
+  refundAmount Decimal
+  replacementAmount Decimal
+  difference Decimal
+  operationKey String
+  createdById String
+  createdAt DateTime @default(now())
+  @@unique([companyId, operationKey])
+  @@index([companyId, branchId, createdAt, id])
+}
+
+model CustomerCommunicationPreference {
+  id String @id @default(uuid())
+  customerId String @unique
+  marketingEmail Boolean @default(false)
+  marketingWhatsapp Boolean @default(false)
+  receiptEmail Boolean @default(false)
+  receiptWhatsapp Boolean @default(false)
+  policyVersion String
+  emailTargetHash String?
+  phoneTargetHash String?
+  updatedAt DateTime @updatedAt
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model CustomerCampaign {
+  id String @id @default(uuid())
+  companyId String
+  branchId String
+  channel String
+  templateCode String
+  subject String?
+  body String
+  status String @default("ACTIVE")
+  operationKey String
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deliveries CustomerCampaignDelivery[]
+  @@unique([companyId, operationKey])
+  @@index([companyId, branchId, createdAt, id])
+}
+
+model CustomerCampaignDelivery {
+  id String @id @default(uuid())
+  campaignId String
+  customerId String
+  notificationId String @unique
+  createdAt DateTime @default(now())
+  campaign CustomerCampaign @relation(fields: [campaignId], references: [id])
+  @@unique([campaignId, customerId])
+  @@index([customerId, createdAt])
 }

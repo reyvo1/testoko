@@ -23,7 +23,7 @@
  *   3. **A refusal that never gets sent.** The unbound-identity refusal is the security-relevant reply:
  *      if sending it fails, the operator is left with silence instead of a denial.
  */
-export type TelegramCommandRunner = (platformUserId: string, text: string) => Promise<{ ok: boolean; reply: string }>;
+export type TelegramCommandRunner = (platformUserId: string, text: string, operationKey?:string) => Promise<{ ok: boolean; reply: string }>;
 
 export type TelegramPollingOptions = {
   token: string;
@@ -131,7 +131,7 @@ export class TelegramPollingWorker {
         this.log(`Update ${update.update_id} bukan perintah teks; dilewati.`);
       } else {
         try {
-          const result = await this.options.runner(String(platformUserId), text);
+          const result = await this.options.runner(String(platformUserId), text, `telegram-update:${update.update_id}`);
           processed += 1;
           // The reply must go back even when the command was refused — a refusal that is never sent is
           // an operator staring at an unresponsive bot.
@@ -190,5 +190,5 @@ export type TelegramIdentity = { platformUserId: string };
  * exactly one place where a command is interpreted and exactly one place where identity is resolved.
  */
 export function createCommandRunner(commands: { execute: TelegramCommandRunner }): TelegramCommandRunner {
-  return (platformUserId, text) => commands.execute(platformUserId, text);
+  return (platformUserId, text, operationKey) => commands.execute(platformUserId, text, operationKey);
 }

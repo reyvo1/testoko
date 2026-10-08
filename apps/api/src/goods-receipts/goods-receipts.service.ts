@@ -1,3 +1,4 @@
+import { readRetailPolicy } from '../common/retail-policy';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountingCoreService, OperationalTaxLineInput } from '../accounting-core/accounting-core.service';
@@ -273,6 +274,7 @@ export class GoodsReceiptsService {
           throw new BadRequestException('Penerimaan memiliki mismatch dan harus disetujui terlebih dahulu sebelum stok/jurnal diposting.');
         }
       }
+      if (receipt.items.some((item) => readRetailPolicy(item.product.metadata).kitRecipeId)) throw new BadRequestException('Kit virtual tidak menerima stok parent. Terima komponen atau gunakan SKU fisik terpisah.');
       const serialsByItem = new Map<string, string[]>();
       const allInboundSerials = new Set<string>();
       for (const item of receipt.items) {

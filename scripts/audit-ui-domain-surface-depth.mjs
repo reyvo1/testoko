@@ -146,13 +146,13 @@ if (!/html\[data-t360-theme='dark'\]/.test(posCss) || !/data-theme=\{theme\}/.te
 const posRoot = posCss.match(/\.posV4\{([^}]*)\}/i)?.[1] ?? '';
 if (/background\s*:[^;]*(?:#0[0-9a-f]{5}|#111827|#0f172a|#020617)/i.test(posRoot)) errors.push('pos: root may not regress to dark page background');
 if (!/companyName=\{manifest\?\.company\?\.name/.test(posPage) || !/branchName=\{manifest\?\.branch\?\.name/.test(posPage)) errors.push('pos: tenant/company branch context is not visible in shell');
-if (!/\/receipts\/\$\{encodeURIComponent\(lastReceipt\.number\)\}/.test(posPage)) errors.push('pos: digital receipt backend capability is not exposed after completed sale');
+if (!/reprintReceipt\(lastReceipt\.number\)/.test(posPage) || !/\/sales\/\$\{encodeURIComponent\(saleNumber\)\}\/receipt-link/.test(posPage) || /window\.open\(`\$\{API\}\/receipts/.test(posPage)) errors.push('pos: digital receipt backend capability is not exposed after completed sale through authorized signed access');
 if (!/companyName/.test(storefrontShell) || !/onBranchChange/.test(storefrontShell)) errors.push('storefront: company/branch context missing');
 if (!/api\('\/platform\/manifest'\)/.test(employeeApp) || !/companyName=\{manifest\?\.company\?\.name/.test(employeeApp)) errors.push('employee-portal: tenant manifest context missing');
 if (/NAV\.slice\(0,\s*4\)/.test(employeeShell)) errors.push('employee-portal: mobile navigation hides valid subdomains');
 if (!/NAV\.map\(/.test(employeeShell)) errors.push('employee-portal: complete mobile navigation missing');
 
-if (visualMap.pos.views.length !== 4 || visualMap.storefront.views.length !== 5 || visualMap.employeePortal.views.length !== 7) errors.push('P5 surface matrix changed unexpectedly');
+if (JSON.stringify(visualMap.pos.views)!==JSON.stringify(['sale','shift','returns','sync','ppob']) || visualMap.storefront.views.length !== 5 || visualMap.employeePortal.views.length !== 7) errors.push('P5 surface matrix changed unexpectedly');
 
 const hiddenControllers = f1.controllerExposure.filter((item) => item.exposure !== 'EXPOSED_OR_PARTIAL');
 const hiddenNames = hiddenControllers.map((item) => item.controller);

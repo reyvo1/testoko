@@ -1,3 +1,4 @@
+import { customerDepositBalance, depositAccount } from '../common/customer-deposit';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountingCoreService, OperationalTaxLineInput } from '../accounting-core/accounting-core.service';
@@ -9,6 +10,8 @@ import { beginIdempotent, completeIdempotent } from '../common/idempotency';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
 import { normalizeTenderPolicy, TenderPolicy } from '../common/tender-policy';
 import { resolveSellingUnitLine } from '../common/transaction-uom';
+import { inventoryLines, kitUnitCost, resolveKitSnapshot } from '../common/retail-kit';
+import { readRetailPolicy } from '../common/retail-policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { SupervisorApprovalService } from '../supervisor-approval/supervisor-approval.service';
@@ -17,6 +20,7 @@ import { StockAlertService } from './stock-alert.service';
 
 type TenantScope = { companyId: string; branchId: string };
 type SaleCreateOptions = {
+  existingTx?: Prisma.TransactionClient;
   occurredAt?: Date;
   offline?: { transactionId: string; deviceId: string; localId: string; sequence: number };
 };
@@ -190,7 +194,7 @@ export class SalesService {
     });
     const accountMap = new Map(accounts.map((account) => [account.code, account.type]));
     for (const item of resolved) {
-      if (accountMap.get(item.tender.policy.settlementAccountCode) !== 'ASSET') {
+      if (accountMap.get(item.tender.policy.settlementAccountCode) !== (item.tender.policy.kind === 'DEPOSIT' ? 'LIABILITY' : 'ASSET')) {
         throw new BadRequestException(`Akun settlement tender ${item.method} (${item.tender.policy.settlementAccountCode}) harus berupa akun aset aktif pada cabang.`);
       }
       if (item.feeAmount.greaterThan(0) && (!item.tender.policy.feeAccountCode || accountMap.get(item.tender.policy.feeAccountCode) !== 'EXPENSE')) {
@@ -367,10 +371,11 @@ export class SalesService {
         select: { type: true, amount: true },
       }),
     ]);
+    const orderPayments = await client.payment.findMany({ where: { status: { in: ['PAID','REFUNDED'] }, paidAt: { gte: shift.openedAt, lte: end }, order: { is: { cashierShiftId: shift.id, branchId: scope.branchId, branch: { companyId: scope.companyId } } } }, select: { method: true, methodName: true, methodSnapshot: true, amount: true, settlementAccountCode: true, settlementBehavior: true, feeAmount: true, feeAccountCode: true } });
     const paymentTotals = new Map<string, number>();
     const paymentBreakdown = new Map<string, { method: string; methodName: string; settlementAccountCode: string; settlementBehavior: string; grossAmount: number; feeAmount: number; netSettlementAmount: number; feeAccountCode: string | null }>();
     let cashSales = 0;
-    for (const payment of payments) {
+    for (const payment of [...payments, ...orderPayments]) {
       const method = payment.method || 'UNKNOWN';
       paymentTotals.set(method, (paymentTotals.get(method) ?? 0) + Number(payment.amount));
       if (this.paymentIsCash(payment)) cashSales += Number(payment.amount);
@@ -398,10 +403,17 @@ export class SalesService {
     const cashRefundRows = completedReturns
       .map((row) => this.refundCashAmount(row.refundDetails, row.refundMethod, row.refundAmount))
       .filter((amount) => amount > 0);
-    const cashIn = cashMovements.filter((item) => item.type === 'CASH_IN').reduce((sum, item) => sum + Number(item.amount), 0);
-    const cashOut = cashMovements.filter((item) => item.type === 'CASH_OUT').reduce((sum, item) => sum + Number(item.amount), 0);
+    const orderReturns = warehouseIds.length ? await client.orderReturn.findMany({ where: { warehouseId: { in: warehouseIds }, status: 'COMPLETED', approvedById: shift.userId, postedAt: { gte: shift.openedAt, lte: end }, refundMethod: 'CASH', order: { branchId: scope.branchId, createdById: { not: null }, branch: { companyId: scope.companyId } } }, select: { refundAmount: true } }) : [];
+    cashRefundRows.push(...orderReturns.map((row) => Number(row.refundAmount)).filter((amount) => amount > 0));
+    let cashIn = cashMovements.filter((item) => item.type === 'CASH_IN').reduce((sum, item) => sum + Number(item.amount), 0);
+    let cashOut = cashMovements.filter((item) => item.type === 'CASH_OUT').reduce((sum, item) => sum + Number(item.amount), 0);
+    const depositCash = await client.operationalFinanceTransaction.groupBy({ by: ['referenceType'], where: { companyId: scope.companyId, branchId: scope.branchId, depositCashierShiftId: shift.id, status: 'POSTED', postedAt: { gte: shift.openedAt, lte: end }, referenceType: { in: ['CustomerDepositCredit','CustomerDepositRefund'] } }, _sum: { grossAmount: true } });
+    const depositCashIn = Number(depositCash.find((row) => row.referenceType === 'CustomerDepositCredit')?._sum.grossAmount ?? 0);
+    const depositCashOut = Number(depositCash.find((row) => row.referenceType === 'CustomerDepositRefund')?._sum.grossAmount ?? 0);
+    cashIn += depositCashIn; cashOut += depositCashOut;
     return {
       paymentTotals,
+      depositCashIn, depositCashOut,
       paymentBreakdown: [...paymentBreakdown.values()],
       cashSales,
       cashRefunds: cashRefundRows.reduce((sum, amount) => sum + amount, 0),
@@ -423,6 +435,7 @@ export class SalesService {
         },
       });
       if (!shift) throw new BadRequestException('Tidak ada shift kasir yang terbuka.');
+      if (await tx.order.findFirst({where:{cashierShiftId:shift.id,createdById:user.sub,status:'PENDING_PAYMENT',branchId:scope.branchId},select:{id:true}})) throw new BadRequestException('Selesaikan atau batalkan pesanan kasir yang masih menunggu pembayaran sebelum tutup shift.');
       const summary = await this.shiftCashSummary(tx, scope, shift);
       const expected = Number(shift.openingCash) + summary.cashSales + summary.cashIn - summary.cashOut - summary.cashRefunds;
       // A drawer that comes up SHORT past the change tolerance is a second gate. Probed live: closing
@@ -483,7 +496,7 @@ export class SalesService {
       shift: { id: shift.id, openedAt: shift.openedAt, closedAt: shift.closedAt, status: shift.status, cashier: shift.user.name },
       openingCash: Number(shift.openingCash),
       closingCash: shift.closingCash !== null ? Number(shift.closingCash) : null,
-      expectedCash: shift.expectedCash !== null ? Number(shift.expectedCash) : null,
+      expectedCash: shift.status === 'OPEN' ? Number(shift.openingCash) + summary.cashSales + summary.cashIn - summary.cashOut - summary.cashRefunds : shift.expectedCash !== null ? Number(shift.expectedCash) : null,
       difference: shift.difference !== null ? Number(shift.difference) : null,
       sales: {
         count: salesAgg._count,
@@ -524,13 +537,14 @@ export class SalesService {
       : null;
     if (dto.customerId && !quoteCustomer) throw new BadRequestException('Pelanggan tidak ditemukan.');
     let rawSubtotal = new Prisma.Decimal(0);
-    const raw: Array<{ input: (typeof dto.items)[number]; product: (typeof products)[number]; line: Prisma.Decimal; conversion: Awaited<ReturnType<SalesService['resolveSellingLine']>> }> = [];
+    const raw: Array<{ input: (typeof dto.items)[number]; product: (typeof products)[number]; line: Prisma.Decimal; conversion: Awaited<ReturnType<SalesService['resolveSellingLine']>>; inventoryComponents: Awaited<ReturnType<typeof resolveKitSnapshot>> }> = [];
     for (const input of dto.items) {
       const product = products.find((value) => value.id === input.productId)!;
       const conversion = await this.resolveSellingLine(this.prisma, scope, product, input, quoteCustomer?.customerType);
+      const inventoryComponents = await resolveKitSnapshot(this.prisma, scope.companyId, product);
       const line = conversion.sellingUnitPrice.mul(conversion.unitQuantity);
       rawSubtotal = rawSubtotal.add(line);
-      raw.push({ input, product, line, conversion });
+      raw.push({ input, product, line, conversion, inventoryComponents });
     }
     const discount = new Prisma.Decimal(dto.discount ?? 0);
     if (discount.greaterThan(rawSubtotal)) throw new BadRequestException('Diskon melebihi subtotal.');
@@ -588,11 +602,9 @@ export class SalesService {
       netTotal = netTotal.add(calc.net);
       taxTotal = taxTotal.add(calc.tax);
       total = total.add(calc.gross);
-      const inventory = await this.prisma.inventory.findUnique({
-        where: { warehouseId_productId: { warehouseId: warehouse.id, productId: item.product.id } },
-      });
-      if ((!inventory || inventory.available < item.conversion.baseQuantity) && !item.product.allowNegativeStock) {
-        throw new BadRequestException(`Stok ${item.product.name} tidak mencukupi untuk ${item.conversion.unitQuantity} ${item.conversion.unitCode} (${item.conversion.baseQuantity} ${item.product.unit}).`);
+      for (const stockLine of inventoryLines({ productId: item.product.id, quantity: item.conversion.baseQuantity, inventoryComponents: item.inventoryComponents })) {
+        const inventory = await this.prisma.inventory.findUnique({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId: stockLine.productId } } });
+        if ((!inventory || inventory.available < stockLine.quantity) && (item.inventoryComponents || !item.product.allowNegativeStock)) throw new BadRequestException(`Stok ${item.product.name} tidak mencukupi untuk kuantitas/komponen yang dipilih.`);
       }
     }
     const serviceFee = serviceFeeFor(dto, total);
@@ -916,7 +928,7 @@ export class SalesService {
     if (!dto.items.length) throw new BadRequestException('Penjualan harus memiliki barang.');
     const occurredAt = options.occurredAt ?? new Date();
 
-    const warehouse = await this.prisma.warehouse.findFirst({
+    const warehouse = await (options.existingTx ?? this.prisma).warehouse.findFirst({
       where: {
         id: dto.warehouseId,
         branchId: scope.branchId,
@@ -927,6 +939,7 @@ export class SalesService {
     if (!warehouse) return this.denyTenantAccess(user, scope, 'Warehouse', dto.warehouseId);
 
     const productIds = [...new Set(dto.items.map((item) => item.productId))];
+    const componentAlertIds = new Set<string>();
     const saleResult = await serializableTx(this.prisma, async (tx) => {
       const scopeKey = dto.idempotencyKey ? 'sale:create' : null;
       if (scopeKey) {
@@ -972,19 +985,21 @@ export class SalesService {
         if (crossTenant) return this.denyTenantAccess(user, scope, 'Product', crossTenant.id);
         throw new BadRequestException('Satu atau lebih produk tidak ditemukan.');
       }
+      if (options.offline && products.some((product) => { const policy = readRetailPolicy(product.metadata); return Boolean(policy.weight || policy.kitRecipeId); })) throw new BadRequestException('Barang timbang/kit membutuhkan transaksi server online.');
       const saleCustomer = dto.customerId
         ? await tx.customer.findFirst({ where: { id: dto.customerId, companyId: scope.companyId }, select: { id: true, customerType: true, name: true, taxIdNumber: true } })
         : null;
       if (dto.customerId && !saleCustomer) throw new BadRequestException('Pelanggan tidak ditemukan.');
       let rawSubtotal = new Prisma.Decimal(0), costTotal = new Prisma.Decimal(0);
-      const raw: Array<{ input: (typeof dto.items)[number]; product: (typeof products)[number]; line: Prisma.Decimal; conversion: Awaited<ReturnType<SalesService['resolveSellingLine']>> }> = [];
+      const raw: Array<{ input: (typeof dto.items)[number]; product: (typeof products)[number]; line: Prisma.Decimal; conversion: Awaited<ReturnType<SalesService['resolveSellingLine']>>; inventoryComponents: Awaited<ReturnType<typeof resolveKitSnapshot>> }> = [];
       for (const input of dto.items) {
         const product = products.find((value) => value.id === input.productId)!;
         const conversion = await this.resolveSellingLine(tx, scope, product, input, saleCustomer?.customerType, occurredAt);
+        const inventoryComponents = await resolveKitSnapshot(tx, scope.companyId, product);
         const line = conversion.sellingUnitPrice.mul(conversion.unitQuantity);
         rawSubtotal = rawSubtotal.add(line);
-        costTotal = costTotal.add(new Prisma.Decimal(product.costPrice).mul(conversion.baseQuantity));
-        raw.push({ input, product, line, conversion });
+        costTotal = costTotal.add((inventoryComponents ? kitUnitCost(inventoryComponents) : new Prisma.Decimal(product.costPrice)).mul(conversion.baseQuantity));
+        raw.push({ input, product, line, conversion, inventoryComponents });
       }
       const discount = new Prisma.Decimal(dto.discount ?? 0);
       if (discount.greaterThan(rawSubtotal)) throw new BadRequestException('Diskon melebihi subtotal.');
@@ -1037,7 +1052,7 @@ export class SalesService {
       if (totalDiscount.greaterThan(rawSubtotal)) throw new BadRequestException('Diskon melebihi subtotal.');
       let netTotal = new Prisma.Decimal(0), taxTotal = new Prisma.Decimal(0), total = new Prisma.Decimal(0);
       const taxGroups = new Map<string, { base: Prisma.Decimal; tax: Prisma.Decimal }>();
-      const prepared = [] as Array<{ productId: string; variantId: string | null; productUnitId: string | null; quantity: number; unitPrice: Prisma.Decimal; unitCost: Prisma.Decimal; unitCode: string; unitQuantity: number; quantityFactor: number; sourceBarcode: string | null; subtotal: Prisma.Decimal; netSubtotal: Prisma.Decimal; taxAmount: Prisma.Decimal; grossSubtotal: Prisma.Decimal; taxCodeId?: string; productName: string }>;
+      const prepared = [] as Array<{ productId: string; variantId: string | null; productUnitId: string | null; quantity: number; unitPrice: Prisma.Decimal; unitCost: Prisma.Decimal; unitCode: string; unitQuantity: number; quantityFactor: number; sourceBarcode: string | null; subtotal: Prisma.Decimal; netSubtotal: Prisma.Decimal; taxAmount: Prisma.Decimal; grossSubtotal: Prisma.Decimal; taxCodeId?: string; productName: string; inventoryComponents?: Prisma.InputJsonValue }>;
       let allocatedDiscount = new Prisma.Decimal(0);
       for (const [index, item] of raw.entries()) {
         const share = rawSubtotal.isZero()
@@ -1062,7 +1077,8 @@ export class SalesService {
           productUnitId: item.conversion.productUnitId,
           quantity: item.conversion.baseQuantity,
           unitPrice: item.conversion.baseUnitPrice,
-          unitCost: item.product.costPrice,
+          unitCost: item.inventoryComponents ? kitUnitCost(item.inventoryComponents) : item.product.costPrice,
+          ...(item.inventoryComponents ? { inventoryComponents: item.inventoryComponents as unknown as Prisma.InputJsonValue } : {}),
           unitCode: item.conversion.unitCode,
           unitQuantity: item.conversion.unitQuantity,
           quantityFactor: item.conversion.quantityFactor,
@@ -1079,10 +1095,15 @@ export class SalesService {
           group.base = group.base.add(calc.net); group.tax = group.tax.add(calc.tax); taxGroups.set(calc.taxCode.id, group);
         }
       }
-      for (const item of prepared) {
-        const inventory = await tx.inventory.findUnique({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId: item.productId } } });
+      const stockRequirements = new Map<string, { quantity: number; strict: boolean }>();
+      for (const item of prepared) for (const stockLine of inventoryLines(item)) {
         const product = products.find((value) => value.id === item.productId)!;
-        if ((!inventory || inventory.available < item.quantity) && !product.allowNegativeStock) throw new BadRequestException(`Stok ${product.name} tidak mencukupi.`);
+        const old = stockRequirements.get(stockLine.productId);
+        stockRequirements.set(stockLine.productId, { quantity: (old?.quantity ?? 0) + stockLine.quantity, strict: Boolean(old?.strict || item.inventoryComponents || !product.allowNegativeStock) });
+      }
+      for (const [productId, requirement] of stockRequirements) {
+        const inventory = await tx.inventory.findUnique({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId } } });
+        if ((!inventory || inventory.available < requirement.quantity) && requirement.strict) throw new BadRequestException('Stok produk/komponen tidak mencukupi.');
       }
 
       // Customer-facing service fee is part of the amount that must be settled. Historically the
@@ -1117,6 +1138,15 @@ export class SalesService {
       }
       if (tenderDue.greaterThan(0) && !rawRequestedPayments.length) throw new BadRequestException('Tender pembayaran wajib diisi untuk bagian transaksi yang tidak menjadi piutang.');
       const requestedPayments = await this.resolveSalePayments(tx, scope, rawRequestedPayments);
+      const depositPayments = requestedPayments.filter((item) => item.tender.policy.kind === 'DEPOSIT');
+      if (depositPayments.length) {
+        if (!saleCustomer || options.offline) throw new BadRequestException('Deposit memerlukan pelanggan dan transaksi online.');
+        const account = await depositAccount(tx, scope);
+        if (depositPayments.some((item) => item.tender.policy.settlementAccountCode !== account.code)) throw new BadRequestException('Tender deposit tidak sesuai akun konfigurasi cabang.');
+        const balance = await customerDepositBalance(tx, scope, saleCustomer.id, account.code);
+        const amount = depositPayments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+        if (amount.greaterThan(balance.available)) throw new BadRequestException('Saldo deposit tersedia tidak cukup.');
+      }
       if (options.offline && (requestedPayments.length !== 1 || !requestedPayments[0].tender.policy.allowOffline)) {
         throw new BadRequestException('Tender transaksi offline tidak diizinkan konfigurasi cabang.');
       }
@@ -1138,13 +1168,12 @@ export class SalesService {
       if (promotion.rule && promoDiscount.greaterThan(0)) {
         await this.promotions.recordRedemption(tx, scope, promotion.rule.id, dto.customerId, 'Sale', sale.id, promoDiscount);
       }
-      for (const item of prepared) {
-        const allocations = await consumeAvailableLocationStock(tx, { warehouseId: warehouse.id, productId: item.productId, quantity: item.quantity });
-        const inventory = await tx.inventory.update({
-          where: { warehouseId_productId: { warehouseId: warehouse.id, productId: item.productId } },
-          data: { quantity: { decrement: item.quantity }, available: { decrement: item.quantity } },
-        });
-        for (const allocation of allocations) await tx.inventoryMovement.create({ data: { warehouseId: warehouse.id, productId: item.productId, locationId: allocation.locationId, type: 'SALE', quantity: -allocation.quantity, balanceAfter: inventory.quantity, referenceType: 'Sale', referenceId: sale.id, createdAt: occurredAt } });
+      for (const [productId, requirement] of stockRequirements) {
+        const quantity = requirement.quantity;
+        if (!productIds.includes(productId)) componentAlertIds.add(productId);
+        const allocations = await consumeAvailableLocationStock(tx, { warehouseId: warehouse.id, productId, quantity });
+        const inventory = await tx.inventory.update({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId } }, data: { quantity: { decrement: quantity }, available: { decrement: quantity } } });
+        for (const allocation of allocations) await tx.inventoryMovement.create({ data: { warehouseId: warehouse.id, productId, locationId: allocation.locationId, type: 'SALE', quantity: -allocation.quantity, balanceAfter: inventory.quantity, referenceType: 'Sale', referenceId: sale.id, createdAt: occurredAt } });
       }
       const payments: Array<{ id: string }> = [];
       for (const requested of requestedPayments) {
@@ -1196,7 +1225,7 @@ export class SalesService {
           revenue: '4101', serviceRevenue: '4104', outputTax: '2201', cogs: '5101', inventory: '1301',
         },
         additionalJournalLines: settlementJournalLines,
-        lines: prepared.map((item) => ({ itemType: 'Product', itemId: item.productId, description: item.productName, quantity: item.quantity, unitAmount: item.unitPrice, netAmount: item.netSubtotal, taxAmount: item.taxAmount, grossAmount: item.grossSubtotal, taxCodeId: item.taxCodeId })),
+        lines: [...prepared.map((item) => ({ itemType: 'Product', itemId: item.productId, description: item.productName, quantity: item.quantity, unitAmount: item.unitPrice, netAmount: item.netSubtotal, taxAmount: item.taxAmount, grossAmount: item.grossSubtotal, taxCodeId: item.taxCodeId })), ...(depositPayments.length ? [{ itemType: 'CustomerDeposit', itemId: saleCustomer!.id, grossAmount: depositPayments.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0)) }] : [])],
         taxLines, businessDate: occurredAt, context: {
           warehouseId: warehouse.id, customerId: dto.customerId, paymentIds: payments.map((item) => item.id),
           payments: requestedPayments.map((item) => ({ method: item.method, name: item.tender.name, amount: item.amount.toFixed(2), provider: item.provider, externalRef: item.externalRef, settlementAccountCode: item.tender.policy.settlementAccountCode, settlementBehavior: item.tender.policy.settlementBehavior, feeAmount: item.feeAmount.toFixed(2), feeAccountCode: item.tender.policy.feeAccountCode })),
@@ -1211,7 +1240,7 @@ export class SalesService {
         const taxDocument = await tx.taxDocument.create({ data: {
           companyId: scope.companyId, branchId: scope.branchId, number: await nextDocumentNumber(tx, { companyId: scope.companyId, branchId: scope.branchId, documentType: 'TAX_SALE', prefix: 'TAX-SALE' }), documentType: 'SALES_TAX_DOCUMENT', status: 'ISSUED', sourceType: 'Sale', sourceId: sale.id,
           counterpartyName: customer?.name, counterpartyTaxId: customer?.taxIdNumber, netAmount: netTotal, taxAmount: taxTotal, grossAmount: total,
-          issueDate: occurredAt, taxPeriod: occurredAt.toISOString().slice(0, 7),
+          issueDate: occurredAt, taxPeriod: event.taxTransactions?.[0]?.taxPeriod ?? null,
         } }); taxDocumentId = taxDocument.id;
       }
       await tx.payment.updateMany({ where: { saleId: sale.id }, data: { accountingEventId: event.id } });
@@ -1252,11 +1281,13 @@ export class SalesService {
 
       if (scopeKey) await completeIdempotent(tx, { companyId: scope.companyId, scope: scopeKey, key: dto.idempotencyKey!, resourceType: 'Sale', resourceId: sale.id, response: saleResult });
       return saleResult;
-    });
+    }, { existingTx: options.existingTx });
 
+    if (options.existingTx) return saleResult;
     // Alert stok benar-benar dijalankan setelah transaksi commit sehingga tidak memperpanjang lock transaksi.
     try {
       await this.stockAlerts.alertLowStock(scope.companyId, scope.branchId, productIds, warehouse.id);
+      if (componentAlertIds.size) await this.stockAlerts.alertLowStock(scope.companyId, scope.branchId, [...componentAlertIds], warehouse.id);
     } catch { /* best-effort */ }
     return saleResult;
   }

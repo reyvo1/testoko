@@ -1,3 +1,4 @@
+import { isPersonnelSelfOnly } from '@toko360/contracts/personnel-authority.cjs';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -114,7 +115,7 @@ export class AttendanceService {
     const employee = await client.employee.findFirst({
       where: { id: employeeId, companyId: scope.companyId, branchId: scope.branchId, isActive: true },
     });
-    if (!employee) return this.denyTenantAccess(client, user, scope, 'Employee', employeeId);
+    if (!employee || (isPersonnelSelfOnly(user)&&employee.userId!==user.sub)) return this.denyTenantAccess(client, user, scope, 'Employee', employeeId);
     return employee;
   }
 
@@ -169,6 +170,8 @@ export class AttendanceService {
         ...key,
       });
     }
+    // A known retry key does not authorize reading a colleague's evidence.
+    await this.scopedEmployee(client, user, scope, prior.employeeId);
     return prior;
   }
 
@@ -182,7 +185,7 @@ export class AttendanceService {
           isActive: true,
           OR: [{ branchId: scope.branchId }, { branchId: null }],
         },
-        orderBy: { branchId: 'desc' },
+        orderBy: { branchId: { sort: 'desc', nulls: 'last' } },
       }),
       this.prisma.attendanceGeofence.findMany({
         where: {
@@ -586,11 +589,12 @@ export class AttendanceService {
     const nowParts = zonedDateParts(new Date(), timeZone);
     const defaultFrom = logicalWorkDate(`${nowParts.year.toString().padStart(4, '0')}-${nowParts.month.toString().padStart(2, '0')}-01`);
     const defaultTo = new Date(Date.UTC(nowParts.year, nowParts.month, 0));
+    const ownEmployees=isPersonnelSelfOnly(user)?await this.prisma.employee.findMany({where:{companyId:scope.companyId,branchId:scope.branchId,userId:user.sub},select:{id:true}}):null;
     const fromDate = from ? logicalWorkDate(from) : defaultFrom;
     const toDate = to ? logicalWorkDate(to) : defaultTo;
     if (toDate < fromDate) throw new BadRequestException('Tanggal akhir roster tidak boleh sebelum tanggal awal.');
     return this.prisma.employeeSchedule.findMany({
-      where: { companyId: scope.companyId, branchId: scope.branchId, workDate: { gte: fromDate, lte: toDate }, ...(employeeId ? { employeeId } : {}) },
+      where: { companyId: scope.companyId, branchId: scope.branchId, workDate: { gte: fromDate, lte: toDate }, ...(ownEmployees?{employeeId:{in:ownEmployees.map(row=>row.id)}}:{}), ...(employeeId ? { employeeId } : {}) },
       orderBy: [{ workDate: 'asc' }, { employeeId: 'asc' }], take: 1000,
     });
   }
@@ -657,7 +661,7 @@ export class AttendanceService {
     const scope = this.requireTenantScope(user);
     const validatedStatus = validatedCorrectionStatus(status);
     if (employeeId) await this.scopedEmployee(this.prisma, user, scope, employeeId);
-    const employees = await this.prisma.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId }, select: { id: true } });
+    const employees = await this.prisma.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId,...(isPersonnelSelfOnly(user)?{userId:user.sub}:{}) }, select: { id: true } });
     return this.prisma.attendanceCorrection.findMany({ where: { companyId: scope.companyId, employeeId: { in: employees.map((e) => e.id) }, ...(employeeId ? { employeeId } : {}), ...(validatedStatus ? { status: validatedStatus as never } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
   }
 
@@ -759,14 +763,14 @@ export class AttendanceService {
   async listBiometrics(user: AuthUser, employeeId?: string) {
     const scope = this.requireTenantScope(user);
     if (employeeId) await this.scopedEmployee(this.prisma, user, scope, employeeId);
-    const employees = await this.prisma.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId }, select: { id: true } });
+    const employees = await this.prisma.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId,...(isPersonnelSelfOnly(user)?{userId:user.sub}:{}) }, select: { id: true } });
     return this.prisma.employeeBiometricCredential.findMany({ where: { companyId: scope.companyId, employeeId: { in: employees.map((e) => e.id) }, ...(employeeId ? { employeeId } : {}) }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   }
 
   async updateBiometric(user: AuthUser, id: string, dto: UpdateBiometricCredentialDto) {
     const scope = this.requireTenantScope(user);
     return this.prisma.$transaction(async (tx) => {
-      const employees = await tx.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId }, select: { id: true } });
+      const employees = await tx.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId,...(isPersonnelSelfOnly(user)?{userId:user.sub}:{}) }, select: { id: true } });
       const current = await tx.employeeBiometricCredential.findFirst({ where: { id, companyId: scope.companyId, employeeId: { in: employees.map((e) => e.id) } } });
       if (!current) return this.denyTenantAccess(tx, user, scope, 'EmployeeBiometricCredential', id);
       const row = await tx.employeeBiometricCredential.update({ where: { id }, data: { status: dto.revoke ? 'REVOKED' : dto.status, revokedAt: dto.revoke ? new Date() : undefined } });

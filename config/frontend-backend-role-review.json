@@ -1,0 +1,442 @@
+{
+  "version": 1,
+  "workItem": "T360-20261006-125000",
+  "scope": "553 controller operations; 4 frontends; 12 seeded staff roles. Customer/device/provider authorization is separate.",
+  "routes": {
+    "POST /accounting-core/tax-exports/documents/:id/approve-mapping": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Coretax export review/create forms use the canonical conditional GET/POST helper; existing P6CD browser exercises both mutations.",
+      "evidence": [
+        "apps/admin/app/modules/coretax-export-workspace.tsx",
+        "scripts/lib/p6cd-browser-uat.mjs"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /accounting-core/tax-exports": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Coretax export review/create forms use the canonical conditional GET/POST helper; existing P6CD browser exercises both mutations.",
+      "evidence": [
+        "apps/admin/app/modules/coretax-export-workspace.tsx",
+        "scripts/lib/p6cd-browser-uat.mjs"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /attendance/corrections": {
+      "classification": "CANONICAL_UI_ALIAS",
+      "reason": "Employee Portal correction form uses /employee/me/attendance-corrections delegated to the canonical attendance service; supervisor review lives in Attendance UI.",
+      "evidence": [
+        "apps/employee-portal/app/employee-portal-app.tsx",
+        "apps/api/src/employee-self-service/employee-self-service.service.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /attendance/devices/fingerprint/events": {
+      "classification": "DEVICE_ADAPTER",
+      "reason": "Fingerprint device ingestion is not a manual attendance button. Device provenance/policy and adapter/runtime certification remain separate.",
+      "evidence": [
+        "apps/api/src/attendance/attendance.service.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /branch-continuity/nodes/:nodeId/permit/:flowCode": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /branch-continuity/nodes/:nodeId/read-authority/:resource": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-continuity/nodes/:nodeId/read-watermark": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /branch-continuity/nodes/:nodeId/connectivity": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "PUT /branch-continuity/connectivity": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /branch-continuity/discover": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Trusted node continuity/freshness/discovery protocol. Operator policy, consolidated status, backup metadata and recovery use existing Branch Sync screen; no button may fabricate a sync watermark or heartbeat.",
+      "evidence": [
+        "apps/api/src/branch-continuity/branch-continuity.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /branch-transfer/transfers/:transferId": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Pending transfer list already supplies state, quantities and discrepancies consumed by operator tracking/arrival/abandon; detail is an alternate read.",
+      "evidence": [
+        "apps/admin/app/modules/branch-sync.tsx",
+        "apps/api/src/branch-continuity/branch-transfer.service.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/heartbeat": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/events": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/pull": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/publish": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/receive": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/failures": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/aggregates/:aggregateType/:aggregateId/version": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/conflicts/:eventId": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /branch-sync/nodes/:nodeId/bootstrap": {
+      "classification": "NODE_PROTOCOL",
+      "reason": "Transport/event ingestion/bootstrap is node-owned. Operator registry, peers, health, conflicts and retry are wired in Branch Sync; event ingestion must not become a free-form business posting screen.",
+      "evidence": [
+        "apps/api/src/branch-sync/branch-sync.service.ts",
+        "apps/admin/app/modules/branch-sync.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /digital-services/transactions/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Canonical paginated transaction history includes the detail/status fields used by both POS and Admin; recheck uses the canonical mutation.",
+      "evidence": [
+        "apps/admin/app/modules/digital-services.tsx",
+        "apps/pos/app/digital-services.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /edge-sync/pull": {
+      "classification": "DEVICE_PROTOCOL",
+      "reason": "Authenticated device synchronization/receipt protocol; POS offline transactions use canonical existing queue replay. Edge-sync remains a declared API-only foundation, not an operator JSON form.",
+      "evidence": [
+        "apps/api/src/extensions/extensions.service.ts",
+        "apps/pos/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /edge-sync/push": {
+      "classification": "DEVICE_PROTOCOL",
+      "reason": "Authenticated device synchronization/receipt protocol; POS offline transactions use canonical existing queue replay. Edge-sync remains a declared API-only foundation, not an operator JSON form.",
+      "evidence": [
+        "apps/api/src/extensions/extensions.service.ts",
+        "apps/pos/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /edge-sync/ack": {
+      "classification": "DEVICE_PROTOCOL",
+      "reason": "Authenticated device synchronization/receipt protocol; POS offline transactions use canonical existing queue replay. Edge-sync remains a declared API-only foundation, not an operator JSON form.",
+      "evidence": [
+        "apps/api/src/extensions/extensions.service.ts",
+        "apps/pos/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /sync/pull": {
+      "classification": "DEVICE_PROTOCOL",
+      "reason": "Authenticated device synchronization/receipt protocol; POS offline transactions use canonical existing queue replay. Edge-sync remains a declared API-only foundation, not an operator JSON form.",
+      "evidence": [
+        "apps/api/src/extensions/extensions.service.ts",
+        "apps/pos/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /devices/:id/offline-transactions": {
+      "classification": "DEVICE_PROTOCOL",
+      "reason": "Authenticated device synchronization/receipt protocol; POS offline transactions use canonical existing queue replay. Edge-sync remains a declared API-only foundation, not an operator JSON form.",
+      "evidence": [
+        "apps/api/src/extensions/extensions.service.ts",
+        "apps/pos/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /forecasts/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "AI workspace lists forecast runs and embedded items/drivers; run selection displays canonical list details. Individual GET is an alternate read.",
+      "evidence": [
+        "apps/admin/app/modules/ai-workspace.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /finance-operations/customer-deposits/:customerId/balance": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Customer deposit workspace loads canonical per-customer balance via query helper and uses existing liability posting lifecycle.",
+      "evidence": [
+        "apps/admin/app/modules/retail-customer-workspaces.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /kiosk/price": {
+      "classification": "PUBLIC_KIOSK_UI",
+      "reason": "Dedicated kiosk price display invokes this read via its resolved URL variable.",
+      "evidence": [
+        "apps/pos/public/kiosk/app.js"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /master-data/branches": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Organization create forms resolve branch/warehouse paths through local variables; existing AST mutation payload gate verifies their DTOs.",
+      "evidence": [
+        "apps/admin/app/modules/master-data.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /master-data/warehouses": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Organization create forms resolve branch/warehouse paths through local variables; existing AST mutation payload gate verifies their DTOs.",
+      "evidence": [
+        "apps/admin/app/modules/master-data.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /payments/providers/:integrationId/callback": {
+      "classification": "SIGNED_PROVIDER_CALLBACK",
+      "reason": "Signed provider-owned callback is not a staff button; payment operator collection/reconciliation uses separate guarded commands.",
+      "evidence": [
+        "apps/api/src/payments/payments.service.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /payroll/tax-rule-sets": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Versioned payroll tax/social-security editor and explicit approval resolve canonical paths with conditional prefixes; role/payload regression covers both.",
+      "evidence": [
+        "apps/admin/app/modules/hr-payroll.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /payroll/social-security-rule-sets": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Versioned payroll tax/social-security editor and explicit approval resolve canonical paths with conditional prefixes; role/payload regression covers both.",
+      "evidence": [
+        "apps/admin/app/modules/hr-payroll.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /payroll/tax-rule-sets/:id/approve": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Versioned payroll tax/social-security editor and explicit approval resolve canonical paths with conditional prefixes; role/payload regression covers both.",
+      "evidence": [
+        "apps/admin/app/modules/hr-payroll.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /payroll/social-security-rule-sets/:id/approve": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Versioned payroll tax/social-security editor and explicit approval resolve canonical paths with conditional prefixes; role/payload regression covers both.",
+      "evidence": [
+        "apps/admin/app/modules/hr-payroll.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /platform/modules": {
+      "classification": "MANIFEST_READ_MODEL",
+      "reason": "The authenticated Platform manifest includes both registry lists for runtime navigation/configuration; duplicate calls are unnecessary.",
+      "evidence": [
+        "apps/api/src/platform/platform.service.ts",
+        "apps/admin/app/navigation.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /platform/plugins": {
+      "classification": "MANIFEST_READ_MODEL",
+      "reason": "The authenticated Platform manifest includes both registry lists for runtime navigation/configuration; duplicate calls are unnecessary.",
+      "evidence": [
+        "apps/api/src/platform/platform.service.ts",
+        "apps/admin/app/navigation.ts"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /platform/automation-jobs": {
+      "classification": "UI_WRAPPER_RESOLVED",
+      "reason": "Automation workspace list includes job details and existing retry/cancel operator actions; query suffix prevents literal matching.",
+      "evidence": [
+        "apps/admin/app/modules/automation-workspace.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /platform/automation-jobs/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Automation workspace list includes job details and existing retry/cancel operator actions; query suffix prevents literal matching.",
+      "evidence": [
+        "apps/admin/app/modules/automation-workspace.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "POST /platform/approval-requests": {
+      "classification": "DOMAIN_ORCHESTRATION",
+      "reason": "Approval requests originate from canonical business documents. Operator Approval workspace reviews/decides existing requests; no detached arbitrary request button.",
+      "evidence": [
+        "apps/api/src/platform/platform.service.ts",
+        "apps/admin/app/modules/extensions.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /purchase-orders/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Existing list UI selects and displays document detail from canonical list read model; individual GET is an alternative API read, not an absent mutation.",
+      "evidence": [
+        "apps/admin/app/modules/extensions.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /purchase-requests/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Existing list UI selects and displays document detail from canonical list read model; individual GET is an alternative API read, not an absent mutation.",
+      "evidence": [
+        "apps/admin/app/modules/extensions.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /receipts/:saleNumber": {
+      "classification": "SIGNED_CUSTOMER_RECEIPT",
+      "reason": "Protected receipt URLs come from the owner-validated mint/link flow and are opened by POS/customer; no unprotected staff/customer receipt index.",
+      "evidence": [
+        "apps/api/src/sales/receipt.controller.ts",
+        "apps/storefront/app/customer-communications.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /storefront/account/communication-preferences": {
+      "classification": "CUSTOMER_UI_WRAPPER",
+      "reason": "Customer account helper prefixes relative paths with /storefront/account and enforces its separate customer session; staff decorator metadata is not customer authorization.",
+      "evidence": [
+        "apps/storefront/app/customer-communications.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "PATCH /storefront/account/communication-preferences": {
+      "classification": "CUSTOMER_UI_WRAPPER",
+      "reason": "Customer account helper prefixes relative paths with /storefront/account and enforces its separate customer session; staff decorator metadata is not customer authorization.",
+      "evidence": [
+        "apps/storefront/app/customer-communications.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /storefront/account/receipts": {
+      "classification": "CUSTOMER_UI_WRAPPER",
+      "reason": "Customer account helper prefixes relative paths with /storefront/account and enforces its separate customer session; staff decorator metadata is not customer authorization.",
+      "evidence": [
+        "apps/storefront/app/customer-communications.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /storefront/account/receipts/:number/link": {
+      "classification": "CUSTOMER_UI_WRAPPER",
+      "reason": "Customer account helper prefixes relative paths with /storefront/account and enforces its separate customer session; staff decorator metadata is not customer authorization.",
+      "evidence": [
+        "apps/storefront/app/customer-communications.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "PATCH /storefront/account/addresses/:id": {
+      "classification": "CUSTOMER_UI_WRAPPER",
+      "reason": "Customer account helper prefixes relative paths with /storefront/account and enforces its separate customer session; staff decorator metadata is not customer authorization.",
+      "evidence": [
+        "apps/storefront/app/page.tsx"
+      ],
+      "runtime": "PENDING"
+    },
+    "GET /suppliers/:id": {
+      "classification": "UI_LIST_READ_MODEL",
+      "reason": "Existing list UI selects and displays document detail from canonical list read model; individual GET is an alternative API read, not an absent mutation.",
+      "evidence": [
+        "apps/admin/app/modules/extensions.tsx"
+      ],
+      "runtime": "PENDING"
+    }
+  },
+  "openProductLimitations": [
+    "PPOB prepaid adapter has no canonical customer-payment/shift/accounting posting; provider credential is not certification.",
+    "Real provider/device certification and Human Stage-20 remain PENDING.",
+    "Source wiring is not proof that every lifecycle is complete; runtime all-role browser gate is mandatory.",
+    "Edge-sync/installer/customer-mobile/FIFO remain explicitly limited foundations in canonical product completeness; do not promote productReady."
+  ]
+}

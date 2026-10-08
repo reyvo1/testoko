@@ -1,3 +1,5 @@
+import { isPersonnelSelfOnly } from '../../../packages/contracts/personnel-authority.cjs';
+import { apiAccessMetadata, canAccessApiPath } from '../../../packages/contracts/src/api-access';
 import type { AdminIdentity } from './navigation';
 
 /**
@@ -32,6 +34,7 @@ const ROUTE_PERMISSION: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/accounting-core\//, 'finance.view'],
   [/^\/finance-operations\//, 'finance.view'],
   [/^\/returns\/sales/, 'sale.return'],
+  [/^\/returns\/exchanges/, 'sale.return'],
   [/^\/returns\/purchases/, 'purchase.return'],
   [/^\/returns\//, 'return.view'],
   [/^\/master-data\//, 'master_data.view'],
@@ -52,6 +55,8 @@ const ROUTE_PERMISSION: ReadonlyArray<readonly [RegExp, string]> = [
 
 /** Permission the backend requires to read `path`, mirroring the controller @Permissions. */
 export function readPermissionFor(path: string): string {
+  const actual = apiAccessMetadata(path);
+  if (actual?.permissions.length) return actual.permissions[0];
   const route = path.split('?')[0];
   for (const [pattern, permission] of ROUTE_PERMISSION) {
     if (pattern.test(route)) return permission;
@@ -59,36 +64,12 @@ export function readPermissionFor(path: string): string {
   return 'system.manage';
 }
 
-/**
- * A subset of routes are additionally restricted by @Roles, and RolesGuard throws independently
- * of PermissionsGuard — so holding the permission is not enough. GET /returns/sales is
- * sale.return behind @Roles(CASHIER|WAREHOUSE|FINANCE), which is why a MANAGER, who passes the
- * commerce gate on sale.view and holds no sale.return, still cannot read it.
- *
- * Only the role-restricted reads that workspace bootstraps depend on are listed. Anything absent
- * is treated as role-open, so a route added to a controller without an entry here degrades to the
- * normal permission check rather than silently unlocking.
- */
-const ROUTE_ROLES: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
-  [/^\/returns\/sales/, ['CASHIER', 'WAREHOUSE', 'FINANCE']],
-  [/^\/returns\/orders/, ['WAREHOUSE', 'FINANCE']],
-  [/^\/returns\/purchases/, ['PURCHASING', 'WAREHOUSE', 'FINANCE']],
-  [/^\/advanced-inventory\/stock-opnames/, ['WAREHOUSE', 'AUDITOR']],
-  [/^\/operations-control\/policies/, ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER']],
-  [/^\/fleet\//, ['WAREHOUSE', 'AUDITOR']],
-  [/^\/accounting-core\//, ['SUPER_ADMIN', 'OWNER', 'FINANCE', 'AUDITOR']],
-  [/^\/reports\/schedules/, ['FINANCE', 'MANAGER', 'AUDITOR', 'HR', 'PAYROLL']],
-];
-
+/** Controller metadata is generated and drift-checked against the TypeScript AST. */
 export function canReadPath(identity: AdminIdentity | null, path: string): boolean {
   if (!identity) return false;
-  if (identity.roles.includes('SUPER_ADMIN')) return true;
   const route = path.split('?')[0];
-  for (const [pattern, allowed] of ROUTE_ROLES) {
-    if (!pattern.test(route)) continue;
-    if (!allowed.some(role => identity.roles.includes(role))) return false;
-  }
-  return identity.permissions.includes(readPermissionFor(path));
+  if(isPersonnelSelfOnly(identity)&&route.startsWith('/payroll/'))return false;
+  return canAccessApiPath(identity,path);
 }
 
 /**
@@ -110,4 +91,11 @@ export async function readOptional<T>(identity: AdminIdentity | null, path: stri
     if (err instanceof Error && /\b(403|401)\b|Forbidden|Unauthorized/.test(err.message)) return fallback;
     throw err;
   }
+}
+
+export function commerceOrderReadPath(identity: AdminIdentity | null) {
+  return canReadPath(identity, '/orders') ? '/orders' : canReadPath(identity, '/orders/staff') ? '/orders/staff' : null;
+}
+export function warehouseDirectoryReadPath(identity: AdminIdentity | null) {
+  return canReadPath(identity, '/inventory/warehouses') ? '/inventory/warehouses' : canReadPath(identity, '/master-data/warehouses') ? '/master-data/warehouses' : null;
 }

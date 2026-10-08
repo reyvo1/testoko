@@ -13,6 +13,9 @@ import { CreateDigitalServiceTransactionDto } from './dto/digital-services.dto';
 export class DigitalServicesController {
   constructor(private readonly services: DigitalServicesService) {}
 
+  @Get('status') @Permissions('digital_service.view')
+  status(@CurrentUser() user: AuthUser) { return this.services.status(user); }
+
   @Get('products') @Permissions('digital_service.view')
   products(@CurrentUser() user: AuthUser, @Query('search') search?: string, @Query('category') category?: string, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
     return this.services.products(user, search, category, limit, cursor);

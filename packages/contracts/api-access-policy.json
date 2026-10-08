@@ -1,0 +1,5707 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/accounting-core/tax-exports/documents/:id/approve-mapping",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/tax-exports/documents/:id/draft",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/devices/fingerprint/events",
+      "roles": [],
+      "permissions": [
+        "attendance.device_ingest"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/aggregates/:aggregateType/:aggregateId/version",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/conflicts/:eventId/resolve",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/dead-letters/:eventId/requeue",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/channels/request-verification",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/channels/verify",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/mobile-ops/telegram/bindings/revoke",
+      "roles": [],
+      "permissions": [
+        "user.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/shifts/cash-movements/current",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/receipts/:number/link",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/reviews/product/:productId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/verification/confirm",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/verification/request",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/close-controls/:id/close",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/close-controls/:id/reopen",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/events/post",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.journal"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounting-core/posting-rules/:id/status",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "accounting.rule.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounting-core/tax-codes/:id/status",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/tax/preview",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-opnames/:id/complete",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-opnames/:id/count",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-opnames/:id/submit",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-transfers/:id/approve",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "inventory.transfer"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-transfers/:id/receive",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.transfer"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/advanced-inventory/stock-transfers/:id/ship",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.transfer"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/analytics/daily-summaries/materialize",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/maintenance-plans/:id/update",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "asset.maintenance"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/maintenance/:id/complete",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "asset.maintenance"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/biometrics/enroll",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/corrections/:id/review",
+      "roles": [],
+      "permissions": [
+        "attendance.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/media/upload-local",
+      "roles": [],
+      "permissions": [
+        "attendance.record"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/auth/2fa/confirm",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/2fa/disable",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/2fa/recovery-codes",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/2fa/setup",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/auth/2fa/status",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/password-reset/confirm",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/password-reset/request",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/sessions/:id/revoke",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/branch-continuity/backups/verify-restore",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/nodes/:nodeId/connectivity",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/nodes/:nodeId/permit/:flowCode",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/branch-continuity/nodes/:nodeId/policy",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/nodes/:nodeId/policy/:flowCode",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/nodes/:nodeId/read-authority/:resource",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-continuity/nodes/:nodeId/read-watermark",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/bootstrap",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/nodes/:nodeId/conflicts",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/conflicts/:eventId",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/nodes/:nodeId/dead-letters",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/events",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/failures",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/heartbeat",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/nodes/:nodeId/peers",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/peers",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/branch-sync/nodes/:nodeId/peers/:peerId",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/publish",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/pull",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes/:nodeId/receive",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/nodes/:nodeId/recovery-plan",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-transfer/transfers/:transferId/abandon",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-transfer/transfers/:transferId/arrival",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-transfer/transfers/:transferId/departure",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:id/credentials/rotate",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:id/offline-transactions/:transactionId/requeue",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:id/sync/ack",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/devices/:id/sync/diagnostics",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "integration.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/digital-services/catalog/sync",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "digital_service.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/digital-services/transactions/:id/recheck",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "digital_service.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/attendance",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/attendance-corrections",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/attendance-corrections",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/channels",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/leave-requests",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/leave-requests",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/leave-types",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/notification-preferences",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/notification-preferences",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/overtime-requests",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/employee/me/overtime-requests",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/payslips",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me/payslips/:id",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/customer-deposits/:customerId/balance",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/customer-deposits/customers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.create",
+        "sale.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance/bank-statements/import",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.reconcile"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/finance/fiscal-periods/:id/close",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/finance/fiscal-periods/:id/reopen",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/finance/fiscal-periods/:id/soft-close",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance/reconciliations/:id/auto-match",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.reconcile"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance/reconciliations/:id/details",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance/reconciliations/:id/match",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.reconcile"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance/reconciliations/:id/unmatch",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.reconcile"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/driver-assignments/:id/end",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "fleet.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/stops/:id/complete",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "delivery.proof"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/trips/:id/close",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "delivery.trip.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/trips/:id/dispatch",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "delivery.dispatch"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/trips/:id/loading",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "delivery.loading.confirm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/employees/:id/assignments",
+      "roles": [],
+      "permissions": [
+        "employee.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/leave-requests/:id/review",
+      "roles": [],
+      "permissions": [
+        "leave.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/overtime-requests/:id/review",
+      "roles": [],
+      "permissions": [
+        "overtime.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/orders/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/orders/:id/complete",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/orders/:id/release",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/orders/:id/start",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/products/:productId/barcodes",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/products/:productId/barcodes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/products/:productId/barcodes/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/products/:productId/prices",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/products/:productId/prices",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/products/:productId/prices/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/products/:productId/units",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/products/:productId/units",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/products/:productId/units/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/products/:productId/variants",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/products/:productId/variants",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/products/:productId/variants/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mobile-ops/drafts/:draftId/discard",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mobile-ops/drafts/:draftId/discrepancy",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mobile-ops/drafts/:draftId/scan",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mobile-ops/drafts/:draftId/submit",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mobile-ops/drafts/open",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mobile-ops/telegram/bindings",
+      "roles": [],
+      "permissions": [
+        "user.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mobile-ops/telegram/bindings",
+      "roles": [],
+      "permissions": [
+        "user.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/gate-passes/:id/approve",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "gate_pass.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/gate-passes/:id/movement",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "gate_pass.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/inspections/:id/approve",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inspection.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/inspections/:id/complete",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "CASHIER"
+      ],
+      "permissions": [
+        "inspection.record"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/inspections/:id/evidence",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "CASHIER"
+      ],
+      "permissions": [
+        "inspection.record"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payments/providers/:integrationId/callback",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/payments/:id/settle",
+      "roles": [],
+      "permissions": [
+        "payroll.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/periods/:id/lock-attendance",
+      "roles": [],
+      "permissions": [
+        "payroll.calculate"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/adjustments",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/approve",
+      "roles": [],
+      "permissions": [
+        "payroll.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/calculate",
+      "roles": [],
+      "permissions": [
+        "payroll.calculate"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/cancel",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs/:id/payments",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/post-accounting",
+      "roles": [],
+      "permissions": [
+        "payroll.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/publish-payslips",
+      "roles": [],
+      "permissions": [
+        "payroll.publish"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs/:id/results",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/social-security-rule-sets/:id/approve",
+      "roles": [],
+      "permissions": [
+        "payroll.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/tax-rule-sets/:id/approve",
+      "roles": [],
+      "permissions": [
+        "tax.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/platform/approval-requests/:id/decision",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE",
+        "PURCHASING"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/platform/approval-requests/:id/delegate",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE",
+        "PURCHASING"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/platform/automation-jobs/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "automation.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/automation-jobs/:id/replay",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "automation.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/notifications/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/notifications/:id/replay",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/outbox/:id/replay",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/webhook-deliveries/:id/replay",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "webhook.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/daily-digest/config",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/reports/daily-digest/config",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/daily-digest/preview",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/reports/daily-digest/send",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/jobs/:id/download",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/reports/schedules/:id/run-now",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/orders/:id/confirm",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "sale.refund"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/orders/:id/inspection",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/orders/:id/reject",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/purchases/:id/confirm",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "purchase.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/sales/:id/confirm",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "sale.refund"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/offline/config",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sales/offline/replay",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/shifts/:id/recap",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sales/shifts/cash-movements",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sales/shifts/close",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/shifts/current",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sales/shifts/open",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/addresses",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/addresses",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/storefront/account/addresses/:id",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/storefront/account/addresses/:id",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/communication-preferences",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/storefront/account/communication-preferences",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/favorites",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/storefront/account/favorites/:productId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/favorites/:productId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/fulfillment-options",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/login",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/logout",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/me",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/storefront/account/me",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/orders",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/orders/:number",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/receipts",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/register",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/storefront/account/returns",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/returns",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/storefront/account/reviews",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/roles/:id/permissions",
+      "roles": [
+        "SUPER_ADMIN"
+      ],
+      "permissions": [
+        "role.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/accounts",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR",
+        "ADMIN"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/accounts",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "accounting.rule.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounting-core/accounts/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "accounting.rule.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/close-controls",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/close-controls",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/events",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/events/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/posting-rules",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/posting-rules",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "accounting.rule.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/tax-codes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/tax-codes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/tax-documents",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounting-core/tax-exports",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "tax.manage",
+        "report.export"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/tax-reconciliation",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounting-core/tax-transactions",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/condition-balances",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "inventory.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/advanced-inventory/condition-movements",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.adjust"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/location-balances",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/advanced-inventory/location-relocations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.transfer"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/reorder-visibility",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "inventory.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/stock-opnames",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/advanced-inventory/stock-opnames",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/stock-transfers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/advanced-inventory/stock-transfers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inventory.transfer"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/advanced-inventory/transit-balances",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "inventory.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/daily-summaries",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "report.view"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/api-keys/:id/revoke",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "api_key.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api-keys/:id/rotate",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "api_key.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/:id/assign",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "asset.assign"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/:id/dispose",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "asset.acquire"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/:id/transfer",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "asset.assign"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets/categories",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "asset.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/categories",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "asset.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/depreciation-runs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "asset.depreciate"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/maintenance",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "asset.maintenance"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets/maintenance-catalog",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "asset.maintenance"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets/maintenance-plans",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "asset.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets/maintenance-plans",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "asset.maintenance"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets/maintenances",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "asset.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets/summary",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "asset.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/biometrics",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/attendance/biometrics/:id",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/config",
+      "roles": [],
+      "permissions": [
+        "attendance.record"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/corrections",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/corrections",
+      "roles": [],
+      "permissions": [
+        "attendance.record"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/devices",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/devices",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/attendance/devices/:id",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/employee",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/events",
+      "roles": [],
+      "permissions": [
+        "attendance.record"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/geofences",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/geofences",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/attendance/geofences/:id",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/policies",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/policies",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/attendance/policies/:id",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/schedules",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/schedules",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/attendance/work-shifts",
+      "roles": [],
+      "permissions": [
+        "attendance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/attendance/work-shifts",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/attendance/work-shifts/:id",
+      "roles": [],
+      "permissions": [
+        "attendance.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/auth/branch-context",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/branch-context",
+      "roles": [],
+      "permissions": [
+        "branch.switch"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout-all",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/auth/refresh",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/auth/sessions",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/backups",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-continuity/backups",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/capabilities",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/branch-continuity/capabilities",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/branch-continuity/connectivity",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/consolidated",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-continuity/discover",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-continuity/rejoin",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/health",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-sync/nodes",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/branch-sync/nodes",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-transfer/pending",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/branch-transfer/transfers/:transferId",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/customer-campaigns/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/customer-campaigns/:id/deliveries",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:id/offline-transactions",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/devices/:id/status",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/digital-services/products",
+      "roles": [],
+      "permissions": [
+        "digital_service.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/digital-services/status",
+      "roles": [],
+      "permissions": [
+        "digital_service.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/digital-services/transactions",
+      "roles": [],
+      "permissions": [
+        "digital_service.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/digital-services/transactions",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "digital_service.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/digital-services/transactions/:id",
+      "roles": [],
+      "permissions": [
+        "digital_service.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/edge-sync/ack",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/edge-sync/pull",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/edge-sync/push",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/employee/me",
+      "roles": [],
+      "permissions": [
+        "employee.self"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations/:id/approve",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations/:id/post",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.post"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations/:id/reject",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.approve"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/ap-aging",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/ar-aging",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/cash-bank-position",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations/customer-deposits",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/customer-receivables",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/settlement-trace",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/supplier-payables",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations/supplier-refunds",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance/bank-statements",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/finance/fiscal-periods",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/finance/fiscal-periods",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.close_period"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance/reconciliations",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/finance/reconciliations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "finance.reconcile"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/fleet/driver-assignments",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "fleet.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/driver-assignments",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "fleet.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/fleet/fuel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "fleet.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/fuel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "fleet.expense"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/fleet/summary",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "fleet.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/fleet/trips",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "fleet.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/trips",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "delivery.trip.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/fleet/vehicles",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "fleet.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/fleet/vehicles",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "fleet.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/forecasts/run",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "forecast.run"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/goods-receipts/:id/confirm",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "goods_receipt.confirm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/goods-receipts/:id/reject",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "goods_receipt.reject"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/assignments",
+      "roles": [],
+      "permissions": [
+        "employee.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/departments",
+      "roles": [],
+      "permissions": [
+        "employee.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/departments",
+      "roles": [],
+      "permissions": [
+        "employee.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/employees",
+      "roles": [],
+      "permissions": [
+        "employee.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/employees",
+      "roles": [],
+      "permissions": [
+        "employee.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/hr/employees/:id",
+      "roles": [],
+      "permissions": [
+        "employee.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/leave-requests",
+      "roles": [],
+      "permissions": [
+        "leave.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/leave-types",
+      "roles": [],
+      "permissions": [
+        "leave.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/leave-types",
+      "roles": [],
+      "permissions": [
+        "leave.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/overtime-requests",
+      "roles": [],
+      "permissions": [
+        "overtime.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/hr/positions",
+      "roles": [],
+      "permissions": [
+        "employee.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/hr/positions",
+      "roles": [],
+      "permissions": [
+        "employee.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/:id/mappings",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/:id/mappings",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/integrations/:id/mappings/:mappingId",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/cross-branch-stock/:productId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/movements",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/warehouses",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "CASHIER"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/kiosk/price",
+      "roles": [],
+      "permissions": [
+        "kiosk.price.read"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/loyalty/accounts/:customerId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/loyalty/programs",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/loyalty/programs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "loyalty.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/loyalty/tier/:customerId",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/loyalty/transactions",
+      "roles": [],
+      "permissions": [
+        "loyalty.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/manufacturing/orders",
+      "roles": [],
+      "permissions": [
+        "manufacturing.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/orders",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/manufacturing/recipes",
+      "roles": [],
+      "permissions": [
+        "manufacturing.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/manufacturing/recipes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "MANAGER",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "manufacturing.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/marketplace-orders/import",
+      "roles": [],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/branches",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/branches",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/branches/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/categories",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/categories",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/categories/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/customers",
+      "roles": [],
+      "permissions": [
+        "customer.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/customers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "customer.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/customers/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "customer.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/references",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/references",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/references/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/warehouse-locations",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/warehouse-locations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/warehouse-locations/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/master-data/warehouses",
+      "roles": [],
+      "permissions": [
+        "master_data.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/master-data/warehouses",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/master-data/warehouses/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "master_data.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mobile-ops/drafts",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mobile-ops/drafts/:draftId",
+      "roles": [],
+      "permissions": [
+        "inventory.opname"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/notifications/providers",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/notifications/templates",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/notifications/templates",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/confirmations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "operations.confirm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/operations-control/gate-passes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "inspection.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/gate-passes",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "gate_pass.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/inspection-templates",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "inspection.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/operations-control/inspections",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "inspection.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/inspections",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "CASHIER"
+      ],
+      "permissions": [
+        "inspection.record"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/operations-control/policies",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "operations.policy.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operations-control/policies",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "operations.policy.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/operator-assistant/history",
+      "roles": [],
+      "permissions": [
+        "assistant.use"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operator-assistant/query",
+      "roles": [],
+      "permissions": [
+        "assistant.use"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/operator-insights/:id/status",
+      "roles": [],
+      "permissions": [
+        "assistant.use"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/operator-insights/refresh",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "assistant.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/authorize-invoice",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "payment.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "order.cancel"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/confirm-payment",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "payment.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/deliver",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "shipment.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/pack",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "shipment.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/ship",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "shipment.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/staff-cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:id/staff-cash",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:number/mock-pay",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/orders/:number/payment-selection",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/orders/staff",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/orders/staff",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payments/provider-events",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "payment.reconcile"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/accounting-mappings",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/accounting-mappings",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/components",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/components",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/employee-components",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/employee-components",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/employee-profiles/:employeeId",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/employee-social-security-profiles",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/employee-tax-profiles",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/liabilities",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/periods",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/periods",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/social-security-rule-sets",
+      "roles": [],
+      "permissions": [
+        "payroll.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/social-security-rule-sets",
+      "roles": [],
+      "permissions": [
+        "payroll.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/tax-rule-sets",
+      "roles": [],
+      "permissions": [
+        "tax.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/tax-rule-sets",
+      "roles": [],
+      "permissions": [
+        "tax.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/approval-policies",
+      "roles": [],
+      "permissions": [
+        "approval.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/approval-policies",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "approval.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/approval-requests",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/platform/approval-requests",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/audit-logs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "audit.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/automation-jobs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/automation-jobs/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/business-rules",
+      "roles": [],
+      "permissions": [
+        "automation.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/business-rules",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "automation.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/platform/business-rules/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "automation.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/custom-field-values",
+      "roles": [],
+      "permissions": [
+        "custom_field.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/custom-fields",
+      "roles": [],
+      "permissions": [
+        "custom_field.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/custom-fields",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "custom_field.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/features",
+      "roles": [],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/features",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/integrations",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/platform/integrations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/platform/integrations/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/manifest",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/modules",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/ops-health",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "audit.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/outbox",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "audit.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/plugins",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/settings",
+      "roles": [],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/settings",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/setup-readiness",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/storefront-branches",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/platform/tenant",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/platform/tenant",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "platform.configure"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/ui-schemas",
+      "roles": [],
+      "permissions": [
+        "ui_schema.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/ui-schemas",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "ui_schema.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/webhook-deliveries",
+      "roles": [],
+      "permissions": [
+        "webhook.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/platform/webhooks",
+      "roles": [],
+      "permissions": [
+        "webhook.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/platform/webhooks",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "webhook.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/products/:id/price-history",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/products/:id/retail-config",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "product.update"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/products/bulk-import",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "product.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/products/export-csv",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "product.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/promotions/preview",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-requests/:id/cancel",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-requests/:id/convert",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.create"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-requests/:id/decision",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.approve"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-requests/:id/submit",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/analytics",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/balance-sheet",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/cash-flow",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/customer-rfm",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/dashboard",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/dead-stock",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/dimension-comparison",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/drill-down",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/financial-integrity",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/general-ledger",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/inventory-valuation",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/jobs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/reports/jobs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/margin",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/multi-outlet",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/peak-hours",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/period-comparison",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/profit-loss",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/schedules",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/reports/schedules",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/reports/schedules/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/reports/tax-summary",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/reports/trial-balance",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "MANAGER",
+        "AUDITOR",
+        "HR",
+        "PAYROLL"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/retention/archive-runs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "report.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/retention/archive-runs",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/retention/policies",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "report.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/retention/policies",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "report.export"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/returns/exchanges",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/exchanges",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "sale.create",
+        "sale.return",
+        "sale.refund"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/returns/orders",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/returns/purchases",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "purchase.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/purchases",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "purchase.return"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/returns/sales",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/returns/sales",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.return"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/sales/:id/deliver-receipt",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/:saleNumber/receipt-link",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sales/cashier-targets",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/sales/cashier-targets",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/sales/quote",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/supervisor-approval/approve",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/supervisor-approval/pin",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/supervisor-approval/status",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/sync/pull",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/:id/roles",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "user.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/:id/status",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "user.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/users/permissions",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/users/roles",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/users/roles",
+      "roles": [
+        "SUPER_ADMIN"
+      ],
+      "permissions": [
+        "role.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api-keys",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "api_key.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api-keys",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "api_key.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/assets",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "asset.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/assets",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "FINANCE"
+      ],
+      "permissions": [
+        "asset.acquire"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/customer-campaigns",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/customer-campaigns",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/customers",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/devices",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/devices",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "integration.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/finance-operations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "AUDITOR",
+        "ADMIN"
+      ],
+      "permissions": [
+        "finance.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/finance-operations",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "FINANCE",
+        "ADMIN"
+      ],
+      "permissions": [
+        "finance.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/forecasts",
+      "roles": [],
+      "permissions": [
+        "forecast.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/forecasts/:id",
+      "roles": [],
+      "permissions": [
+        "forecast.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/goods-receipts",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/goods-receipts",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE"
+      ],
+      "permissions": [
+        "purchase.receive"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/inventory",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "PURCHASING",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/inventory-batches",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/inventory-batches",
+      "roles": [],
+      "permissions": [
+        "inventory.batch"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/inventory-serials",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/inventory-serials",
+      "roles": [],
+      "permissions": [
+        "inventory.serial"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/marketplace-orders",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/notifications",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/notifications",
+      "roles": [],
+      "permissions": [
+        "notification.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/operator-insights",
+      "roles": [],
+      "permissions": [
+        "assistant.use"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/orders",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/orders/:number",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/products",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/products",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "product.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/products/:id",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/products/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "product.update"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/promotions",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/promotions",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "promotion.manage"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/promotions/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "promotion.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/purchase-orders",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-orders",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/purchase-orders/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/purchase-requests",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "purchase.view"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/purchase-requests",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "purchase.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/purchase-requests/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE"
+      ],
+      "permissions": [
+        "purchase.view"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/receipts/:saleNumber",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/sales",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER",
+        "FINANCE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/sales",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "CASHIER"
+      ],
+      "permissions": [
+        "sale.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/shipments",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/shipments",
+      "roles": [],
+      "permissions": [
+        "shipment.manage"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/staff-memos",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/staff-memos",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/staff-memos/:id",
+      "roles": [],
+      "permissions": []
+    },
+    {
+      "method": "GET",
+      "path": "/suppliers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/suppliers",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "supplier.create"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/suppliers/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING",
+        "WAREHOUSE",
+        "FINANCE",
+        "AUDITOR"
+      ],
+      "permissions": [
+        "supplier.view"
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/suppliers/:id",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN",
+        "PURCHASING"
+      ],
+      "permissions": [
+        "supplier.update"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": []
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "roles": [
+        "SUPER_ADMIN",
+        "OWNER",
+        "ADMIN"
+      ],
+      "permissions": [
+        "user.manage"
+      ]
+    }
+  ]
+}

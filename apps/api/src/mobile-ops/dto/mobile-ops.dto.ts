@@ -32,6 +32,7 @@ export class OpenMobileDraftDto {
 }
 
 export class AddMobileScanDto {
+  @ApiProperty() @IsString() @MinLength(8) @MaxLength(160) operationKey!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(160) barcode?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) sku?: string;
   @ApiProperty() @IsInt() @Min(1) quantity!: number;

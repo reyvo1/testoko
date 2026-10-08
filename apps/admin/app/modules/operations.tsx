@@ -3,11 +3,12 @@ import { authFetch } from '../auth-fetch';
 // Modul Operasional: retur, transfer stok, dan stock opname yang dapat dijalankan dari Admin.
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { usePermissions } from '../permissions';
-import { readOptional } from '../read-path-contract';
+import { canReadPath, readOptional } from '../read-path-contract';
 import { ErrorState, Panel, Table, StatusChip, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
+type Exchange = {id:string;saleReturnId:string;replacementSaleId:string;refundAmount:string|number;replacementAmount:string|number;difference:string|number;createdAt:string};
 type SaleReturn = { id: string; number: string; status: string; refundMethod?: string; refundAmount: string | number; inspectionId?: string | null; createdAt: string };
 type OrderReturn = { id: string; number: string; status: string; refundMethod?: string | null; refundAmount: string | number; inspectionId?: string | null; reason?: string | null; createdAt: string; order: { id: string; number: string; customerName: string; status: string }; customer?: { name: string; email?: string | null } | null; items: Array<{ id: string; quantity: number; condition: string; restock: boolean; product: { sku: string; name: string } }> };
 type PurchaseReturnItem = { id: string; productId: string; quantity: number; metadata?: { goodsReceiptItemId?: string } | null };
@@ -42,6 +43,8 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
   // registration need inventory.batch / inventory.serial. A view-only operator used to see all
   // of these and only learn they were forbidden from the 403.
   const { canAll, identity } = usePermissions(token);
+  const [exchanges,setExchanges]=useState<Exchange[]>([]);
+  const [exchangeCursor,setExchangeCursor]=useState<string|null>(null);
   const [saleReturns, setSaleReturns] = useState<SaleReturn[]>([]);
   const [orderReturns, setOrderReturns] = useState<OrderReturn[]>([]);
   const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>([]);
@@ -86,6 +89,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
     return data as T;
   }
 
+  async function moreExchanges(){if(!exchangeCursor||busyKey)return;setBusyKey('exchanges');try{const page=await api<{items:Exchange[];pageInfo:{nextCursor:string|null}}>(`/returns/exchanges?limit=25&cursor=${encodeURIComponent(exchangeCursor)}`);setExchanges(rows=>[...rows,...page.items]);setExchangeCursor(page.pageInfo.nextCursor);}catch(error){setMessage(error instanceof Error?error.message:'Riwayat pertukaran gagal dimuat.');}finally{setBusyKey('');}}
   async function refresh() {
     setLoading(true); setError('');
     try {
@@ -95,7 +99,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
       // these. In a bare Promise.all that single 403 rejected all thirteen and replaced the whole
       // workspace with ErrorState, for the role that uses it most. readOptional degrades only an
       // authorization failure, and only to an empty slice; the controller still enforces.
-      const [sr, ort, prt, gr, tr, op, wh, pr, ba, se, lo, transit, reorder] = await Promise.all([
+      const [sr, ort, prt, gr, tr, op, wh, pr, ba, se, lo, transit, reorder, exchangePage] = await Promise.all([
         // The returns endpoints are role-gated as well as permission-gated: GET /returns/sales
         // allows CASHIER|WAREHOUSE|FINANCE and GET /returns/orders allows WAREHOUSE|FINANCE, both
         // behind sale.return. MANAGER has neither, so these degrade to empty for them.
@@ -104,23 +108,25 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
         readOptional(identity, '/returns/sales?limit=50', [] as CursorResponse<SaleReturn>, (p) => api<CursorResponse<SaleReturn>>(p)),
         readOptional(identity, '/returns/orders', [] as CursorResponse<OrderReturn>, (p) => api<CursorResponse<OrderReturn>>(p)),
         readOptional(identity, '/returns/purchases?limit=50', [] as CursorResponse<PurchaseReturn>, (p) => api<CursorResponse<PurchaseReturn>>(p)),
-        api<CursorResponse<GoodsReceipt>>('/goods-receipts?limit=100'),
-        api<CursorResponse<Transfer>>('/advanced-inventory/stock-transfers'),
+        readOptional(identity, '/goods-receipts?limit=100', [] as CursorResponse<GoodsReceipt>, (p) => api<CursorResponse<GoodsReceipt>>(p)),
+        readOptional(identity, '/advanced-inventory/stock-transfers', [] as CursorResponse<Transfer>, (p) => api<CursorResponse<Transfer>>(p)),
         // Stock opnames are @Roles(WAREHOUSE|AUDITOR) behind inventory.adjust, so a CASHIER or
         // FINANCE operator legitimately cannot list them even though they pass the commerce gate.
         readOptional(identity, '/advanced-inventory/stock-opnames', [] as CursorResponse<Opname>, (p) => api<CursorResponse<Opname>>(p)),
         readOptional(identity, '/master-data/warehouses', [] as CursorResponse<Warehouse>, (p) => api<CursorResponse<Warehouse>>(p)),
-        api<CursorResponse<Product>>('/products?limit=200'),
-        api<CursorResponse<InventoryBatch>>('/inventory-batches'),
-        api<CursorResponse<InventorySerial>>('/inventory-serials'),
+        readOptional(identity, '/products?limit=200', [] as CursorResponse<Product>, (p) => api<CursorResponse<Product>>(p)),
+        readOptional(identity, '/inventory-batches', [] as CursorResponse<InventoryBatch>, (p) => api<CursorResponse<InventoryBatch>>(p)),
+        readOptional(identity, '/inventory-serials', [] as CursorResponse<InventorySerial>, (p) => api<CursorResponse<InventorySerial>>(p)),
         readOptional(identity, '/master-data/warehouse-locations', [] as CursorResponse<WarehouseLocation>, (p) => api<CursorResponse<WarehouseLocation>>(p)),
-        api<TransitBalance[]>('/advanced-inventory/transit-balances'),
-        api<ReorderVisibility[]>('/advanced-inventory/reorder-visibility'),
+        readOptional(identity, '/advanced-inventory/transit-balances', [] as TransitBalance[], (p) => api<TransitBalance[]>(p)),
+        readOptional(identity, '/advanced-inventory/reorder-visibility', [] as ReorderVisibility[], (p) => api<ReorderVisibility[]>(p)),
+        readOptional(identity,'/returns/exchanges?limit=25',{items:[],pageInfo:{nextCursor:null}} as {items:Exchange[];pageInfo:{nextCursor:string|null}},p=>api<{items:Exchange[];pageInfo:{nextCursor:string|null}}>(p)),
       ]);
       const warehouseRows = rowsOf(wh).filter((row) => row.isActive !== false);
       const productRows = rowsOf(pr);
       const receiptRows = rowsOf(gr).filter((row) => ['CONFIRMED','PARTIALLY_ACCEPTED'].includes(row.operationalStatus));
       const locationRows = rowsOf(lo).filter((row) => row.isActive !== false);
+      setExchanges(exchangePage.items);setExchangeCursor(exchangePage.pageInfo.nextCursor);
       setSaleReturns(rowsOf(sr)); setOrderReturns(rowsOf(ort)); setPurchaseReturns(rowsOf(prt)); setGoodsReceipts(receiptRows); setTransfers(rowsOf(tr)); setOpnames(rowsOf(op)); setWarehouses(warehouseRows); setProducts(productRows); setBatches(rowsOf(ba)); setSerials(rowsOf(se)); setLocations(locationRows); setTransitBalances(transit); setReorderVisibility(reorder);
       setPurchaseReturnForm((value) => {
         const receiptId = value.goodsReceiptId || receiptRows[0]?.id || '';
@@ -149,7 +155,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
   useEffect(() => { void refresh(); }, [token]);
 
   useEffect(() => {
-    if (!locationWarehouseId) { setLocationBalances([]); return; }
+    if (!locationWarehouseId || !canReadPath(identity, '/advanced-inventory/location-balances')) { setLocationBalances([]); return; }
     let cancelled = false;
     void api<CursorResponse<LocationBalance>>(`/advanced-inventory/location-balances?warehouseId=${encodeURIComponent(locationWarehouseId)}`).then((value) => {
       if (!cancelled) setLocationBalances(rowsOf(value));
@@ -158,7 +164,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
   }, [locationWarehouseId, token]);
 
   useEffect(() => {
-    if (!locationWarehouseId || !conditionProductId) { setConditionBalances([]); return; }
+    if (!locationWarehouseId || !conditionProductId || !canReadPath(identity, '/advanced-inventory/condition-balances')) { setConditionBalances([]); return; }
     let cancelled = false;
     const query = `/advanced-inventory/condition-balances?warehouseId=${encodeURIComponent(locationWarehouseId)}&productId=${encodeURIComponent(conditionProductId)}`;
     void api<ConditionBalance[]>(query).then((value) => {
@@ -405,6 +411,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
       </section>}
 
       <section className="grid2">
+        {mode==='returns'&&identity?.roles.some(role=>['SUPER_ADMIN','OWNER','ADMIN','FINANCE'].includes(role))&&canAll('sale.return')&&<Panel eyebrow="PERTUKARAN" title="Riwayat pertukaran barang"><Table head={['Retur / Pengganti','Nilai retur','Nilai pengganti','Selisih kas','Waktu']} rows={exchanges.map(row=>[<>{row.saleReturnId}<br/>{row.replacementSaleId}</>,rupiah(row.refundAmount),rupiah(row.replacementAmount),rupiah(row.difference),tanggal(row.createdAt)])} empty="Belum ada pertukaran barang pada cabang aktif."/>{exchangeCursor&&<button type="button" className="secondary" disabled={Boolean(busyKey)} onClick={()=>void moreExchanges()}>Pertukaran berikutnya</button>}</Panel>}
         {mode === 'returns' && <Panel eyebrow="RETUR" title="Retur Penjualan" badge={loading ? 'memuat' : `${saleReturns.length} retur`}>
           <Table loading={loading} head={['Nomor', 'Refund', 'Nilai', 'Status', 'Tindakan']} rows={saleReturns.map((r) => [
             <strong>{r.number}</strong>, r.refundMethod ?? '-', rupiah(r.refundAmount ?? 0), <StatusChip status={r.status ?? '-'} />,
@@ -506,7 +513,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
         </Panel>}
       </section>
 
-      {mode === 'overview' && <section className="grid2">
+      {mode === 'overview' && canReadPath(identity, '/advanced-inventory/location-balances') && <section className="grid2">
         <Panel eyebrow="LOCATION INVENTORY" title="Saldo Stok per Lokasi" badge={`${locationBalances.length} saldo`}>
           <div className="formStack">
             <label>Gudang<select value={locationWarehouseId} onChange={(e) => { setLocationWarehouseId(e.target.value); setRelocationForm((value) => ({ ...value, sourceLocationId:'', destinationLocationId:'' })); }}>{warehouses.map((w)=><option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></label>
@@ -526,7 +533,7 @@ export default function OperationsView({ token, mode = 'overview' }: { token: st
         </Panel>
       </section>}
 
-      {mode === 'overview' && <section className="grid2">
+      {mode === 'overview' && canReadPath(identity, '/advanced-inventory/condition-balances') && <section className="grid2">
         <Panel eyebrow="CONDITION CONTROL" title="Kondisi Stok per Lokasi" badge="sellable-aware">
           <div className="formStack">
             <label>Produk<select value={conditionProductId} onChange={(e)=>{setConditionProductId(e.target.value);setConditionForm((value)=>({...value,locationId:''}));}}><option value="">Pilih produk</option>{products.map((p)=><option key={p.id} value={p.id}>{p.sku} · {p.name}</option>)}</select></label>

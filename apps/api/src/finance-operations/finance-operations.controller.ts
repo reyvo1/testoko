@@ -47,7 +47,7 @@ import { FinanceOperationsService } from './finance-operations.service';
     return this.service.settlementTrace(user, referenceType, referenceId);
   }
 
-  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR') @Permissions('finance.view') @Get()
+  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR','ADMIN') @Permissions('finance.view') @Get()
   list(
     @CurrentUser() user: AuthUser,
     @Query('companyId') companyId?: string,

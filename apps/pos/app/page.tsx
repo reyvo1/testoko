@@ -16,6 +16,9 @@ import { useSupervisorApproval } from '../lib/supervisor';
 import { openRawBtReceipt } from '../lib/printing';
 import { RetailExchangePanel, ShipLaterPanel, ReceiptDeliveryControls, retailPermission } from './retail-operations';
 import StaffMemoWidget from './staff-memo';
+import PosDigitalServices from './digital-services';
+import { posIdentity, posWorkspaces } from '../lib/pos-access';
+import { canAccessApiPath } from '../../../packages/contracts/src/api-access';
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 type ProductVariant = { id: string; code: string; name: string; sku?: string | null; salePrice?: string | number | null; costPrice?: string | number | null; isDefault: boolean; isActive: boolean };
@@ -216,7 +219,9 @@ export default function PosPage() {
   const [offlineMaxAgeMinutes, setOfflineMaxAgeMinutes] = useState(1440);
   const [offlineClockOffsetMs, setOfflineClockOffsetMs] = useState(0);
   const pendingPaymentRef = useRef<{ fingerprint: string; key: string } | null>(null);
-  const [workspace, setWorkspace] = useState<PosWorkspace>('SALE');
+  const [requestedWorkspace, setWorkspace] = useState<PosWorkspace>('SALE');
+  const allowedWorkspaces = posWorkspaces(token);
+  const workspace = allowedWorkspaces.includes(requestedWorkspace) ? requestedWorkspace : allowedWorkspaces[0] ?? 'PPOB';
   const [lastReceipt, setLastReceipt] = useState<{ number: string; total: number } | null>(null);
 
   /**
@@ -249,6 +254,7 @@ export default function PosPage() {
     setHeldSales(loadHeldSales());
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     if (saved) {
+      if (!posWorkspaces(saved).includes('SALE')) { setToken(saved); return; }
       // Async now: IndexedDB first, legacy localStorage as fallback. Kept inside the effect so the
       // cached catalog can arrive after the first paint instead of blocking it.
       void (async () => {
@@ -360,8 +366,8 @@ export default function PosPage() {
   async function loadReturnWorkspace(activeToken: string) {
     try {
       const [salesPage, returns] = await Promise.all([
-        api<CursorPage<RecentSale>>('/sales?limit=20', undefined, activeToken),
-        api<SaleReturnRow[]>('/returns/sales', undefined, activeToken),
+        canAccessApiPath(posIdentity(activeToken), '/sales') ? api<CursorPage<RecentSale>>('/sales?limit=20', undefined, activeToken) : Promise.resolve({ items: [] as RecentSale[] }),
+        canAccessApiPath(posIdentity(activeToken), '/returns/sales') ? api<SaleReturnRow[]>('/returns/sales', undefined, activeToken) : Promise.resolve([] as SaleReturnRow[]),
       ]);
       setRecentSales(salesPage.items);
       setSaleReturns(returns);
@@ -375,6 +381,12 @@ export default function PosPage() {
 
   async function loadData(activeToken: string) {
     try {
+      if (!posWorkspaces(activeToken).includes('SALE')) {
+        setProducts([]); setWarehouses([]); setCustomers([]); setShift(null); setRecentSales([]); setSaleReturns([]);
+        setManifest(await api<RuntimeManifest>('/platform/manifest', undefined, activeToken));
+        if (posWorkspaces(activeToken).includes('RETURNS')) await loadReturnWorkspace(activeToken);
+        return;
+      }
       const [catalog, warehouseData, runtime, customerData, offlineConfig] = await Promise.all([
         // Walk the cursor. A single limit=100 call left every product past the hundredth
         // unreachable, with no error — pageInfo was in the type and never read.
@@ -1049,6 +1061,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
   return <PosShell
     workspace={workspace}
     onWorkspaceChange={setWorkspace}
+    allowedWorkspaces={allowedWorkspaces}
     apiOnline={apiOnline}
     queueCount={ownedOfflineQueue.length}
     conflictCount={pendingSaleReturns.length}
@@ -1056,12 +1069,12 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     branchName={manifest?.branch?.name ?? manifest?.branch?.code ?? 'Cabang aktif'}
     warehouseControl={<><label>Gudang/toko<select value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setCart([]); }}>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>{ownedOfflineQueue.length > 0 && <button className="syncButton" disabled={!apiOnline || syncBusy} onClick={() => void syncOfflineQueue(token, hasOfflineConflict)}><RefreshCw size={14} className={syncBusy ? 'spin' : ''} /> {syncBusy ? 'SYNC...' : 'SYNC'}</button>}<button className="logout" onClick={() => void logout()}>Keluar</button></>}
   >
-    <StaffMemoWidget token={token} />
+    {allowedWorkspaces.includes('SALE') && <StaffMemoWidget token={token} />}
     {message && <div className={`notice ${(message.includes('berhasil') || message.includes('tersimpan')) ? 'toastLike success' : 'toastLike error'}`}>{(message.includes('berhasil') || message.includes('tersimpan')) ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {message}</div>}
     {/* Receipt history. Without this, a customer who lost the slip minutes after paying has no way
         to get it again: the only receipt control was for the sale just completed, and it disappears
         on the next transaction. */}
-    {recentSales.length > 0 && <section className="receiptHistory" aria-label="Riwayat struk">
+    {workspace !== 'PPOB' && recentSales.length > 0 && <section className="receiptHistory" aria-label="Riwayat struk">
       <h3>Struk transaksi</h3>
       <p className="panelNote">Cetak ulang struk yang hilang. Struk dibuka di tab baru agar keranjang tidak hilang.</p>
       <ul>
@@ -1077,6 +1090,7 @@ return () => { active = false; window.clearInterval(interval); window.removeEven
     </section>}
     {lastReceipt && <section className="receiptReady" aria-label="Struk transaksi terakhir"><div><strong>Struk {lastReceipt.number} siap</strong><small>{money(lastReceipt.total)} · dapat dibuka, dicetak, atau dibagikan dari halaman struk digital.</small></div><div className="rowActions"><button type="button" className="secondary" onClick={() => void reprintReceipt(lastReceipt.number)} disabled={receiptBusy === lastReceipt.number}>BUKA STRUK DIGITAL</button><button type="button" className="secondary" onClick={() => rawBtReceipt(lastReceipt.number)}>RAWBT 58MM</button><button type="button" className="clear" onClick={() => setLastReceipt(null)}>TUTUP</button></div></section>}
 
+    {workspace === 'PPOB' && <PosDigitalServices api={api} token={token} online={apiOnline} />}
     {workspace === 'SALE' && <>
     {ownedHeldSales.length > 0 && <section className="heldPanel"><strong>Transaksi Hold ({ownedHeldSales.length})</strong><div className="heldList">{ownedHeldSales.map((held) => <div key={held.id} className="heldItem"><div><b>{held.label}</b><small>{new Date(held.createdAt).toLocaleString('id-ID')} · {held.items.reduce((sum, item) => sum + item.quantity, 0)} item</small></div><button onClick={() => recallHeld(held.id)}>PANGGIL</button><button className="clear" onClick={() => deleteHeld(held.id)}>HAPUS</button></div>)}</div></section>}
 

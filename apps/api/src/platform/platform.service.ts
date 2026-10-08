@@ -145,6 +145,19 @@ export class PlatformService {
     }
   }
 
+  async featureEnabled(user: AuthUser, key: string, db: DbClient = this.prisma): Promise<boolean> {
+    const scope = this.requireTenantScope(user);
+    const flags = await db.featureFlag.findMany({ where: { key, OR: [
+      { companyId: null, branchId: null, userId: null },
+      { companyId: scope.companyId, branchId: null, userId: null },
+      { companyId: scope.companyId, branchId: scope.branchId, userId: null },
+      { companyId: scope.companyId, branchId: scope.branchId, userId: user.sub },
+    ] }, orderBy: { updatedAt: 'asc' } });
+    flags.sort((left, right) => this.configRank(left) - this.configRank(right));
+    const flag = flags.at(-1);
+    return flag ? this.rolloutEnabled(flag, scope.companyId, scope.branchId, user.sub) : false;
+  }
+
   private async resolveManifestTenant(
     user: AuthUser | undefined,
     branchCode?: string,

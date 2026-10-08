@@ -4,6 +4,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/auth.types';
 import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+import { beginIdempotent, completeIdempotent } from '../common/idempotency';
+import { serializableTx } from '../common/serializable-tx';
 
 type MobileDraftLine = { key: string; barcode: string | null; sku: string | null; quantity: number; unit: string | null; note: string | null };
 
@@ -217,7 +219,9 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     if (!dto.deviceId?.trim()) throw new BadRequestException('deviceId wajib diisi; draft terikat perangkat.');
     await this.assertDraftScope(companyId, dto.warehouseId, dto.locationId, dto.opnameId);
-    const existing = await this.prisma.mobileOpnameDraft.findFirst({
+    await this.assertDraftAccess(user,{warehouseId:dto.warehouseId,employeeId:user.sub});
+    return serializableTx(this.prisma,async(tx)=>{
+    const existing = await tx.mobileOpnameDraft.findFirst({
       where: { companyId, deviceId: dto.deviceId.trim(), warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, status: 'OPEN' },
     });
     if (existing) {
@@ -229,43 +233,51 @@ export class MobileOpsService {
       }
       let draft = existing;
       if (!existing.opnameId && dto.opnameId) {
-        const attached = await this.prisma.mobileOpnameDraft.update({
+        const attached = await tx.mobileOpnameDraft.update({
           where: { id: existing.id }, data: { opnameId: dto.opnameId },
         });
         draft = attached;
       }
       return { id: draft.id, resumed: true, status: draft.status, opnameId: draft.opnameId, lineCount: this.lineCount(draft.lines), lastScannedAt: draft.lastScannedAt };
     }
-    const created = await this.prisma.mobileOpnameDraft.create({
+    const created = await tx.mobileOpnameDraft.create({
       data: { companyId, employeeId: user.sub, deviceId: dto.deviceId.trim(), warehouseId: dto.warehouseId, locationId: dto.locationId ?? null, opnameId: dto.opnameId ?? null, lines: [], deviceLocalAt: new Date() },
     });
     return { id: created.id, resumed: false, status: created.status, opnameId: created.opnameId, lineCount: 0, lastScannedAt: null };
+    });
   }
 
   // Append a scan. Repeating the same barcode increments the existing line rather than appending a
   // duplicate: a hundred counts of the same unit is a hundred units, not a hundred lines.
-  async addScan(user: AuthUser, draftId: string, dto: { barcode?: string; sku?: string; quantity: number; unit?: string; note?: string }) {
+  async addScan(user: AuthUser, draftId: string, dto: { operationKey:string; barcode?: string; sku?: string; quantity: number; unit?: string; note?: string }) {
     const companyId = this.tenant(user);
-    if (!Number.isFinite(dto.quantity) || dto.quantity <= 0) {
-      throw new BadRequestException('Kuantitas hasil hitung harus bilangan positif.');
-    }
-    if (!dto.barcode?.trim() && !dto.sku?.trim()) {
-      throw new BadRequestException('Scan harus membawa barcode atau SKU.');
-    }
-    const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
-    if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
-    if (draft.status !== 'OPEN') throw new BadRequestException(`Draft berstatus ${draft.status}; tidak dapat ditambah.`);
-
-    const lines = this.linesOf(draft.lines);
-    const key = (dto.barcode ?? dto.sku ?? '').trim();
-    const existing = lines.find((l) => l.key === key);
-    if (existing) existing.quantity += dto.quantity;
-    else lines.push({ key, barcode: dto.barcode?.trim() ?? null, sku: dto.sku?.trim() ?? null, quantity: dto.quantity, unit: dto.unit ?? null, note: dto.note ?? null });
-
-    const saved = await this.prisma.mobileOpnameDraft.update({
-      where: { id: draft.id }, data: { lines: lines as object, lastScannedAt: new Date() },
+    if (!dto.operationKey?.trim() || dto.operationKey.length>160) throw new BadRequestException('Operation key scan wajib diisi, maksimal 160 karakter.');
+    if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Kuantitas hasil hitung harus bilangan bulat positif.');
+    if (!dto.barcode?.trim() && !dto.sku?.trim()) throw new BadRequestException('Scan harus membawa barcode atau SKU.');
+    return serializableTx(this.prisma,async(tx)=>{
+      const draft = await tx.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
+      if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
+      await this.assertDraftAccess(user,draft,tx);
+      if(draft.employeeId!==user.sub)throw new ForbiddenException('Scan hanya dapat ditambahkan oleh operator pemilik draft.');
+      const scope=`mobile-opname:scan:${user.branchId}:${draft.id}:${user.sub}`;
+      const gate=await beginIdempotent<{id:string;status:string;lineCount:number;totalUnits:number}>(tx,{companyId,scope,key:dto.operationKey,payload:dto});
+      if(gate.replay)return gate.response!;
+      if (draft.status !== 'OPEN') throw new BadRequestException(`Draft berstatus ${draft.status}; tidak dapat ditambah.`);
+      const lines = this.linesOf(draft.lines);const key=(dto.barcode?.trim()||dto.sku?.trim())!;
+      const existing=lines.find(line=>line.key===key);
+      if(existing){if(existing.unit!==(dto.unit??null))throw new BadRequestException('Satuan scan berbeda; periksa barcode atau gunakan draft lain.');existing.quantity+=dto.quantity;}
+      else lines.push({key,barcode:dto.barcode?.trim()??null,sku:dto.sku?.trim()??null,quantity:dto.quantity,unit:dto.unit??null,note:dto.note??null});
+      const saved=await tx.mobileOpnameDraft.update({where:{id:draft.id},data:{lines:lines as object,lastScannedAt:new Date()}});
+      const response={id:saved.id,status:saved.status,lineCount:lines.length,totalUnits:lines.reduce((sum,line)=>sum+line.quantity,0)};
+      await completeIdempotent(tx,{companyId,scope,key:dto.operationKey,resourceType:'MobileOpnameDraft',resourceId:draft.id,response});
+      return response;
     });
-    return { id: saved.id, status: saved.status, lineCount: lines.length, totalUnits: lines.reduce((sum, l) => sum + l.quantity, 0) };
+  }
+
+  private async assertDraftAccess(user:AuthUser,draft:{warehouseId:string;employeeId:string},db:Pick<PrismaService,'warehouse'>=this.prisma){
+    if(!user.branchId)throw new ForbiddenException('Draft membutuhkan konteks cabang aktif.');
+    const warehouse=await db.warehouse.findFirst({where:{id:draft.warehouseId,branch:{companyId:this.tenant(user)},...(user.branchId?{branchId:user.branchId}:{})},select:{id:true}});
+    if(!warehouse)throw new NotFoundException('Draft bukan milik cabang aktif pada tenant ini.');
   }
 
   // Every draft on this tenant, newest first. This is the supervision surface: without it the only way
@@ -283,10 +295,12 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<{ updatedAt: string; id: string }>(cursorValue);
+    if(!user.branchId)throw new ForbiddenException('Draft membutuhkan konteks cabang aktif.');
+    const allowedWarehouses=await this.prisma.warehouse.findMany({where:{branch:{companyId},...(user.branchId?{branchId:user.branchId}:{}),...(warehouseId?{id:warehouseId}:{})},select:{id:true}});
+    const warehouseScope={warehouseId:{in:allowedWarehouses.map(row=>row.id)}};
     const baseWhere = {
-      companyId,
+      companyId,...warehouseScope,
       ...(status ? { status } : {}),
-      ...(warehouseId ? { warehouseId } : {}),
     };
     const drafts = await this.prisma.mobileOpnameDraft.findMany({
       where: {
@@ -327,13 +341,13 @@ export class MobileOpsService {
     }));
     const countsByStatus = await this.prisma.mobileOpnameDraft.groupBy({
       by: ['status'],
-      where: { companyId, ...(warehouseId ? { warehouseId } : {}) },
+      where: { companyId, ...warehouseScope },
       _count: { _all: true },
     });
     const total = countsByStatus.reduce((sum, row) => sum + row._count._all, 0);
     const count = (value: string) => countsByStatus.find((row) => row.status === value)?._count._all ?? 0;
     const awaitingFiling = await this.prisma.mobileOpnameDraft.count({
-      where: { companyId, status: 'OPEN', opnameId: null, ...(warehouseId ? { warehouseId } : {}) },
+      where: { companyId, status: 'OPEN', opnameId: null, ...warehouseScope },
     });
     return {
       rows,
@@ -347,6 +361,7 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
     if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
+    await this.assertDraftAccess(user,draft);
     return { ...draft, lineCount: this.lineCount(draft.lines) };
   }
 
@@ -364,6 +379,7 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
     if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
+    await this.assertDraftAccess(user,draft);
     const lines = this.linesOf(draft.lines);
     const resolved = await this.resolveDraftLines(companyId, lines);
     const snapshot = draft.opnameId
@@ -420,6 +436,8 @@ export class MobileOpsService {
     const companyId = this.tenant(user);
     const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
     if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
+    await this.assertDraftAccess(user,draft);
+    if(draft.status==='SUBMITTED'&&draft.opnameId===opnameId)return {id:draft.id,status:draft.status,opnameId:draft.opnameId,replay:true};
     if (draft.status !== 'OPEN') throw new BadRequestException(`Draft berstatus ${draft.status}.`);
     const lines = this.linesOf(draft.lines);
     if (lines.length === 0) throw new BadRequestException('Draft kosong tidak dapat dikirim.');
@@ -465,7 +483,11 @@ export class MobileOpsService {
       throw new BadRequestException(`${messages.join('; ')}. Draft tetap OPEN agar supervisor tidak menerima alokasi stok hasil tebakan.`);
     }
 
-    const saved = await this.prisma.$transaction(async (tx) => {
+    const saved = await serializableTx(this.prisma,async (tx) => {
+      const claim=await tx.mobileOpnameDraft.updateMany({where:{id:draft.id,status:'OPEN',updatedAt:draft.updatedAt},data:{status:'SUBMITTED',opnameId}});
+      if(claim.count!==1)throw new BadRequestException('Draft berubah atau sudah dikirim. Muat ulang sebelum mengirim.');
+      const current=await tx.stockOpname.findFirst({where:{id:opnameId,status:{in:['DRAFT','COUNTING']}}});
+      if(!current)throw new BadRequestException('StockOpname sudah berubah; hitungan tidak dapat diisi.');
       for (const update of updates) {
         await tx.stockOpnameItem.update({
           where: { id: update.id },
@@ -489,10 +511,15 @@ export class MobileOpsService {
     if (!reason?.trim()) throw new BadRequestException('Membuang draft wajib disertai alasan.');
     const draft = await this.prisma.mobileOpnameDraft.findFirst({ where: { id: draftId, companyId } });
     if (!draft) throw new NotFoundException('Draft tidak ditemukan pada tenant ini.');
+    await this.assertDraftAccess(user,draft);
+    if(draft.status==='DISCARDED'){const audit=await this.prisma.auditLog.findFirst({where:{companyId,entityId:draft.id,action:'MOBILE_OPNAME_DRAFT_DISCARDED'},orderBy:{createdAt:'desc'}});const payload=audit?.payload as {reason?:string}|null;if(payload?.reason!==reason.trim())throw new BadRequestException('Draft sudah dibuang dengan alasan berbeda.');return {id:draft.id,status:draft.status,replay:true};}
     if (draft.status !== 'OPEN') throw new BadRequestException(`Draft berstatus ${draft.status}.`);
-    const saved = await this.prisma.mobileOpnameDraft.update({ where: { id: draft.id }, data: { status: 'DISCARDED' } });
-    await this.prisma.auditLog.create({
+    const saved=await serializableTx(this.prisma,async(tx)=>{
+    const claim=await tx.mobileOpnameDraft.updateMany({where:{id:draft.id,status:'OPEN',updatedAt:draft.updatedAt},data:{status:'DISCARDED'}});
+    if(claim.count!==1)throw new BadRequestException('Draft berubah atau sudah diproses; muat ulang.');
+    await tx.auditLog.create({
       data: { companyId, userId: user.sub, action: 'MOBILE_OPNAME_DRAFT_DISCARDED', entityType: 'MobileOpnameDraft', entityId: draft.id, payload: { reason: reason.trim(), lineCount: this.lineCount(draft.lines) } },
+    });return tx.mobileOpnameDraft.findUniqueOrThrow({where:{id:draft.id}});
     });
     return { id: saved.id, status: saved.status };
   }

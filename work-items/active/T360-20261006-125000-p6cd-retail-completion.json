@@ -4,10 +4,10 @@
   "type": "feature",
   "module": "payments",
   "wave": "W2",
-  "phase": "STAGING",
+  "phase": "VERIFICATION",
   "risk": "HIGH",
   "owner": "openai",
-  "featureFlag": "retail_exchange/customer_deposit/customer_campaign/pos_ship_later/tax_export default off",
+  "featureFlag": "retail_exchange/customer_deposit/customer_campaign/pos_ship_later/tax_export/digital_services_ppob default off",
   "dependencies": [
     "T360-20261006-090000",
     "accounting-core",
@@ -44,7 +44,11 @@
     "POS ship-later/from-store has staff tenant scope and canonical payment/inspection/stock fulfillment without duplicate sale.",
     "Tax export contracts have pinned official versions, validated mappings and asynchronous auditable jobs; unsupported provider readiness remains explicit.",
     "Admin/POS/Storefront/Employee menu/button/API parity, responsive layout and operator paths audited; actionable regressions fixed without bypassing auth.",
-    "Full local candidate and exact-source PostgreSQL/Browser workflows pass; Human Stage-20 remains separate."
+    "Full local candidate and exact-source PostgreSQL/Browser workflows pass; Human Stage-20 remains separate.",
+    "Review every controller operation against UI references and every seeded role authority; classify system/provider endpoints separately with evidence rather than blindly exposing callbacks.",
+    "Cashier PPOB has a discoverable responsive menu, canonical catalog/history/price-confirmed idempotent submission/recheck and honest provider/accounting readiness.",
+    "Missing peer/continuity/departure/exchange-history/mobile-count operator paths are wired to canonical services; scan concurrency/replay/branch/owner protection passes and all twelve real authenticated role menus load correctly.",
+    "Non-supervisory EMPLOYEE and combined cashier/employee roles cannot enumerate peer HR/attendance data or branch payroll; Portal personal routes remain functional and unrelated commerce menus are retained."
   ],
   "testPlan": [
     "Behavioral isolated SQLite rollback/replay/concurrency/tenant/permission/accounting/tax/consent/signature tests.",
@@ -54,7 +58,8 @@
     "Inventory stock and append-only movement/reservation invariant before/after inspected fulfillment and returns.",
     "Accounting balanced journal debit/credit and canonical posting/locked period rollback tests.",
     "Sync idempotency replay retry conflict and concurrent operation receipt tests; new retail flows fail closed offline.",
-    "Actual local-month boundary in Asia/Makassar and UTC, immutable historical period mismatch denial and invalid-timezone transaction rollback; original offline business time remains canonical."
+    "Actual local-month boundary in Asia/Makassar and UTC, immutable historical period mismatch denial and invalid-timezone transaction rollback; original offline business time remains canonical.",
+    "All-role/controller/UI reference inventory plus permission/bootstrap/payload regression, actual Browser PPOB navigation/readiness and semantic tenant/replay/price/feature tests."
   ],
   "migrationPlan": "Add only orchestration/consent/campaign and optional order tender/shift lineage; no balance ledger or historical consent backfill. See docs/P6C-DESIGN.md and docs/P6D-ADAPTER-DESIGN.md; production backup/restore prerequisite.",
   "rollbackPlan": "Disable new ingress/campaign/adapter flags; retain immutable history and liability closeout; canonical return/reversal and reconciliation for in-flight provider effects.",
@@ -69,7 +74,7 @@
     "docs/P6CD-VERIFICATION.md"
   ],
   "createdAt": "2026-10-06T04:50:46.405098+00:00",
-  "updatedAt": "2026-10-07T04:25:22.922504+00:00",
+  "updatedAt": "2026-10-08T07:07:34.594002+00:00",
   "notes": [
     "Explicit 2026-10-06 user instruction combines P6C/P6D and full menu/UI/frontend-backend audit before one push; supersedes earlier per-wave publication rule. P6B final four workflows all PASS on 12537b9. Selected production providers/sandbox availability still pending user information; continue all verifiable code work.",
     "Local implementation is complete for the supported cash exchange, liability deposit, consent communications, staff fulfillment and reviewed XML export paths; verification and cosmetic browser audit continue. Provider certification, Human Stage-20 and release remain pending.",
@@ -83,7 +88,18 @@
     "Calendar/security root fix final local proof PASS: 1734/1734 regression, lint/migration/DB smoke/six builds/API boot, Browser 57/57 and actual PostgreSQL worker/domain 7/7, production dependency audit zero high/critical. All five evidence files match a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e6ad847de0a03b8; build artifact 82118cb7e3ebaefabae99506d0940d118cf5eada12fe65ac978e5dff34d8bdf4 unchanged. Publish root fix to same draft PR under current corrective publication authorization and require actual four final conclusions, never continue-on-error step conclusions. Owned TEST services stopped.",
     "Root fix ea74d64 published to draft PR #2; latest Governance 37502655494 PASS. CI 37502553458/System 37502641246/UAT 37502646182 running on this exact commit. No more code changes pending. Final acceptance metadata remains local; no merge/release/human/provider claim.",
     "ea74d64 artifact proves Browser 57/57, P6CD PostgreSQL/worker, production dependency audit, P5/R7/R8 and other domains PASS. Only P3 capability truth blocks aggregate: five new retail flag configs lack maturity fields. P3 gate is unchanged. Local shared retail capability catalog now supplies server-owned LIMITED/ADAPTER_REQUIRED maturity/default-OFF truth to bootstrap and manifest without requiring seed or DB writes on existing tenants; scoped account/provider config, rollout and stored enabled values preserved. Focused 7/7 PASS; full verification pending.",
-    "Shared server-owned maturity catalog fixes the actual P3 blocker without changing gates. All six current evidence files PASS on source `97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548`: 1736/1736 regression, lint/migration/DB smoke/six builds/API boot, Browser 57/57, actual PostgreSQL P3 13/13 and P6CD domain/worker 7/7, production dependency audit zero high/critical. Build artifact `62e1a29ed7a778774e6f09ed3d32765c107f3e951abecefc6c05b67e74913eb5`. Scoped flags/account/provider config and rollout remain preserved; five new flags default OFF. Publish this correction to existing draft PR #2 under operator authorization and require four actual final GitHub outcomes. Human Stage-20/provider certification/product readiness remain pending."
+    "Shared server-owned maturity catalog fixes the actual P3 blocker without changing gates. All six current evidence files PASS on source `97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548`: 1736/1736 regression, lint/migration/DB smoke/six builds/API boot, Browser 57/57, actual PostgreSQL P3 13/13 and P6CD domain/worker 7/7, production dependency audit zero high/critical. Build artifact `62e1a29ed7a778774e6f09ed3d32765c107f3e951abecefc6c05b67e74913eb5`. Scoped flags/account/provider config and rollout remain preserved; five new flags default OFF. Publish this correction to existing draft PR #2 under operator authorization and require four actual final GitHub outcomes. Human Stage-20/provider certification/product readiness remain pending.",
+    "Operator explicitly extends active scope on 2026-10-07: comprehensive all-role frontend/backend/menu parity and cashier PPOB. Audit existing implementations first; cashier PPOB missing despite existing DigitalServices API/worker/Admin. Add supported provider workflow with feature/role/tenant authority and durable replay safety. Cash posting is not implemented in the legacy PPOB module and must remain explicit until canonical accounting integration is verified. No live vendor execution or certification inferred.",
+    "fdd37f8 four GitHub gates PASS; downloaded System and UAT actual evidence matches source 97c23ea, browser 58/58, P3 13/13 and P6CD 7/7. Accepted checkpoint is distinct from subsequent uncommitted PPOB/all-role changes. Preliminary exhaustive inventory: 553 operations and 12 seeded roles, unreferenced candidates under semantic review; no all-product closure claim. Focused real SQLite PPOB tests PASS 9/9; API/POS TypeScript PASS. Full extended verification pending.",
+    "Extended all-role candidate adds missing Branch Sync/Finance/Warehouse surfaces and canonical scan retry/branch fixes; focused behavioral tests PASS. Actual 12-role browser matrix and full new-source gates pending. PPOB cash/shift/accounting posting is a material open gap; no product-ready claim.",
+    "Personnel peer-data/attendance-target/payroll privacy gap discovered and corrected during all-role audit. Five real Prisma privacy tests, 19 navigation/bootstrap tests and 38 existing HR tests PASS. Full candidate rerun after synthetic Next environment correction; actual extended browser/Pg/GitHub still pending.",
+    "Final source includes personal attendance replay/warehouse authority and explicit branch policy precedence, Barcode/SKU scan UI and Portal saya for combined personnel/commerce roles. Mandatory PostgreSQL gate PASS 21/21 on current fingerprint; full local/built-browser rerun is authoritative and pending. No cleanup failure or previous candidate acceptance is reused.",
+    "2026-10-08 complete browser on 375144c7 rejected 13 contexts across 12 roles/406 contexts; wrapper completed cleanup. Local 1761/1761 and PostgreSQL21/21 remain diagnostic for that source only. Current frontend correction chooses authorized staff Order and warehouse directory endpoints, gates denied inventory dependent panels, and reuses scoped Fleet assignments for Warehouse driver choice without broadening HR access. Proposed Admin read-own Finance/account metadata and Warehouse operational asset selector were rejected by automatic approval review, are unapplied, and await explicit operator response. No current-source full acceptance or publication.",
+    "a474b15c actual complete matrix: all12 roles and402/402 route contexts pass; aggregate FAIL only newly added Warehouse driver selector returning DOM through Runtime.evaluate returnByValue. Wrapper cleanup PASS. Selector now returns explicit Boolean and also rejects failed dependency reads. Targeted js-yaml override5.4.1 remedies GHSA-r3ph-w7gj-g6xm; npm audit/install verification and all current-source gates pending. Role access proposal remains unapplied awaiting explicit operator approval.",
+    "Operator explicitly approved the reviewed limited role-read proposal. Backend, minimal catalog UI, own Finance list/pagination and actual browser fixtures applied. Initial actual SQLite/controller checks PASS11/11; final-source gates pending. Prior 08f browser intentionally interrupted and wrapper cleanup PASS; no old acceptance reused.",
+    "Full1770 regression correctly failed two obsolete static shapes after approved role changes. Tests now delimit the actual confirmation/list functions, retain tenant/type/confirmation assertions and add actual permission/creator requirements. Focused correction PASS. New-source complete gates required.",
+    "Session runtime disappeared before final local gate receipt on unchanged616d source. No PASS claimed. Synthetic TEST launcher restored under ignored runtime/p6cd-final-test and full local gate rerun; existing exact-source PostgreSQL27 PASS retained.",
+    "2026-10-09 operator explicitly instructed push now and let GitHub work because local computer froze twice; operator will send error logs. Stop heavy local TEST, publish one combined extension commit to existing draft PR2, dispatch mandatory System/UAT with live Telegram=false, retain pending evidence until actual GitHub acceptance. This supersedes prior pre-push local-completion sequencing; no gate weakened or result fabricated."
   ],
   "releaseEvidence": {
     "sourceFingerprint": "97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548",
@@ -92,15 +108,15 @@
     "builtBrowser": "57/57 PASS",
     "postgresqlDomain": "7/7 PASS",
     "sixBuildArtifact": "62e1a29ed7a778774e6f09ed3d32765c107f3e951abecefc6c05b67e74913eb5",
-    "githubExactSource": "RETAIL_CATALOG_LOCAL_PASS_GITHUB_PUBLICATION_PENDING",
+    "githubExactSource": "ACCEPTED_P6CD_CHECKPOINT_ONLY_EXTENDED_ALL_ROLE_VERIFICATION_PENDING",
     "productionProviderCertification": "PENDING",
     "humanStage20": "PENDING",
-    "runtimeCommit": "ea74d64c468bbb514b6e9c7a00defc0bf8cb43d5",
+    "runtimeCommit": "fdd37f861a8888810b45f304baaa4b34e1749e6c",
     "pullRequest": "https://github.com/reyvo1/testoko/pull/2",
-    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37502655494",
-    "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37502553458",
-    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37502641246",
-    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37502646182",
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37572061529",
+    "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37571433495",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37571457972",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37571464495",
     "repairCandidateFingerprint": "97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548",
     "repairLocalGate": "PASS",
     "correctiveLocalCommit": "ea74d64c468bbb514b6e9c7a00defc0bf8cb43d5",
@@ -108,10 +124,78 @@
     "githubGateStatus": {
       "workflowGovernance": "PASS",
       "auxiliaryCi": "PASS",
-      "fullSystemSimulation": "FAIL",
-      "fullAutomatedUat": "FAIL"
+      "fullSystemSimulation": "PASS",
+      "fullAutomatedUat": "PASS"
     },
     "productionDependencyAudit": "PASS_ZERO_HIGH_CRITICAL",
     "p3Postgresql": "13/13 PASS"
+  },
+  "acceptedCheckpoint": {
+    "runtimeCommit": "fdd37f861a8888810b45f304baaa4b34e1749e6c",
+    "sourceFingerprint": "97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548",
+    "githubGateStatus": {
+      "workflowGovernance": "PASS",
+      "auxiliaryCi": "PASS",
+      "fullSystemSimulation": "PASS",
+      "fullAutomatedUat": "PASS"
+    },
+    "workflowGovernance": "https://github.com/reyvo1/testoko/actions/runs/37572061529",
+    "auxiliaryCi": "https://github.com/reyvo1/testoko/actions/runs/37571433495",
+    "fullSystemSimulation": "https://github.com/reyvo1/testoko/actions/runs/37571457972",
+    "fullAutomatedUat": "https://github.com/reyvo1/testoko/actions/runs/37571464495",
+    "browser": "58/58 GitHub PASS",
+    "p3Postgresql": "13/13 PASS",
+    "p6cdPostgresql": "7/7 PASS",
+    "humanStage20": "PENDING",
+    "providerCertification": "PENDING"
+  },
+  "extensionEvidence": {
+    "status": "OPERATOR_AUTHORIZED_IMMEDIATE_COMBINED_PUSH_REMOTE_VERIFICATION_PENDING",
+    "sourceFingerprint": "616d32ea765377f329917fe986a1eaa900bbab65983dcb958b7fd31508169c15",
+    "localCandidate": "INTERRUPTED_NOT_ACCEPTED_REMOTE_VERIFICATION_REQUESTED",
+    "regression": "PENDING_GITHUB_CURRENT_SOURCE",
+    "sixBuilds": "PENDING_GITHUB_CURRENT_SOURCE",
+    "builtBrowser": "PENDING_GITHUB_CURRENT_SOURCE",
+    "postgresParity": "27/27 PASS_CURRENT_SOURCE",
+    "githubExactSource": "PENDING_NEW_COMMIT",
+    "ppobCashPosting": "NOT_IMPLEMENTED",
+    "providerCertification": "PENDING",
+    "humanStage20": "PENDING",
+    "uiControls": 565,
+    "controllerOperations": 554,
+    "seededRoleCount": 12,
+    "allRoleBrowser": "PENDING_GITHUB_CURRENT_SOURCE",
+    "postgresqlParity": "27/27 PASS_CURRENT_SOURCE",
+    "github": "PENDING_NEW_COMMIT",
+    "focusedMenuContract": "PASS_21_TESTS_13296_GUARD_COMPARISONS",
+    "build": "PENDING_GITHUB_CURRENT_SOURCE",
+    "buildArtifactId": null,
+    "productionAudit": "PASS_ZERO_VULNERABILITIES",
+    "previousDiagnostic": {
+      "sourceFingerprint": "a474b15c9e38587a3c880181eec43b2b4a4c04e5c65686b60c62f594523c6d4f",
+      "local": "1763/1763 PASS",
+      "postgresql": "21/21 PASS",
+      "browser": "FAIL_NEW_DRIVER_SELECTOR_DOM_SERIALIZATION_402_OF_402_ROUTE_CONTEXTS_PASS",
+      "wrapperCleanup": "PASS",
+      "receipts": "handoff/quality/diagnostics/a474b15c/"
+    },
+    "controllerAccessComparison": "PASS_13296_ACTUAL_NEST_GUARD_COMPARISONS",
+    "roleAccessProposal": "EXPLICIT_OPERATOR_APPROVAL_GRANTED_APPLIED",
+    "roleAccessProposalDocument": "docs/P6CD-ROLE-ACCESS-PROPOSAL.md",
+    "previousSource": {
+      "sourceFingerprint": "08f0fa6ecb6e142ca893590f768e866c0595212f8206f36ed5a5ef4527f56da4",
+      "local": "1763/1763 PASS",
+      "postgresql": "21/21 PASS",
+      "browser": "INTERRUPTED_FOR_EXPLICITLY_APPROVED_ROLE_ACCESS_EXTENSION",
+      "wrapperCleanup": "PASS",
+      "receipts": "handoff/quality/diagnostics/08f0fa6e/"
+    },
+    "previousDiagnosticApprovedSource": {
+      "sourceFingerprint": "0a617929a74a473b29c4de45d0022994790d211591c537e7759d952f93324e2a",
+      "local": "FAIL_1768_OF_1770",
+      "postgres": "27/27 PASS",
+      "reason": "fixed-window Finance confirmation matcher truncated the added guard; adjacent-filter matcher assumed no own-creator predicate",
+      "receiptDirectory": "handoff/quality/diagnostics/0a617929"
+    }
   }
 }

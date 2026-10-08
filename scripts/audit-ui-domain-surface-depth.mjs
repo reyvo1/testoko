@@ -152,7 +152,7 @@ if (!/api\('\/platform\/manifest'\)/.test(employeeApp) || !/companyName=\{manife
 if (/NAV\.slice\(0,\s*4\)/.test(employeeShell)) errors.push('employee-portal: mobile navigation hides valid subdomains');
 if (!/NAV\.map\(/.test(employeeShell)) errors.push('employee-portal: complete mobile navigation missing');
 
-if (visualMap.pos.views.length !== 4 || visualMap.storefront.views.length !== 5 || visualMap.employeePortal.views.length !== 7) errors.push('P5 surface matrix changed unexpectedly');
+if (JSON.stringify(visualMap.pos.views)!==JSON.stringify(['sale','shift','returns','sync','ppob']) || visualMap.storefront.views.length !== 5 || visualMap.employeePortal.views.length !== 7) errors.push('P5 surface matrix changed unexpectedly');
 
 const hiddenControllers = f1.controllerExposure.filter((item) => item.exposure !== 'EXPOSED_OR_PARTIAL');
 const hiddenNames = hiddenControllers.map((item) => item.controller);

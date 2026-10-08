@@ -1,0 +1,56 @@
+diff --git a/apps/api/src/accounting-core/accounting-core.controller.ts b/apps/api/src/accounting-core/accounting-core.controller.ts
+index fd2507f..e552faf 100644
+--- a/apps/api/src/accounting-core/accounting-core.controller.ts
++++ b/apps/api/src/accounting-core/accounting-core.controller.ts
+@@ -14 +14 @@ import { CreateAccountDto, CreateAccountingCloseControlDto, CreatePostingRuleDto
+-  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR') @Permissions('finance.view') @Get('accounts')
++  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR','ADMIN') @Permissions('finance.view') @Get('accounts')
+diff --git a/apps/api/src/assets/assets.controller.ts b/apps/api/src/assets/assets.controller.ts
+index 9d53ad5..9d1712c 100644
+--- a/apps/api/src/assets/assets.controller.ts
++++ b/apps/api/src/assets/assets.controller.ts
+@@ -21,0 +22,3 @@ import { AssignAssetDto, CompleteMaintenanceDto, CreateAssetCategoryDto, CreateA
++  @Roles('SUPER_ADMIN','OWNER','ADMIN','WAREHOUSE') @Permissions('asset.maintenance') @Get('maintenance-catalog')
++  maintenanceCatalog(@CurrentUser() user: AuthUser, @Query('limit') limit?: string, @Query('cursor') cursor?: string, @Query('search') search?: string) { return this.assets.maintenanceCatalog(user, limit, cursor, search); }
++
+diff --git a/apps/api/src/assets/assets.service.ts b/apps/api/src/assets/assets.service.ts
+index 23bbbf4..b5872e7 100644
+--- a/apps/api/src/assets/assets.service.ts
++++ b/apps/api/src/assets/assets.service.ts
+@@ -7,0 +8,2 @@ import { consumeAvailableLocationStock } from '../common/location-inventory';
++import { retailAuthority } from '../common/retail-feature';
++import { decodeCursor, parsePageLimit, toCursorPage } from '../common/pagination';
+@@ -27,0 +30,18 @@ export class AssetsService {
++  async maintenanceCatalog(user: AuthUser, limitValue?: string, cursorValue?: string, search?: string) {
++    retailAuthority(user, ['SUPER_ADMIN','OWNER','ADMIN','WAREHOUSE'], ['asset.maintenance']);
++    const scope = this.requireTenantScope(user);
++    const limit = parsePageLimit(limitValue);
++    const cursor = decodeCursor<{code:string;id:string}>(cursorValue);
++    if (cursor && (typeof cursor.code !== 'string' || typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 200)) throw new BadRequestException('Cursor aset tidak valid.');
++    if (search !== undefined && typeof search !== 'string') throw new BadRequestException('Pencarian aset tidak valid.');
++    const filters: Prisma.AssetWhereInput[] = [];
++    if (cursor) filters.push({ OR:[{code:{gt:cursor.code}},{code:cursor.code,id:{gt:cursor.id}}] });
++    if (search?.trim()) filters.push({ OR:[{code:{contains:search.trim()}},{name:{contains:search.trim()}}] });
++    const rows = await this.prisma.asset.findMany({
++      where:{companyId:scope.companyId,branchId:scope.branchId,status:{in:['ACTIVE','IDLE','IN_MAINTENANCE','DAMAGED']},AND:filters},
++      select:{id:true,code:true,name:true,assetType:true,status:true},
++      orderBy:[{code:'asc'},{id:'asc'}],take:limit+1,
++    });
++    return toCursorPage(rows,limit,row=>({code:row.code,id:row.id}));
++  }
++
+diff --git a/apps/api/src/finance-operations/finance-operations.controller.ts b/apps/api/src/finance-operations/finance-operations.controller.ts
+index ed8b7d6..790b7be 100644
+--- a/apps/api/src/finance-operations/finance-operations.controller.ts
++++ b/apps/api/src/finance-operations/finance-operations.controller.ts
+@@ -50 +50 @@ import { FinanceOperationsService } from './finance-operations.service';
+-  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR') @Permissions('finance.view') @Get()
++  @Roles('SUPER_ADMIN','OWNER','FINANCE','AUDITOR','ADMIN') @Permissions('finance.view') @Get()
+diff --git a/apps/api/src/finance-operations/finance-operations.service.ts b/apps/api/src/finance-operations/finance-operations.service.ts
+index 9f5474f..22056cf 100644
+--- a/apps/api/src/finance-operations/finance-operations.service.ts
++++ b/apps/api/src/finance-operations/finance-operations.service.ts
+@@ -780,0 +781 @@ export class FinanceOperationsService {
++    if (cursor && (typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 200 || typeof cursor.transactionDate !== 'string' || !Number.isFinite(Date.parse(cursor.transactionDate)))) throw new BadRequestException('Cursor transaksi keuangan tidak valid.');
+@@ -785,0 +787 @@ export class FinanceOperationsService {
++        ...(user.roles?.includes('ADMIN') && !user.roles.some(role => ['SUPER_ADMIN','OWNER','FINANCE','AUDITOR'].includes(role)) ? { createdById: user.sub } : {}),

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import CoretaxExportWorkspace from './coretax-export-workspace';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
+import { canReadPath, readOptional } from '../read-path-contract';
+import { canAccessApiPath } from '../../../../packages/contracts/src/api-access';
 import { Panel, StatusChip, Table, rupiah, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -42,8 +44,9 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
   // accounting-core.controller.ts: POST /accounting-core/tax-codes dan
   // PATCH /accounting-core/tax-codes/:id/status keduanya dijaga tax.manage. Endpoint
   // tax/preview hanya tax.view dan tidak menulis apa pun, jadi tetap dibiarkan terbuka.
-  const { canAll } = usePermissions(token);
-  const canManageTax = canAll('tax.manage');
+  const { canAll, identity } = usePermissions(token);
+  const canReadTax = canReadPath(identity, '/accounting-core/tax-codes');
+  const canManageTax = canAll('tax.manage') && canAccessApiPath(identity, '/accounting-core/tax-codes','POST');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [codes, setCodes] = useState<TaxCode[]>([]);
   const [transactions, setTransactions] = useState<TaxTransaction[]>([]);
@@ -71,6 +74,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
   }
 
   async function refresh() {
+    if (!canReadTax) return;
     try {
       const dates = new URLSearchParams();
       if (range.from) dates.set('from', range.from);
@@ -79,7 +83,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
       qs.set('limit', '100');
       if (direction) qs.set('direction', direction);
       const [accountRows, taxCodes, ledger, docs, recon] = await Promise.all([
-        api<Account[]>('/accounting-core/accounts'),
+        readOptional(identity, '/accounting-core/accounts', [] as Account[], p => api<Account[]>(p)),
         api<TaxCode[]>('/accounting-core/tax-codes'),
         api<CursorPage<TaxTransaction>>(`/accounting-core/tax-transactions?${qs.toString()}`),
         api<CursorPage<TaxDocument>>(`/accounting-core/tax-documents?${dates.toString()}&limit=100`),
@@ -99,7 +103,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
     }
   }
 
-  useEffect(() => { void refresh(); }, [token, range.from, range.to, direction]);
+  useEffect(() => { void refresh(); }, [token, canReadTax, range.from, range.to, direction]);
 
   async function saveTaxCode(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
@@ -152,6 +156,7 @@ export default function TaxWorkspace({ token, onOpenAccountingEvent }: { token: 
   const assets = activeAccounts.filter((row) => row.type === 'ASSET');
   const expenses = activeAccounts.filter((row) => row.type === 'EXPENSE');
 
+  if (!canReadTax) return <><CoretaxExportWorkspace token={token} documents={[]} /><p className="notice" role="status">Akun ini belum mempunyai akses ke konfigurasi dan ledger pajak. Data tersebut tidak ditampilkan.</p></>;
   return <>
     {message && <div className="notice">{message}</div>}
     <CoretaxExportWorkspace token={token} documents={documents.filter(row=>row.status==='ISSUED')} />

@@ -7,21 +7,21 @@
     "prismaModels": 195,
     "adminPrimaryWorkspaces": 15,
     "adminContextualViews": 70,
-    "posViews": 4,
+    "posViews": 5,
     "storefrontViews": 5,
     "employeeViews": 7,
-    "interactiveControls": 538
+    "interactiveControls": 565
   },
   "presentation": {
     "admin": {
-      "fileCount": 54,
-      "lineCount": 10544,
+      "fileCount": 58,
+      "lineCount": 10792,
       "requiredSemanticClassCount": 34,
       "missingSemanticClasses": []
     },
     "pos": {
-      "fileCount": 10,
-      "lineCount": 1786,
+      "fileCount": 11,
+      "lineCount": 1898,
       "requiredSemanticClassCount": 5,
       "missingSemanticClasses": []
     },
@@ -40,14 +40,14 @@
   },
   "controls": {
     "admin": {
-      "buttons": 409,
-      "links": 2,
+      "buttons": 429,
+      "links": 4,
       "inertButtons": 0,
       "implicitSubmitButtons": 32,
       "inertLinks": 0
     },
     "pos": {
-      "buttons": 59,
+      "buttons": 64,
       "links": 1,
       "inertButtons": 0,
       "implicitSubmitButtons": 1,
@@ -255,7 +255,8 @@
       "sale",
       "shift",
       "returns",
-      "sync"
+      "sync",
+      "ppob"
     ],
     "storefront": [
       "home",

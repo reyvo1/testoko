@@ -27,7 +27,7 @@ const v4Active = v4?.phase === 'P5-V4';
 const controlledGradientsAllowed = v4Active && v4?.decision?.controlledDecorativeGradientsAllowed === true;
 if (map.phase !== 'P5') fail(`visual map phase harus P5, actual=${map.phase}`);
 if (map.baseline?.commit !== 'd305ade2050765de86c7f5ef1c54eb7426c5e25b') fail('baseline P4 commit tidak cocok.');
-if (map.pos?.views?.length !== 4) fail('POS visual view harus 4.');
+if (JSON.stringify(map.pos?.views)!==JSON.stringify(['sale','shift','returns','sync','ppob'])) fail('POS visual view harus mencakup sale, shift, returns, sync, ppob.');
 if (map.storefront?.views?.length !== 5) fail('Storefront visual view harus 5.');
 if (map.employeePortal?.views?.length !== 7) fail('Employee Portal visual view harus 7.');
 

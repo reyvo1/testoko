@@ -6,6 +6,8 @@
 
 # Toko360 Project State
 
+> **Current authority — 2026-10-09:** operator explicitly requested immediate combined push and GitHub verification because the computer froze twice. Heavy local testing is stopped; unfinished local/build/browser runs are not PASS. Source616d32ea has actual PostgreSQL27/27 and production dependency audit0 vulnerabilities PASS; focused approved-role21/21 and updated contract53/53 PASS. Full current-source regression/six builds/browser12-role acceptance moves to GitHub and remains pending. Limited Admin own-finance/account metadata and Warehouse operational maintenance-catalog read access was explicitly approved and applied. Accepted preceding checkpoint remains fdd37f8; productReady=false. PPOB menu is present, while customer cash/shift/journal posting, real provider/device certification and Human Stage-20 remain open.
+
 ## Official checkpoint
 
 ```text
@@ -338,3 +340,43 @@ All final local gates PASS on a7facd546ecbcb68507b3511de3e072c2385529fa35dd27a6e
 Shared server-owned maturity catalog fixes the actual P3 blocker without changing gates. All six current evidence files PASS on source `97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548`: 1736/1736 regression, lint/migration/DB smoke/six builds/API boot, Browser 57/57, actual PostgreSQL P3 13/13 and P6CD domain/worker 7/7, production dependency audit zero high/critical. Build artifact `62e1a29ed7a778774e6f09ed3d32765c107f3e951abecefc6c05b67e74913eb5`. Scoped flags/account/provider config and rollout remain preserved; five new flags default OFF. Publish this correction to existing draft PR #2 under operator authorization and require four actual final GitHub outcomes. Human Stage-20/provider certification/product readiness remain pending.
 
 Operator additionally asks for completeness review and PPOB in the cashier menu. Audit the existing DigitalServices backend and product roadmap after publishing this verified correction; do not invent provider certification or duplicate the module.
+
+## 2026-10-07 — P6CD GitHub accepted; operator expands all-role/frontend-backend audit
+
+Accepted checkpoint fdd37f861a8888810b45f304baaa4b34e1749e6c / source 97c23ea387f8b440b1102ce78cb47a3d9bf3eab0e5dfa9efe998ba1844d4f548: Governance 37572061529, CI 37571433495, System 37571457972, UAT 37571464495 all PASS. Downloaded actual System/UAT confirms Browser 58/58, P3 13/13, P6CD 7/7, zero-high/critical production audit. This closes the previously missing P3 maturity blocker; old FAIL runs remain historical.
+
+Operator explicitly requests comprehensive parity across all roles and all frontend/backend functions, including cashier PPOB. Active item returns to IMPLEMENTATION for this extension. Audit starts from 553 controller operations / four frontend trees / 12 seeded roles. Candidate unmatched references must be reviewed semantically: dynamic forms and worker/device/provider endpoints are not automatically missing UI.
+
+Uncommitted PPOB menu, catalog/history/pagination/confirmation/recheck and API readiness guard added to existing DigitalServices module; feature rollout uses canonical Platform resolver, tenant/cashier/payload replay and price protections repaired. Focused actual SQLite concurrency/isolation/readiness tests PASS 9/9; API/POS typecheck PASS. Full extended regression/browser/runtime verification pending. Legacy PPOB cash posting is NOT_IMPLEMENTED and provider certification PENDING, explicitly displayed; do not claim a complete cashier accounting workflow from this menu. Review remaining operator gaps before publication. No production/provider traffic, merge or release. Human Stage-20 and productReady remain pending/false.
+
+## 2026-10-07 — extended all-role parity implementation
+
+Operator explicitly expanded the same active work item to all roles/frontends/backend menus. The accepted P6C/D checkpoint remains fdd37f8 (four GitHub gates PASS); these new changes require new evidence and must not reuse that checkpoint as acceptance.
+
+Implemented in the current candidate: discoverable cashier PPOB; authoritative scoped feature/provider/catalog readiness; role-and-permission controls; price confirmation and durable retry identity shared with Admin; real cursor navigation; no raw destination in audit or browser operation storage; cross-branch/cashier/altered replay refusal. Existing provider worker/outbox remains canonical. PPOB customer-payment/shift/accounting posting is still NOT_IMPLEMENTED and is prominently disclosed. Provider credentials do not imply certification. This is a material remaining product gap, not a finished payment flow.
+
+Added missing operator surfaces to existing contexts: Branch Sync peer registration and offline policy/backup metadata/checksum/rejoin controls; shipped-transfer departure tracking without inventory writes; controlled arrival quantity state; Finance/Admin exchange history with pagination; Warehouse stocktake scan/open/submit/discard using the existing MobileOps/StockOpname services. No new table, ledger, core service, or production data operation.
+
+Mobile scan now requires operationKey, uses existing IdempotencyReceipt and serializable retry, validates integral counts/consistent UOM, and enforces trusted branch plus draft ownership. Concurrent open resumes one draft even at null location. Draft filing/discard compare observed OPEN version and commit with their business effects/audit; terminal replay is safe. Worker Telegram update_id supplies a stable scan key across restarts. Legacy custom clients must send the required scan key; fail-closed omission prevents duplicated counts. Warehouse filtering cannot override trusted branch isolation.
+
+Impact: database schema NONE (existing receipt storage only); inventory count capture NON-NONE with no direct movement; sync retry NON-NONE; permission/tenant/privacy NON-NONE; accounting/tax/payment/payroll/assets/fleet NONE for these corrections. PPOB financial posting is an explicit unresolved domain gap. Rollback: keep PPOB feature OFF; revert UI ingress and worker/API together if needed; retain immutable receipts, drafts, audits and existing StockOpname lifecycle. Monitor scan replay/mismatch/403/409, stalled drafts, provider pending/dead-letter and peer lag.
+
+The source inventory covers 553 controller operations, four frontend trees and twelve seeded staff roles. References prove wiring only. Individually reviewed alternatives and device/provider/node protocols are recorded in config/frontend-backend-role-review.json; no public callback or heartbeat/watermark is converted into an operator posting button. A new actual-login browser matrix derives each role's visible contexts from production navigation, waits for data, checks workspace/server errors and layout, and disables its synthetic TEST accounts afterwards. Runtime acceptance for this extended candidate is pending.
+
+## 2026-10-07 — personnel authority correction during all-role audit
+
+Actual source inspection found legacy EMPLOYEE attendance/leave/overtime/payroll read grants could enumerate peers in the same branch. Shared personnel authority now limits non-supervisory EMPLOYEE (including EMPLOYEE+CASHIER/WAREHOUSE combinations) to personal HR/attendance data and refuses bulk PayrollService reads before salary queries. Explicit staff roles or personnel management permissions retain their existing branch authority. Employee-specific filters/config/event targets cannot widen identity beyond trusted user linkage; denial is audited.
+
+Admin removes branch personnel menus for personal accounts, supplies a Portal Karyawan landing, and preserves unrelated commerce menus for combined cashier accounts. The real-role browser matrix now creates a synthetic linked EMPLOYEE via HR API, verifies direct payroll refusal and personal-list isolation, and visits its own Portal routes. Five actual Prisma/service privacy tests and 19 navigation/bootstrap/authority tests PASS; 38 existing HR/attendance/workspace tests PASS. These are focused results, not full candidate/browser acceptance.
+
+The earlier extended full regression reached 1750 tests; initial CSS/explicit permission-source failures were corrected with 29/29 focused checks. Subsequent regression passed but Next build failed under the synthetic launcher NODE_ENV=development. TEST launch configuration was corrected (without changing Next source or production data); full candidate must rerun. UI audit now inventories 561 controls. All new-source browser/PostgreSQL/GitHub acceptance remains pending. Product readiness, Human Stage-20, live providers and PPOB financial posting remain unresolved.
+
+
+## 2026-10-08 — All-role diagnostic and controller boundary correction
+
+Candidate 4cf322d5288bd8233d3e5713043efafc7a3e2a76e5e835bec0203c7ecac720fc passed local 1758/1758 and PostgreSQL 21/21, but the complete 12-role browser diagnostic failed 45 contexts. The wrapper exited 143; its previous receipt is not current acceptance. Owned synthetic TEST processes were stopped. Frontend dependencies and navigation are now aligned with generated controller role/permission metadata, with 13,272 comparisons against actual Nest guards passing. Unauthorized mutation controls are withheld, and the browser gate now rejects any unexpected 4xx as well as 5xx. This correction invalidates the previous build/local/PostgreSQL evidence for acceptance of current source. Full current-source local, PostgreSQL, sealed builds and mandatory browser gates remain pending. No extension publication or productReady claim. PPOB financial posting, provider certification and Human Stage-20 remain open.
+
+
+### POS boundary follow-up (2026-10-08)
+
+Read-only PPOB roles were still bootstrapping cashier warehouse/offline APIs. POS now derives permitted workspaces from the same controller metadata, skips cashier bootstrap/cache hydration for those roles, and omits unrelated receipt history from PPOB. Mandatory browser coverage rejects unexpected POS 4xx and unauthorized cashier navigation. Source a6bde367 PostgreSQL 21/21 remains historical diagnostic evidence; its local gate was deliberately interrupted for this correction. Current-source complete gates will be rerun. Full repository inventory remains 553 API operations, 562 UI controls, 70 contextual destinations across four frontends; product completeness remains false.

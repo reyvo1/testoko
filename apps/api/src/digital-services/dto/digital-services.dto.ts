@@ -6,4 +6,5 @@ export class CreateDigitalServiceTransactionDto {
   @ApiProperty() @IsString() @MinLength(3) customerNo!: string;
   @ApiProperty() @IsString() @MinLength(8) idempotencyKey!: string;
   @ApiPropertyOptional({ description: 'Batas harga beli untuk proteksi perubahan harga provider.' }) @IsOptional() @IsNumber() @Min(0) maxPrice?: number;
+  @ApiPropertyOptional({ description: 'Harga jual yang dikonfirmasi operator; perubahan katalog harus dikonfirmasi ulang.' }) @IsOptional() @IsNumber() @Min(0) expectedSellingPrice?: number;
 }

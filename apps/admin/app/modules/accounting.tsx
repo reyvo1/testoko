@@ -3,7 +3,8 @@ import { authFetch } from '../auth-fetch';
 // Modul Akuntansi & Kas — W3 functional surface: operational finance, period close, bank reconciliation.
 import { useEffect, useRef, useState } from 'react';
 import { usePermissions } from '../permissions';
-import { readOptional } from '../read-path-contract';
+import { readOptional, canReadPath } from '../read-path-contract';
+import { canAccessApiPath } from '../../../../packages/contracts/src/api-access';
 import { Panel, Table, StatusChip, rupiah, tanggal } from '../ui';
 import TaxWorkspace from './tax-workspace';
 import ReportingWorkspace from './reporting-workspace';
@@ -21,6 +22,7 @@ type FinanceTx = {
   id: string; number: string; type: string; description?: string; grossAmount: string | number;
   debitAccountCode: string; creditAccountCode: string; status: string; transactionDate?: string; createdAt: string;
 };
+type FinancePage = { items: FinanceTx[]; pageInfo: { nextCursor: string | null } };
 type SupplierPayable = {
   referenceType: 'GoodsReceipt' | 'Asset' | 'MaintenanceWorkOrder' | 'FuelTransaction'; referenceId: string; documentNumber: string;
   goodsReceiptId?: string; goodsReceiptNumber?: string; purchaseOrderNumber?: string; assetId?: string; assetCode?: string;
@@ -127,6 +129,8 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
   const [postingRules, setPostingRules] = useState<PostingRule[]>([]);
   const [eventDetail, setEventDetail] = useState<AccountingEventDetail | null>(null);
   const [finances, setFinances] = useState<FinanceTx[]>([]);
+  const [financeCursor, setFinanceCursor] = useState<string | null>(null);
+  const [financePageBusy, setFinancePageBusy] = useState(false);
   const [payables, setPayables] = useState<SupplierPayable[]>([]);
   const [supplierRefunds, setSupplierRefunds] = useState<SupplierRefund[]>([]);
   const [customerReceivables, setCustomerReceivables] = useState<CustomerReceivable[]>([]);
@@ -189,7 +193,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
         readOptional(identity, '/accounting-core/tax-codes', [] as CursorResponse<TaxCode>, (p) => api<CursorResponse<TaxCode>>(p)),
         readOptional(identity, '/accounting-core/accounts', [] as Account[], (p) => api<Account[]>(p)),
         readOptional(identity, '/accounting-core/posting-rules', [] as PostingRule[], (p) => api<PostingRule[]>(p)),
-        readOptional(identity, '/finance-operations?limit=50', [] as CursorResponse<FinanceTx>, (p) => api<CursorResponse<FinanceTx>>(p)),
+        readOptional(identity, '/finance-operations?limit=50', { items: [], pageInfo: { nextCursor: null } } as FinancePage, (p) => api<FinancePage>(p)),
         readOptional(identity, '/finance-operations/supplier-payables', [] as SupplierPayable[], (p) => api<SupplierPayable[]>(p)),
         readOptional(identity, '/finance-operations/supplier-refunds', [] as SupplierRefund[], (p) => api<SupplierRefund[]>(p)),
         readOptional(identity, '/finance-operations/customer-receivables', [] as CustomerReceivable[], (p) => api<CustomerReceivable[]>(p)),
@@ -212,7 +216,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
         return pool.find((row) => row.code === preferred)?.code ?? pool[0]?.code ?? '';
       };
       setEvents(Array.isArray(ev) ? ev : ev.items ?? []); setTaxCodes(Array.isArray(tx) ? tx : tx.items ?? []); setAccounts(accountRows); setPostingRules(pr);
-      setFinances(Array.isArray(fin) ? fin : fin.items ?? []); setPayables(ap); setSupplierRefunds(sr); setCustomerReceivables(cr);
+      setFinances(fin.items); setFinanceCursor(fin.pageInfo.nextCursor); setPayables(ap); setSupplierRefunds(sr); setCustomerReceivables(cr);
       setPeriods(fp); setCloseControls(cc); setStatements(bs); setReconciliations(br);
       setForm((current) => ({
         ...current,
@@ -242,6 +246,17 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
   }
 
   useEffect(() => { void refresh(); }, [token]);
+
+  async function loadMoreFinances() {
+    if (financePageBusy || !financeCursor || !canReadPath(identity, '/finance-operations')) return;
+    setFinancePageBusy(true);
+    try {
+      const page = await api<FinancePage>(`/finance-operations?limit=50&cursor=${encodeURIComponent(financeCursor)}`);
+      setFinances(old => [...new Map([...old, ...page.items].map(row => [row.id, row])).values()]);
+      setFinanceCursor(page.pageInfo.nextCursor);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Riwayat transaksi gagal dimuat.'); }
+    finally { setFinancePageBusy(false); }
+  }
 
   async function addFinance(event: React.FormEvent) {
     event.preventDefault(); setMessage('');
@@ -283,6 +298,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
     setMessage('');
     try {
       if ((action === 'reject' || action === 'cancel') && !notes.trim()) throw new Error('Alasan wajib diisi.');
+      if (!canAll(FINANCE_ACTION_PERMISSION[action]) || !canAccessApiPath(identity, `/finance-operations/${transaction.id}/${action}`, 'POST')) throw new Error('Akun ini tidak berwenang menjalankan tindakan tersebut.');
       const endpoint = action === 'post'
         ? `/finance-operations/${transaction.id}/post`
         : `/finance-operations/${transaction.id}/${action}`;
@@ -295,6 +311,7 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
   function requestFinanceAction(transaction: FinanceTx, action: 'approve' | 'reject' | 'cancel' | 'post') {
     // Every finance mutation is confirmed. approve and post write operational/ledger
     // state with no undo path from this screen; reject/cancel additionally require a reason.
+    if (!canAll(FINANCE_ACTION_PERMISSION[action]) || !canAccessApiPath(identity, `/finance-operations/${transaction.id}/${action}`, 'POST')) return;
     setFinanceDialog({ transaction, action, notes: '' });
   }
 
@@ -508,30 +525,32 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
   const accountOptions = (rows: Account[], emptyLabel: string) => rows.length === 0
     ? <option value="">{emptyLabel}</option>
     : rows.map((row) => <option key={row.id} value={row.code}>{row.name} ({row.code})</option>);
-  const show = (...modes: string[]) => !mode || modes.includes(mode);
+  const modeReadPath: Record<string,string> = { ledger:'/accounting-core/events', fiscal:'/finance/fiscal-periods', payables:'/finance-operations/supplier-payables', receivables:'/finance-operations/customer-receivables', banking:'/finance-operations' };
+  const show = (...modes: string[]) => modes.some(key=>(!mode||key===mode)&&(!modeReadPath[key]||canReadPath(identity,modeReadPath[key])));
 
   return (
     <>
       <FinanceDepthWorkspace token={token} mode={mode} />
+      {mode&&modeReadPath[mode]&&!canReadPath(identity,modeReadPath[mode])&&<p className="notice" role="status">Akun ini belum mempunyai akses ke ledger atau transaksi keuangan pada bagian ini. Pilih bagian yang tersedia untuk kewenangan Anda.</p>}
       <section className="grid2">
         {show('ledger') && <Panel eyebrow="ACCOUNTING CORE" title="Accounting Events (Jurnal)" badge={`${events.length} event`}>
           <Table head={['Event / Source', 'Status', 'Tanggal', 'Aksi']} rows={events.slice(0, 20).map((e) => [<><strong>{e.eventType}</strong><small className="mutedText">{e.sourceType ?? '-'} · {e.sourceId ?? '-'}</small></>, <StatusChip status={e.status} />, tanggal(e.businessDate ?? e.createdAt), <button type="button" className="secondary" onClick={() => void loadEventDetail(e.id)}>Drill-down</button>])} empty="Belum ada jurnal." />
         </Panel>}
         {show('ledger') && <Panel eyebrow="CHART OF ACCOUNTS" title="Akun Branch" badge={`${accounts.length} akun`}>
-          <form className="accountCreateGrid" onSubmit={createAccount}>
+          {canAccessApiPath(identity,'/accounting-core/accounts','POST') && <form className="accountCreateGrid" onSubmit={createAccount}>
             <label>Kode<input required value={accountForm.code} onChange={(e) => setAccountForm({ ...accountForm, code: e.target.value.toUpperCase() })} /></label>
             <label>Nama<input required value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} /></label>
             <label>Tipe<select value={accountForm.type} onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value })}><option>ASSET</option><option>LIABILITY</option><option>EQUITY</option><option>REVENUE</option><option>EXPENSE</option></select></label>
             <button>Tambah akun</button>
-          </form>
-          <Table head={['Kode', 'Nama', 'Tipe', 'Status', 'Aksi']} rows={accounts.slice(0, 80).map((a) => [<strong>{a.code}</strong>, a.name, a.type, <StatusChip status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />, <span className="inlineActions"><button type="button" className="secondary" onClick={() => setAccountEditDialog({ account: a, name: a.name })}>Edit nama</button><button type="button" className="secondary" onClick={() => void updateAccount(a, { isActive: !a.isActive })}>{a.isActive ? 'Nonaktifkan' : 'Aktifkan'}</button></span>])} empty="Belum ada chart of accounts." />
+          </form>}
+          <Table head={['Kode', 'Nama', 'Tipe', 'Status', 'Aksi']} rows={accounts.slice(0, 80).map((a) => [<strong>{a.code}</strong>, a.name, a.type, <StatusChip status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />, canAccessApiPath(identity,'/accounting-core/accounts/_','PATCH') ? <span className="inlineActions"><button type="button" className="secondary" onClick={() => setAccountEditDialog({ account: a, name: a.name })}>Edit nama</button><button type="button" className="secondary" onClick={() => void updateAccount(a, { isActive: !a.isActive })}>{a.isActive ? 'Nonaktifkan' : 'Aktifkan'}</button></span> : null])} empty="Belum ada chart of accounts." />
         </Panel>}
       </section>
 
       {show('tax') && <TaxWorkspace token={token} onOpenAccountingEvent={(id) => void loadEventDetail(id)} />}
 
-      {show('ledger') && <Panel eyebrow="MANUAL ACCOUNTING EVENT" title="Post melalui Accounting Core" badge="finance.journal">
-        <form className="formStack" onSubmit={postManualEvent}>
+      {show('ledger') && canAccessApiPath(identity,'/accounting-core/events/post','POST') && <Panel eyebrow="MANUAL ACCOUNTING EVENT" title="Post melalui Accounting Core" badge="finance.journal">
+        {canAccessApiPath(identity,'/accounting-core/events/post','POST') && <form className="formStack" onSubmit={postManualEvent}>
           <section className="grid2">
             <label>Event type<input required value={manualEventForm.eventType} onChange={(e)=>setManualEventForm({...manualEventForm,eventType:e.target.value.toUpperCase()})} placeholder="MANUAL_ADJUSTMENT"/></label>
             <label>Source type<input required value={manualEventForm.sourceType} onChange={(e)=>setManualEventForm({...manualEventForm,sourceType:e.target.value.toUpperCase()})} placeholder="MANUAL"/></label>
@@ -544,12 +563,12 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
             <label>Account-code mapping <small>opsional, key=ACCOUNT_CODE</small><textarea rows={5} value={manualEventForm.accountCodesText} onChange={(e)=>setManualEventForm({...manualEventForm,accountCodesText:e.target.value})} placeholder={'cash=1101\nrevenue=4101'}/></label>
           </section>
           <div className="rowActions"><button>Post accounting event</button></div>
-        </form>
+        </form>}
         <p className="sectionHelp">Tenant dan branch tidak dapat dipilih bebas dari UI; keduanya tetap berasal dari token. Posting rule aktif, period lock, balance journal, tax ownership, dan idempotency tetap divalidasi oleh accounting core.</p>
       </Panel>}
 
       {show('ledger') && <Panel eyebrow="POSTING RULES" title="Versioned Account Mapping" badge={`${postingRules.length} rule`}>
-        <form className="formSingle" onSubmit={createPostingRule}>
+        {canAccessApiPath(identity,'/accounting-core/posting-rules','POST') && <form className="formSingle" onSubmit={createPostingRule}>
           <section className="grid2">
             <label>Kode rule<input required value={ruleForm.code} onChange={(e) => setRuleForm({ ...ruleForm, code: e.target.value.toUpperCase() })} placeholder="SALE-CASH" /></label>
             <label>Nama<input required value={ruleForm.name} onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })} /></label>
@@ -562,8 +581,8 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
           </section>
           <label>Journal mapping <small>(SIDE|ACCOUNT_CODE|AMOUNT_KEY|DESCRIPTION)</small><textarea rows={5} required value={ruleForm.journalLinesText} onChange={(e) => setRuleForm({ ...ruleForm, journalLinesText: e.target.value })} /></label>
           <div><button>Simpan version</button></div>
-        </form>
-        <Table head={['Rule', 'Event', 'Version', 'Priority', 'Efektif', 'Status', 'Aksi']} rows={postingRules.map((rule) => [<><strong>{rule.code}</strong><small className="mutedText">{rule.name}</small></>, rule.eventType, `v${rule.version}`, String(rule.priority), `${isoDate(rule.effectiveFrom) || '∞'} → ${isoDate(rule.effectiveTo) || '∞'}`, <StatusChip status={rule.status} />, <span className="inlineActions"><button type="button" className="secondary" onClick={() => cloneRuleVersion(rule)}>Buat v{rule.version + 1}</button>{rule.status !== 'ACTIVE' && <button type="button" onClick={() => void updatePostingRuleStatus(rule, 'ACTIVE')}>Aktifkan</button>}{rule.status === 'ACTIVE' && <button type="button" className="secondary" onClick={() => void updatePostingRuleStatus(rule, 'INACTIVE')}>Nonaktifkan</button>}</span>])} empty="Belum ada posting rule." />
+        </form>}
+        <Table head={['Rule', 'Event', 'Version', 'Priority', 'Efektif', 'Status', 'Aksi']} rows={postingRules.map((rule) => [<><strong>{rule.code}</strong><small className="mutedText">{rule.name}</small></>, rule.eventType, `v${rule.version}`, String(rule.priority), `${isoDate(rule.effectiveFrom) || '∞'} → ${isoDate(rule.effectiveTo) || '∞'}`, <StatusChip status={rule.status} />, canAccessApiPath(identity,'/accounting-core/posting-rules/_/status','PATCH') ? <span className="inlineActions"><button type="button" className="secondary" onClick={() => cloneRuleVersion(rule)}>Buat v{rule.version + 1}</button>{rule.status !== 'ACTIVE' && <button type="button" onClick={() => void updatePostingRuleStatus(rule, 'ACTIVE')}>Aktifkan</button>}{rule.status === 'ACTIVE' && <button type="button" className="secondary" onClick={() => void updatePostingRuleStatus(rule, 'INACTIVE')}>Nonaktifkan</button>}</span> : null])} empty="Belum ada posting rule." />
         <p className="sectionHelp">Rule yang pernah ACTIVE atau sudah dipakai posting tidak dapat ditimpa. Koreksi mapping dilakukan dengan version baru agar histori journal tetap reproducible.</p>
       </Panel>}
 
@@ -578,30 +597,30 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
       </Panel>}
 
       {show('fiscal') && <Panel eyebrow="PERIODE FISKAL" title="Open → Soft Close → Final Close" badge={`${periods.length} periode`}>
-        <form className="responsiveFormGrid" onSubmit={createPeriod}>
+        {canAccessApiPath(identity,'/finance/fiscal-periods','POST') && <form className="responsiveFormGrid" onSubmit={createPeriod}>
           <label>Nama<input required value={periodForm.name} onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })} placeholder="September 2026" /></label>
           <label>Mulai<input required type="date" value={periodForm.startDate} onChange={(e) => setPeriodForm({ ...periodForm, startDate: e.target.value })} /></label>
           <label>Selesai<input required type="date" value={periodForm.endDate} onChange={(e) => setPeriodForm({ ...periodForm, endDate: e.target.value })} /></label>
           <button>Buat periode</button>
-        </form>
+        </form>}
         <Table head={['Periode', 'Rentang', 'Status', 'Aksi']} rows={periods.map((period) => [
           <strong>{period.name}</strong>, `${tanggal(period.startDate)} – ${tanggal(period.endDate)}`, <StatusChip status={period.status} />,
           <span className="inlineActions">
-            {period.status === 'OPEN' && <button type="button" className="secondary" onClick={() => setPeriodDialog({ period, action: 'soft-close', notes: '' })}>Soft close</button>}
-            {period.status === 'SOFT_CLOSED' && <><button type="button" className="secondary" onClick={() => setPeriodDialog({ period, action: 'reopen', notes: '' })}>Reopen</button>{canAll('finance.close_period') && <button type="button" onClick={() => setPeriodDialog({ period, action: 'close', notes: '' })}>Final close</button>}</>}
+            {period.status === 'OPEN' && canAccessApiPath(identity,`/finance/fiscal-periods/${period.id}/soft-close`,'PATCH') && <button type="button" className="secondary" onClick={() => setPeriodDialog({ period, action: 'soft-close', notes: '' })}>Soft close</button>}
+            {period.status === 'SOFT_CLOSED' && canAccessApiPath(identity,`/finance/fiscal-periods/${period.id}/reopen`,'PATCH') && <><button type="button" className="secondary" onClick={() => setPeriodDialog({ period, action: 'reopen', notes: '' })}>Reopen</button>{canAll('finance.close_period') && <button type="button" onClick={() => setPeriodDialog({ period, action: 'close', notes: '' })}>Final close</button>}</>}
             {period.status === 'CLOSED' && <small>Final</small>}
           </span>,
         ])} empty="Belum ada periode fiskal." />
       </Panel>}
 
-      {show('fiscal') && <Panel eyebrow="ACCOUNTING CLOSE CONTROL" title="Runtime posting lock" badge={`${closeControls.filter((row) => row.status === 'CLOSED').length} closed`}>
-        <form className="responsiveFormGrid" onSubmit={createCloseControl}>
+      {show('fiscal') && canReadPath(identity,'/accounting-core/close-controls') && <Panel eyebrow="ACCOUNTING CLOSE CONTROL" title="Runtime posting lock" badge={`${closeControls.filter((row) => row.status === 'CLOSED').length} closed`}>
+        {canAccessApiPath(identity,'/accounting-core/close-controls','POST') && <form className="responsiveFormGrid" onSubmit={createCloseControl}>
           <label>Module<input required value={closeControlForm.module} onChange={(e) => setCloseControlForm({ ...closeControlForm, module: e.target.value.toUpperCase() })} /></label>
           <label>Mulai<input required type="date" value={closeControlForm.periodStart} onChange={(e) => setCloseControlForm({ ...closeControlForm, periodStart: e.target.value })} /></label>
           <label>Selesai<input required type="date" value={closeControlForm.periodEnd} onChange={(e) => setCloseControlForm({ ...closeControlForm, periodEnd: e.target.value })} /></label>
           <button>Buat control</button>
-        </form>
-        <Table head={['Module','Periode','Status','Aksi']} rows={closeControls.map((row) => [row.module, `${tanggal(row.periodStart)} – ${tanggal(row.periodEnd)}`, <StatusChip status={row.status} />, row.status === 'OPEN' ? <button type="button" onClick={() => void closeControlAction(row, 'close')}>Close posting</button> : <span className="inlineActions"><input aria-label={`Alasan reopen ${row.module}`} placeholder="Alasan reopen" value={reopenReasons[row.id] ?? ''} onChange={(event) => setReopenReasons((current) => ({ ...current, [row.id]: event.target.value }))} /><button type="button" className="secondary" onClick={() => void closeControlAction(row, 'reopen')}>Reopen</button></span>])} empty="Belum ada accounting close control." />
+        </form>}
+        <Table head={['Module','Periode','Status','Aksi']} rows={closeControls.map((row) => [row.module, `${tanggal(row.periodStart)} – ${tanggal(row.periodEnd)}`, <StatusChip status={row.status} />, row.status === 'OPEN' ? canAccessApiPath(identity, `/accounting-core/close-controls/${row.id}/close`, 'POST') ? <button type="button" onClick={() => void closeControlAction(row, 'close')}>Close posting</button> : null : canAccessApiPath(identity, `/accounting-core/close-controls/${row.id}/reopen`, 'POST') ? <span className="inlineActions"><input aria-label={`Alasan reopen ${row.module}`} placeholder="Alasan reopen" value={reopenReasons[row.id] ?? ''} onChange={(event) => setReopenReasons((current) => ({ ...current, [row.id]: event.target.value }))} /><button type="button" className="secondary" onClick={() => void closeControlAction(row, 'reopen')}>Reopen</button></span> : null])} empty="Belum ada accounting close control." />
         <p className="sectionHelp">Close control CLOSED memblokir posting accounting event pada rentang tanggal tersebut, termasuk posting operasional yang masuk melalui accounting core.</p>
       </Panel>}
 
@@ -623,8 +642,8 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
       </section>}
 
       {show('banking') && <Panel eyebrow="KAS & BANK" title="Transaksi Keuangan Operasional" badge={`${finances.length} transaksi`}>
-        <form className="responsiveFormGrid" onSubmit={addFinance}>
-          <label>Jenis<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FinanceType })}><option value="OPERATING_EXPENSE">Beban operasional</option><option value="OTHER_INCOME">Pendapatan lain</option><option value="TAX_PAYMENT">Bayar pajak</option><option value="SUPPLIER_PAYMENT">Bayar supplier</option><option value="SUPPLIER_REFUND">Terima refund supplier</option><option value="CUSTOMER_RECEIPT">Terima piutang pelanggan</option><option value="CASH_TRANSFER">Transfer kas/bank</option></select></label>
+        {canAccessApiPath(identity,'/finance-operations','POST') && <form className="responsiveFormGrid" onSubmit={addFinance}>
+          <label>Jenis<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FinanceType })}><option value="OPERATING_EXPENSE">Beban operasional</option><option value="OTHER_INCOME">Pendapatan lain</option><option value="TAX_PAYMENT">Bayar pajak</option>{canReadPath(identity, '/finance-operations/supplier-payables') && <option value="SUPPLIER_PAYMENT">Bayar supplier</option>}{canReadPath(identity, '/finance-operations/supplier-refunds') && <option value="SUPPLIER_REFUND">Terima refund supplier</option>}{canReadPath(identity, '/finance-operations/customer-receivables') && <option value="CUSTOMER_RECEIPT">Terima piutang pelanggan</option>}<option value="CASH_TRANSFER">Transfer kas/bank</option></select></label>
           {form.type === 'TAX_PAYMENT' ? <label>Utang pajak<select required value={form.taxPayableAccount} onChange={(e) => setForm({ ...form, taxPayableAccount: e.target.value })}>
               {/* Server MEMBATASI akun pajak pada 2103/2201/2202 (`finance-operations.service.ts`).
                   UI harus menawarkan persis itu: menampilkan seluruh akun LIABILITY akan membuat
@@ -649,16 +668,17 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
           <button>Simpan</button>
           {form.type === 'CASH_TRANSFER' && <label>Tujuan<select value={form.transferTargetAccount} onChange={(e) => setForm({ ...form, transferTargetAccount: e.target.value })}>{assetAccounts.map((account) => <option key={account.id} value={account.code}>{account.code} · {account.name}</option>)}</select></label>}
           <label className="checkboxRow"><input type="checkbox" checked={form.requireApproval} onChange={(e) => setForm({ ...form, requireApproval: e.target.checked })} /> Wajib approval</label>
-        </form>
+        </form>}
         <Table head={['Nomor', 'Jenis', 'Keterangan', 'Nominal', 'Debit→Kredit', 'Status', 'Aksi']} rows={finances.map((f) => [<strong>{f.number}</strong>, f.type, f.description ?? '-', rupiah(Number(f.grossAmount)), <small className="mutedText">{f.debitAccountCode} → {f.creditAccountCode}</small>, <StatusChip status={f.status} />, <span className="inlineActions">
-          {f.status === 'WAITING_APPROVAL' && canAll(FINANCE_ACTION_PERMISSION.approve) && <><button type="button" onClick={() => requestFinanceAction(f, 'approve')}>Approve</button><button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'reject')}>Reject</button></>}
-          {['DRAFT', 'APPROVED'].includes(f.status) && canAll(FINANCE_ACTION_PERMISSION.post) && <button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'post')}>Posting</button>}
-          {['DRAFT', 'WAITING_APPROVAL', 'APPROVED'].includes(f.status) && canAll(FINANCE_ACTION_PERMISSION.cancel) && <button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'cancel')}>Batal</button>}
+          {f.status === 'WAITING_APPROVAL' && canAll(FINANCE_ACTION_PERMISSION.approve) && canAccessApiPath(identity, '/finance-operations/_/approve', 'POST') && <><button type="button" onClick={() => requestFinanceAction(f, 'approve')}>Approve</button><button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'reject')}>Reject</button></>}
+          {['DRAFT', 'APPROVED'].includes(f.status) && canAll(FINANCE_ACTION_PERMISSION.post) && canAccessApiPath(identity, '/finance-operations/_/post', 'POST') && <button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'post')}>Posting</button>}
+          {['DRAFT', 'WAITING_APPROVAL', 'APPROVED'].includes(f.status) && canAll(FINANCE_ACTION_PERMISSION.cancel) && canAccessApiPath(identity, '/finance-operations/_/cancel', 'POST') && <button type="button" className="secondary" onClick={() => requestFinanceAction(f, 'cancel')}>Batal</button>}
         </span>])} empty="Belum ada transaksi kas." />
+        {financeCursor && <button type="button" className="secondary" disabled={financePageBusy} onClick={() => void loadMoreFinances()}>Muat transaksi berikutnya</button>}
       </Panel>}
 
-      {show('banking') && <Panel eyebrow="BANK STATEMENT" title="Import Statement untuk Rekonsiliasi" badge={`${statements.length} file`}>
-        <form className="formSingle" onSubmit={importStatement}>
+      {show('banking') && canReadPath(identity, '/finance/bank-statements') && <Panel eyebrow="BANK STATEMENT" title="Import Statement untuk Rekonsiliasi" badge={`${statements.length} file`}>
+        {canAccessApiPath(identity,'/finance/bank-statements/import','POST') && <form className="formSingle" onSubmit={importStatement}>
           <section className="grid2">
             <label>Akun bank<select required value={statementForm.bankAccountId} onChange={(e) => setStatementForm({ ...statementForm, bankAccountId: e.target.value })}><option value="">Pilih akun bank</option>{assetAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></label>
             <label>Sumber<input required value={statementForm.source} onChange={(e) => setStatementForm({ ...statementForm, source: e.target.value })} placeholder="BCA / Mandiri / CSV" /></label>
@@ -671,27 +691,27 @@ export default function AccountingView({ token, mode }: { token: string; mode?: 
           </section>
           <label>Baris statement (tanggal|deskripsi|referensi|debit|credit|balance)<textarea required rows={6} value={statementForm.linesText} onChange={(e) => setStatementForm({ ...statementForm, linesText: e.target.value })} placeholder={'2026-09-01|SETORAN POS|POS-001|0|150000|150000\n2026-09-02|BIAYA BANK|ADM|10000|0|140000'} /></label>
           <button>Import bank statement</button>
-        </form>
+        </form>}
         <Table head={['File', 'Sumber', 'Periode', 'Baris']} rows={statements.map((row) => [<strong>{row.fileName ?? row.id}</strong>, row.source, `${isoDate(row.periodStart)} – ${isoDate(row.periodEnd)}`, String(row.lines.length)])} empty="Belum ada bank statement." />
       </Panel>}
 
-      {show('banking') && <Panel eyebrow="REKONSILIASI BANK" title="Statement ↔ Journal" badge={`${reconciliations.length} rekonsiliasi`}>
-        <form className="responsiveFormGrid" onSubmit={createReconciliation}>
+      {show('banking') && canReadPath(identity, '/finance/reconciliations') && <Panel eyebrow="REKONSILIASI BANK" title="Statement ↔ Journal" badge={`${reconciliations.length} rekonsiliasi`}>
+        {canAccessApiPath(identity,'/finance/reconciliations','POST') && <form className="responsiveFormGrid" onSubmit={createReconciliation}>
           <label>Statement<select required value={reconForm.statementId} onChange={(e) => chooseStatement(e.target.value)}><option value="">Pilih statement</option>{statements.map((row) => <option key={row.id} value={row.id}>{row.fileName ?? row.id} · {row.source}</option>)}</select></label>
           <label>Mulai<input required type="date" value={reconForm.startDate} onChange={(e) => setReconForm({ ...reconForm, startDate: e.target.value })} /></label>
           <label>Selesai<input required type="date" value={reconForm.endDate} onChange={(e) => setReconForm({ ...reconForm, endDate: e.target.value })} /></label>
           <button>Buat snapshot</button>
-        </form>
+        </form>}
         <Table head={['Periode', 'Saldo Buku', 'Saldo Bank', 'Selisih', 'Matched', 'Status', 'Aksi']} rows={reconciliations.map((row) => [
           `${tanggal(row.startDate)} – ${tanggal(row.endDate)}`, rupiah(Number(row.bookBalance)), rupiah(Number(row.bankBalance)), <strong>{rupiah(Number(row.difference))}</strong>, String(row.matchedCount), <StatusChip status={row.status} />,
-          <span className="inlineActions"><button type="button" className="secondary" onClick={() => void autoMatch(row)}>Auto-match</button><button type="button" className="secondary" onClick={() => void loadReconciliation(row.id)}>Detail</button></span>,
+          <span className="inlineActions">{canAccessApiPath(identity, `/finance/reconciliations/${row.id}/auto-match`, 'POST') && <button type="button" className="secondary" onClick={() => void autoMatch(row)}>Auto-match</button>}<button type="button" className="secondary" onClick={() => void loadReconciliation(row.id)}>Detail</button></span>,
         ])} empty="Belum ada rekonsiliasi." />
         {reconDetails && <div className="sectionBlockLg">
           <h3>Detail rekonsiliasi · {reconDetails.reconciliation.status}</h3>
           <Table head={['Tanggal', 'Statement', 'Debit/Credit', 'Match', 'Aksi']} rows={reconDetails.statementLines.map((line) => {
             const amount = Number(line.credit) > 0 ? `+${rupiah(Number(line.credit))}` : `-${rupiah(Number(line.debit))}`;
             const candidates = reconDetails.journalLines.filter((journal) => Number(line.credit) > 0 ? Number(journal.debit) === Number(line.credit) && Number(journal.credit) === 0 : Number(journal.credit) === Number(line.debit) && Number(journal.debit) === 0);
-            return [tanggal(line.transactionDate), <><strong>{line.description}</strong><small className="mutedText">{line.reference ?? '-'}</small></>, amount, line.matched ? <StatusChip status="COMPLETED" /> : <StatusChip status="PENDING" />, line.matched ? <button type="button" className="secondary" onClick={() => void unmatchLine(line.id)}>Unmatch</button> : <span className="inlineActions"><select value={manualMatches[line.id] ?? ''} onChange={(e) => setManualMatches({ ...manualMatches, [line.id]: e.target.value })}><option value="">Pilih journal</option>{candidates.map((journal) => <option key={journal.id} value={journal.id}>{journal.journalEntry.number} · {tanggal(journal.journalEntry.date)} · {journal.journalEntry.description}</option>)}</select><button type="button" onClick={() => void matchLine(line.id)}>Match</button></span>];
+            return [tanggal(line.transactionDate), <><strong>{line.description}</strong><small className="mutedText">{line.reference ?? '-'}</small></>, amount, line.matched ? <StatusChip status="COMPLETED" /> : <StatusChip status="PENDING" />, line.matched ? canAccessApiPath(identity, '/finance/reconciliations/_/unmatch', 'POST') ? <button type="button" className="secondary" onClick={() => void unmatchLine(line.id)}>Unmatch</button> : null : canAccessApiPath(identity, '/finance/reconciliations/_/match', 'POST') ? <span className="inlineActions"><select value={manualMatches[line.id] ?? ''} onChange={(e) => setManualMatches({ ...manualMatches, [line.id]: e.target.value })}><option value="">Pilih journal</option>{candidates.map((journal) => <option key={journal.id} value={journal.id}>{journal.journalEntry.number} · {tanggal(journal.journalEntry.date)} · {journal.journalEntry.description}</option>)}</select><button type="button" onClick={() => void matchLine(line.id)}>Match</button></span> : null];
           })} empty="Tidak ada baris statement pada rentang ini." />
         </div>}
       </Panel>}

@@ -1,3 +1,4 @@
+import { isPersonnelSelfOnly } from '@toko360/contracts/personnel-authority.cjs';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthUser } from '../auth/auth.types';
@@ -304,8 +305,8 @@ export class HrService {
     return Math.floor((endUtc - startUtc) / 86_400_000) + 1;
   }
 
-  private async branchEmployeeIds(client: DbClient, scope: TenantScope): Promise<string[]> {
-    const employees = await client.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId }, select: { id: true } });
+  private async branchEmployeeIds(client: DbClient, scope: TenantScope, user:AuthUser): Promise<string[]> {
+    const employees = await client.employee.findMany({ where: { companyId: scope.companyId, branchId: scope.branchId,...(isPersonnelSelfOnly(user)?{userId:user.sub}:{}) }, select: { id: true } });
     return employees.map((item) => item.id);
   }
 
@@ -373,7 +374,7 @@ export class HrService {
   async listLeaveRequests(user: AuthUser, status?: string) {
     const scope = this.requireTenantScope(user);
     const validatedStatus = validatedHrRequestStatus(status);
-    const employeeIds = await this.branchEmployeeIds(this.prisma, scope);
+    const employeeIds = await this.branchEmployeeIds(this.prisma, scope,user);
     return this.prisma.leaveRequest.findMany({ where: {
       companyId: scope.companyId, employeeId: { in: employeeIds }, ...(validatedStatus ? { status: validatedStatus as never } : {}),
     }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });
@@ -382,7 +383,7 @@ export class HrService {
   async reviewLeave(id: string, dto: ReviewHrRequestDto, user: AuthUser) {
     const scope = this.requireTenantScope(user);
     return this.prisma.$transaction(async (tx) => {
-      const employeeIds = await this.branchEmployeeIds(tx, scope);
+      const employeeIds = await this.branchEmployeeIds(tx, scope,user);
       const request = await tx.leaveRequest.findFirst({ where: { id, companyId: scope.companyId, employeeId: { in: employeeIds } } });
       if (!request) return this.denyTenantAccess(tx, user, scope, 'LeaveRequest', id);
       if (request.status !== 'SUBMITTED') throw new BadRequestException(`Pengajuan cuti sudah berstatus ${request.status}.`);
@@ -430,7 +431,7 @@ export class HrService {
   async listOvertimeRequests(user: AuthUser, status?: string) {
     const scope = this.requireTenantScope(user);
     const validatedStatus = validatedHrRequestStatus(status);
-    const employeeIds = await this.branchEmployeeIds(this.prisma, scope);
+    const employeeIds = await this.branchEmployeeIds(this.prisma, scope,user);
     return this.prisma.overtimeRequest.findMany({ where: {
       companyId: scope.companyId, branchId: scope.branchId, employeeId: { in: employeeIds }, ...(validatedStatus ? { status: validatedStatus as never } : {}),
     }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 300 });

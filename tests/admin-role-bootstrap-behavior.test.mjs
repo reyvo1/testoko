@@ -3,15 +3,18 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
+import { isPersonnelSelfOnly } from '../packages/contracts/personnel-authority.cjs';
 import { jsxOpeningTags } from '../scripts/jsx-opening-tags.mjs';
+import { load } from './helpers/import-ts.mjs';
+const { canAccessApiPath } = await load('packages/contracts/src/api-access.ts');
 
 function loadSource(file, names) {
   let source = fs.readFileSync(new URL(`../apps/admin/app/${file}`, import.meta.url), 'utf8');
   // Execute the actual pure resolver/loader; only presentation icons are stubbed.
-  source = stripTypeScriptTypes(source).replace(/import\s*\{([\s\S]*?)\}\s*from 'lucide-react';/g,
+  source = stripTypeScriptTypes(source).replace(/^import \{ isPersonnelSelfOnly \} from '[^']*personnel-authority\.cjs';\n/m,'').replace(/^import \{ canAccessApiPath \} from '[^']*api-access';\n/m,'').replace(/import\s*\{([^}]*?)\}\s*from 'lucide-react';/g,
     (_, icons) => `const {${icons}} = new Proxy({}, { get: () => () => null });`)
     .replace(/export /g, '');
-  return vm.runInNewContext(`${source}\n;({${names.join(',')}})`, {});
+  return vm.runInNewContext(`${source}\n;({${names.join(',')}})`, {isPersonnelSelfOnly,canAccessApiPath});
 }
 const navigation = loadSource('navigation.ts', ['resolveAdminNavigation', 'ADMIN_WORKSPACES']);
 const domain = loadSource('domain-workspaces.ts', ['resolveDomainViews', 'resolvedDomainViewFromPath']);
@@ -66,6 +69,18 @@ test('custom navigation labels do not change workspace identity and hidden roots
   assert.ok(!visible(actor('ADMIN'), manifest).includes('organization'));
 });
 
+test('approved minimal maintenance and own-finance read grants remain discoverable without broader data authority', () => {
+  const warehouse = actor('WAREHOUSE', ['asset.maintenance']);
+  const assets = navigation.ADMIN_WORKSPACES.find(workspace => workspace.key === 'assets-fleet');
+  assert.ok(visible(warehouse).includes('assets-fleet'));
+  assert.deepEqual(Array.from(domain.resolveDomainViews(assets, null, warehouse), view => view.key), ['maintenance']);
+  const admin = actor('ADMIN', ['finance.view', 'finance.create']);
+  const finance = navigation.ADMIN_WORKSPACES.find(workspace => workspace.key === 'finance');
+  assert.ok(domain.resolveDomainViews(finance, null, admin).some(view => view.key === 'banking'));
+  assert.equal(canAccessApiPath(admin, '/finance-operations/_/post', 'POST'), false);
+  assert.equal(canAccessApiPath(warehouse, '/assets'), false);
+});
+
 test('control inventory parses greater-than expressions and still detects missing handlers', () => {
   const source = '<button aria-label={count > 0 ? `Ada ${count}` : "Nihil"} onClick={() => navigate("/queue")}>Lihat</button><button type="button">Mati</button>';
   const tags = jsxOpeningTags(source, 'button');
@@ -92,4 +107,12 @@ test('dark-mode headings have semantic color and surface ownership', () => {
   assert.match(pos, /\.posBrandTitle\{color:var\(--pos-text\)/);
   assert.match(employeeShell, /className="employeeWorkspaceHeading /);
   assert.match(employee, /\.employeeV4\[data-theme='dark'\] \.employeeWorkspaceHeading,[^{]+\{background:#0f1a2a/);
+});
+
+// Real shared authority and real navigation are executed, not transcribed.
+test('personal employee grants do not expose branch HR/payroll, while cashier combination keeps commerce',()=>{
+ const permissions=['employee.self','attendance.view','attendance.record','leave.view','overtime.view','payroll.view'];
+ assert.deepEqual(visible(actor('EMPLOYEE',permissions)),[]);
+ const combined={roles:['EMPLOYEE','CASHIER'],permissions:[...permissions,'sale.view','product.view','digital_service.view']};
+ const keys=visible(combined);assert.ok(keys.includes('commerce'));assert.ok(!keys.includes('people'));
 });

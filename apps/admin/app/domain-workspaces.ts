@@ -5,6 +5,7 @@ import {
   ReceiptText, RefreshCcw, Route, ScanLine, Settings2, ShieldCheck, ShoppingBag, Sparkles, Truck, UserCog,
   Users, Warehouse, Wrench, Network, Smartphone } from 'lucide-react';
 import type { AdminIdentity, AdminRuntimeManifest, AdminWorkspace } from './navigation';
+import { canAccessApiPath } from '../../../packages/contracts/src/api-access';
 
 type DomainIcon = ComponentType<{ size?: number | string }>;
 export type AdminDomainView = {
@@ -123,6 +124,27 @@ export function domainRoute(workspace: AdminWorkspace, view: AdminDomainView): s
 export function isValidAdminPath(pathname: string, workspace: AdminWorkspace): boolean { const parts = pathname.split('/').filter(Boolean); if (!parts.length) return pathname === '/'; if (`/${parts[0]}` !== workspace.route) return false; if (parts.length === 1) return true; return parts.length === 2 && domainViewsForWorkspace(workspace).some((view) => view.key === parts[1]); }
 
 type DomainViewOverride = { workspace?: unknown; key?: unknown; hidden?: unknown; order?: unknown; label?: unknown; title?: unknown; description?: unknown };
+const DOMAIN_READS: Record<string,string[]> = {
+  'master-data/catalog':['/master-data/categories'], 'master-data/customers':['/master-data/customers'],
+  'master-data/products':['/products'], 'master-data/pricing':['/master-data/products/_/prices'],
+  'master-data/references':['/master-data/references'], 'master-data/warehouses':['/master-data/warehouses'],
+  'commerce/orders':['/orders','/orders/staff'], 'commerce/channels':['/orders','/orders/staff'],
+  'commerce/fulfillment':['/orders'],
+  'inventory-control/overview':['/inventory'], 'inventory-control/traceability':['/inventory-batches','/inventory-serials'],
+  'inventory-control/transfers':['/advanced-inventory/stock-transfers','/advanced-inventory/transit-balances'],
+  'inventory-control/stocktake':['/advanced-inventory/stock-opnames'],
+  'inventory-control/returns':['/returns/sales','/returns/orders','/returns/purchases','/returns/exchanges'],
+  'operations-control/inspections':['/operations-control/inspections'],
+  'operations-control/evidence':['/operations-control/inspections'],
+  'operations-control/gate-pass':['/operations-control/gate-passes'],
+  'operations-control/delivery':['/fleet/trips','/shipments'],
+  'finance/ledger':['/accounting-core/events'], 'finance/tax':['/accounting-core/tax-codes'],
+  'finance/fiscal':['/finance/fiscal-periods'], 'finance/payables':['/finance-operations/supplier-payables'],
+  'finance/receivables':['/finance-operations/customer-receivables','/finance-operations/customer-deposits/customers'],
+  'finance/banking':['/finance/bank-statements','/finance-operations/cash-bank-position','/finance-operations'],
+  'assets-fleet/assets':['/assets'], 'assets-fleet/maintenance':['/assets/maintenances','/assets/maintenance-plans','/assets/maintenance-catalog'],
+  'assets-fleet/vehicles':['/fleet/vehicles'], 'assets-fleet/trips':['/fleet/trips'],
+};
 function enabledModuleCodes(manifest: AdminRuntimeManifest | null): Set<string> | null { if (!manifest?.modules?.length) return null; return new Set(manifest.modules.filter((module) => module.isCore || !module.featureKey || manifest.features?.[module.featureKey]?.enabled === true).map((module) => module.code)); }
 function identityCanSeeView(identity: AdminIdentity | null, view: AdminDomainView): boolean { if (!identity) return false; if (identity.roles.includes('SUPER_ADMIN')) return true; if (view.roles?.length && !view.permissionPrefixes?.length) return view.roles.some((role) => identity.roles.includes(role)); if (view.roles?.some((role) => identity.roles.includes(role))) return true; if (!view.permissionPrefixes?.length) return true; if (!identity.permissions.length) return false; return identity.permissions.some((permission) => view.permissionPrefixes!.some((prefix) => permission === prefix || permission.startsWith(`${prefix}.`) || permission.startsWith(`${prefix}_`))); }
 function readDomainOverrides(manifest: AdminRuntimeManifest | null, workspace: AdminWorkspace): Map<string,DomainViewOverride> {
@@ -143,7 +165,7 @@ function readDomainOverrides(manifest: AdminRuntimeManifest | null, workspace: A
 }
 export function resolveDomainViews(workspace:AdminWorkspace, manifest:AdminRuntimeManifest|null, identity:AdminIdentity|null):AdminDomainView[] {
   const canonical=domainViewsForWorkspace(workspace), activeModules=enabledModuleCodes(manifest), overrides=readDomainOverrides(manifest,workspace);
-  return canonical.filter((view)=>{const o=overrides.get(view.key); if(o?.hidden===true||!identityCanSeeView(identity,view))return false; if(!activeModules||!view.moduleCodes?.length)return true; return view.moduleCodes.some((code)=>activeModules.has(code));})
+  return canonical.filter((view)=>{const o=overrides.get(view.key); if(o?.hidden===true||!identityCanSeeView(identity,view))return false; const reads=DOMAIN_READS[`${workspace.key}/${view.key}`]; if(reads&&!reads.some(path=>canAccessApiPath(identity,path)))return false; if(!activeModules||!view.moduleCodes?.length)return true; return view.moduleCodes.some((code)=>activeModules.has(code));})
     .map((view)=>{const o=overrides.get(view.key); return {...view,label:typeof o?.label==='string'&&o.label.trim()?o.label.trim():view.label,title:typeof o?.title==='string'&&o.title.trim()?o.title.trim():view.title,description:typeof o?.description==='string'&&o.description.trim()?o.description.trim():view.description};})
     .sort((a,b)=>{const ao=overrides.get(a.key)?.order,bo=overrides.get(b.key)?.order; return (typeof ao==='number'?ao:canonical.findIndex((v)=>v.key===a.key))-(typeof bo==='number'?bo:canonical.findIndex((v)=>v.key===b.key));});
 }

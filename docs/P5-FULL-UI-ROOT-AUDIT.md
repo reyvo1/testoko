@@ -4,15 +4,15 @@
 
 - API: **43 controllers / 509 handlers / 195 Prisma models**.
 - Admin: **15 primary workspaces / 70 contextual views**.
-- POS: **4 views**; Storefront: **5 views**; Employee Portal: **7 views**.
-- Static interaction inventory: **538 controls**.
+- POS: **5 views**; Storefront: **5 views**; Employee Portal: **7 views**.
+- Static interaction inventory: **565 controls**.
 
 ## Presentation authority
 
 | Surface | Files | Lines | Required semantic classes | Missing |
 |---|---:|---:|---:|---:|
-| admin | 54 | 10544 | 34 | 0 |
-| pos | 10 | 1786 | 5 | 0 |
+| admin | 58 | 10792 | 34 | 0 |
+| pos | 11 | 1898 | 5 | 0 |
 | storefront | 8 | 996 | 30 | 0 |
 | employee-portal | 11 | 1096 | 21 | 0 |
 
@@ -20,8 +20,8 @@
 
 | Surface | Buttons | Links | Inert buttons | Inert links |
 |---|---:|---:|---:|---:|
-| admin | 409 | 2 | 0 | 0 |
-| pos | 59 | 1 | 0 | 0 |
+| admin | 429 | 4 | 0 | 0 |
+| pos | 64 | 1 | 0 | 0 |
 | storefront | 45 | 1 | 0 | 0 |
 | employee-portal | 20 | 1 | 0 | 0 |
 

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { authFetch } from '../auth-fetch';
 import { usePermissions } from '../permissions';
+import { warehouseDirectoryReadPath, readOptional } from '../read-path-contract';
 import { Panel, StatusChip, Table } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -21,7 +22,7 @@ export default function ManufacturingView({token}:{token:string}){
   const [recipeForm,setRecipeForm]=useState({code:'',name:'',outputProductId:'',outputQtyPerBatch:1,notes:'',componentProductId:'',quantityPerBatch:1,wastePct:0});
   const [recipeItems,setRecipeItems]=useState<Array<{componentProductId:string;quantityPerBatch:number;wastePct:number}>>([]);
   const [orderForm,setOrderForm]=useState({recipeId:'',warehouseId:'',batchCount:1,notes:''});
-  async function refresh(){try{const [p,w,r,o]=await Promise.all([call<Page<Product>>(token,'/products?limit=200'),call<Warehouse[]>(token,'/inventory/warehouses'),call<Page<Recipe>>(token,'/manufacturing/recipes?limit=200'),call<Page<ProductionOrder>>(token,'/manufacturing/orders?limit=200')]);setProducts(p.items.filter(x=>x.productType==='PHYSICAL'));setWarehouses(w);setRecipes(r.items);setOrders(o.items);setMessage('');}catch(e){setMessage(e instanceof Error?e.message:'Manufacturing gagal dimuat.');}}
+  async function refresh(){try{const [p,w,r,o]=await Promise.all([call<Page<Product>>(token,'/products?limit=200'),readOptional(identity,warehouseDirectoryReadPath(identity) ?? '/inventory/warehouses',[] as Warehouse[],p=>call<Warehouse[]>(token,p)),call<Page<Recipe>>(token,'/manufacturing/recipes?limit=200'),call<Page<ProductionOrder>>(token,'/manufacturing/orders?limit=200')]);setProducts(p.items.filter(x=>x.productType==='PHYSICAL'));setWarehouses(w);setRecipes(r.items);setOrders(o.items);setMessage('');}catch(e){setMessage(e instanceof Error?e.message:'Manufacturing gagal dimuat.');}}
   useEffect(()=>{void refresh();},[token]);
   const componentOptions=useMemo(()=>products.filter(p=>p.id!==recipeForm.outputProductId&&!recipeItems.some(i=>i.componentProductId===p.id)),[products,recipeForm.outputProductId,recipeItems]);
   function addComponent(){if(!recipeForm.componentProductId)return;setRecipeItems(v=>[...v,{componentProductId:recipeForm.componentProductId,quantityPerBatch:Math.max(1,Math.floor(recipeForm.quantityPerBatch)),wastePct:Math.max(0,recipeForm.wastePct)}]);setRecipeForm(v=>({...v,componentProductId:'',quantityPerBatch:1,wastePct:0}));}

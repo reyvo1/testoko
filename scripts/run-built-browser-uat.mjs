@@ -181,7 +181,11 @@ async function main() {
     evidence.error = error instanceof Error ? error.message : String(error);
     throw error;
   } finally {
+    // Preserve the current diagnostic even if service shutdown receives a signal.
+    evidence.sourceIdentityAfter ||= sourceFingerprint(root);
+    fs.writeFileSync(wrapperEvidencePath, JSON.stringify({ ...evidence, status: 'FAIL', runtimeStatus: evidence.status, cleanupStatus: 'RUNNING' }, null, 2) + '\n');
     await stopAll();
+    evidence.cleanupStatus = 'PASS';
     evidence.sourceIdentityAfter ||= sourceFingerprint(root);
     evidence.finishedAt = new Date().toISOString();
     fs.writeFileSync(wrapperEvidencePath, JSON.stringify(evidence, null, 2) + '\n');

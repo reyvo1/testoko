@@ -1,4 +1,6 @@
 'use client';
+import { isPersonnelSelfOnly } from '../../../packages/contracts/personnel-authority.cjs';
+import { canReadPath } from './read-path-contract';
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,6 +23,8 @@ import SetupReadinessView from './modules/setup-readiness';
 import ApiKeysView from './modules/api-keys';
 import BranchSyncView from './modules/branch-sync';
 import MobileOpsView from './modules/mobile-ops';
+import MobileStockCount from './modules/mobile-stock-count';
+import EmployeeSelfLanding from './modules/employee-self-landing';
 import SecurityView from './modules/security';
 import DataGovernanceView from './modules/data-governance';
 import AutomationWorkspace from './modules/automation-workspace';
@@ -170,7 +174,8 @@ export default function AdminPage() {
   const [attentionCount, setAttentionCount] = useState(0);
   const navigation = useMemo(() => resolveAdminNavigation(manifest, identity), [manifest, identity]);
   const navItems = useMemo(() => navigation.flatMap((group) => group.items), [navigation]);
-  const activeWorkspace = useMemo(() => ADMIN_WORKSPACES.find((item) => item.label === activeNav) ?? workspaceFromPath(pathname), [activeNav, pathname]);
+  const selfOnly=isPersonnelSelfOnly(identity)&&navigation.every(group=>group.items.length===0);
+  const activeWorkspace = useMemo(() => selfOnly?{...ADMIN_WORKSPACES[0],title:'Layanan karyawan',description:'Profil dan layanan pribadi melalui Portal Karyawan.'}:ADMIN_WORKSPACES.find((item) => item.label === activeNav) ?? workspaceFromPath(pathname), [activeNav, pathname,selfOnly]);
   const activeDomainView = useMemo(() => resolvedDomainViewFromPath(pathname, activeWorkspace, manifest, identity), [pathname, activeWorkspace, manifest, identity]);
 
   function canRootAction(permission: string, roles: string[]) {
@@ -210,7 +215,7 @@ export default function AdminPage() {
     const actor = identityFromAccessToken(activeToken);
     const allowed = (feed: string) => canReadAdminFeed(actor, feed);
     const emptyPage = <T,>(): CursorPage<T> => ({ items: [], pageInfo: { limit: 100, nextCursor: null, hasMore: false } });
-    const read = <T,>(path: string, fallback: T, enabled = true) => settleAdminFeed(() => request<T>(path, undefined, activeToken), fallback, enabled);
+    const read = <T,>(path: string, fallback: T, enabled = true) => settleAdminFeed(() => request<T>(path, undefined, activeToken), fallback, enabled && canReadPath(actor,path));
     const [d, p, s, w, pr, po, r, i, im, m, an, bc] = await Promise.all([
       read<Dashboard | null>('/reports/dashboard', null, allowed('reports')),
       read('/products?limit=100', emptyPage<Product>()),
@@ -476,12 +481,13 @@ export default function AdminPage() {
       onNavigate={navigateTo}
       onReload={() => void loadAll(token)}
       onLogout={() => void logout()}
-      headerAction={activeWorkspace.key === 'dashboard' ? <button type="button" className="btnGhost" onClick={() => window.print()}>Cetak ringkasan</button> : undefined}
+      headerAction={<>{canAll('employee.self')&&<a className="btnGhost" href={process.env.NEXT_PUBLIC_EMPLOYEE_PORTAL_URL??'http://localhost:3003'}>Portal saya</a>}{!selfOnly&&activeWorkspace.key === 'dashboard'&&<button type="button" className="btnGhost" onClick={() => window.print()}>Cetak ringkasan</button>}</>}
     >
           <StaffMemoWidget token={token} />
-          {loadErrors.length > 0 && <section className="notice" role="alert"><strong>Sebagian data belum tersedia</strong><p>Gagal memuat: {loadErrors.join(', ')}. Data ini tidak boleh dianggap sebagai saldo nol.</p><button type="button" className="secondary" onClick={() => void loadAll(token)}>Coba lagi</button></section>}
-          {!canAccessWorkspace && <section className="emptyState"><h2>Ruang kerja tidak tersedia</h2><p>Pilih menu yang tersedia untuk hak akses akun Anda.</p></section>}
-          {canAccessWorkspace && <>
+          {!selfOnly&&loadErrors.length > 0 && <section className="notice" role="alert"><strong>Sebagian data belum tersedia</strong><p>Gagal memuat: {loadErrors.join(', ')}. Data ini tidak boleh dianggap sebagai saldo nol.</p><button type="button" className="secondary" onClick={() => void loadAll(token)}>Coba lagi</button></section>}
+          {!selfOnly&&!canAccessWorkspace && <section className="emptyState"><h2>Ruang kerja tidak tersedia</h2><p>Pilih menu yang tersedia untuk hak akses akun Anda.</p></section>}
+          {selfOnly&&<EmployeeSelfLanding token={token}/>}
+          {!selfOnly&&canAccessWorkspace && <>
           {activeWorkspace.key === 'dashboard' && (
             <DashboardOverview
               dashboard={dashboard}
@@ -542,7 +548,7 @@ export default function AdminPage() {
             </section>}
           </>}
 
-          {activeWorkspace.key === 'inventory-control' && <><OperationsView token={token} mode={(activeDomainView?.key ?? 'overview') as 'overview'|'traceability'|'transfers'|'stocktake'|'returns'} />{(!activeDomainView || activeDomainView.key === 'overview') && <section className="panel"><div className="panelTitle"><div><span className="eyebrow">INVENTORY LEDGER</span><h2>Canonical inventory movements</h2></div><span>{inventoryMovements.length} movement</span></div><div className="table"><div className="tr th"><span>Waktu / Referensi</span><span>Produk / Gudang</span><span>Movement / Saldo</span></div>{inventoryMovements.slice(0,50).map((movement) => <div className="tr" key={movement.id}><span><strong>{new Date(movement.createdAt).toLocaleString('id-ID')}</strong><small>{movement.referenceType ?? '-'}:{movement.referenceId ?? '-'}</small></span><span><strong>{movement.product.name}</strong><small>{movement.warehouse.name}</small></span><span><strong>{movement.type} · {movement.quantity > 0 ? '+' : ''}{movement.quantity}</strong><small>balance {movement.balanceAfter}</small></span></div>)}</div></section>} </>}
+          {activeWorkspace.key === 'inventory-control' && <>{activeDomainView?.key==='stocktake'&&<MobileStockCount token={token}/>}<OperationsView token={token} mode={(activeDomainView?.key ?? 'overview') as 'overview'|'traceability'|'transfers'|'stocktake'|'returns'} />{(!activeDomainView || activeDomainView.key === 'overview') && <section className="panel"><div className="panelTitle"><div><span className="eyebrow">INVENTORY LEDGER</span><h2>Canonical inventory movements</h2></div><span>{inventoryMovements.length} movement</span></div><div className="table"><div className="tr th"><span>Waktu / Referensi</span><span>Produk / Gudang</span><span>Movement / Saldo</span></div>{inventoryMovements.slice(0,50).map((movement) => <div className="tr" key={movement.id}><span><strong>{new Date(movement.createdAt).toLocaleString('id-ID')}</strong><small>{movement.referenceType ?? '-'}:{movement.referenceId ?? '-'}</small></span><span><strong>{movement.product.name}</strong><small>{movement.warehouse.name}</small></span><span><strong>{movement.type} · {movement.quantity > 0 ? '+' : ''}{movement.quantity}</strong><small>balance {movement.balanceAfter}</small></span></div>)}</div></section>} </>}
           {activeWorkspace.key === 'operations-control' && (activeDomainView?.key === 'delivery' ? <DeliveryLifecycle token={token} /> : <OperationsControlView token={token} mode={(activeDomainView?.key ?? 'inspections') as 'inspections'|'evidence'|'gate-pass'} />)}
           {activeWorkspace.key === 'master-data' && (activeDomainView?.key === 'bulk-labels' ? <ProductBulkLabelsView token={token} /> : <MasterDataView token={token} mode={activeDomainView?.key ?? 'products'} />)}
           {activeWorkspace.key === 'manufacturing' && <ManufacturingView token={token} />}

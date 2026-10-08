@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { sourceFingerprint } from './lib/source-fingerprint.mjs';
+import { runAllRoleParityProbe } from './ci-all-role-parity-probe.mjs';
 
 const root = process.cwd();
 const output = path.join(root, 'handoff/quality/github-p6cd-retail-products-probe-latest.json');
@@ -114,6 +115,8 @@ async function assertBalancedJournal(accountingEventId, label) {
 }
 
 try {
+  runAllRoleParityProbe();
+  checks.allRoleAtomicAuthorityPostgres = true;
   const login = await request('/auth/login',{method:'POST',body:{email,password}}); const token = login.accessToken;
   const manifest = await request('/platform/manifest',{token}); const companyId = manifest.company?.id;const branchId = manifest.branch?.id;const branchCode = manifest.branch?.code;
   assert(companyId && branchId && branchCode,'Missing trusted context.');

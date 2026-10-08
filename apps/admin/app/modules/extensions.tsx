@@ -5,6 +5,7 @@ import { authFetch } from '../auth-fetch';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePermissions } from '../permissions';
+import { commerceOrderReadPath, readOptional } from '../read-path-contract';
 import { Panel, Table, StatusChip, TableSkeleton, tanggal } from '../ui';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
@@ -99,7 +100,7 @@ export default function ExtensionsView({ token, mode = 'extensions', commerceSec
 
   async function loadCommerceSnapshot() {
     return Promise.all([
-      readJson<CursorResponse<StoreOrder>>(`${API}/orders?limit=20`, token),
+      readOptional(identity, commerceOrderReadPath(identity) ?? '/orders', [] as CursorResponse<StoreOrder>, p => readJson<CursorResponse<StoreOrder>>(`${API}${p}?limit=20`, token)),
       readJson<CursorResponse<Shipment>>(`${API}/shipments?limit=15`, token),
       readJson<PromoRule[]>(`${API}/promotions?limit=100`, token),
       readJson<ProductPage>(`${API}/products?limit=200`, token),

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types';
 import { MobileOpsService } from './mobile-ops.service';
@@ -55,7 +56,7 @@ export class TelegramCommandService {
    * refusals and which are bugs, and a thrown exception out of a chat handler is how a stack trace
    * ends up in front of an operator.
    */
-  async execute(platformUserId: string, text: string): Promise<CommandResult> {
+  async execute(platformUserId: string, text: string, operationKey = `telegram-command:${randomUUID()}`): Promise<CommandResult> {
     const line = (text ?? '').trim();
     if (!line) return { ok: false, reply: 'Perintah kosong. Kirim /bantuan untuk daftar perintah.' };
 
@@ -69,7 +70,7 @@ export class TelegramCommandService {
     if (command === 'bantuan' || command === 'help') return { ok: true, reply: HELP };
 
     try {
-      const result = await this.dispatch(command, platformUserId, args);
+      const result = await this.dispatch(command, platformUserId, args, operationKey);
       await this.audit(platformUserId, command, args, result, null);
       return result;
     } catch (error) {
@@ -81,11 +82,11 @@ export class TelegramCommandService {
     }
   }
 
-  private async dispatch(command: string, platformUserId: string, args: string[]): Promise<CommandResult> {
+  private async dispatch(command: string, platformUserId: string, args: string[], operationKey:string): Promise<CommandResult> {
     switch (command) {
       case 'stok': return await this.lookup(platformUserId, args);
       case 'buka': return await this.openDraft(platformUserId, args);
-      case 'scan': return await this.scan(platformUserId, args);
+      case 'scan': return await this.scan(platformUserId, args, operationKey);
       case 'selisih': return await this.discrepancy(platformUserId, args);
       case 'kirim': return await this.submit(platformUserId, args);
       case 'batal': return await this.discard(platformUserId, args);
@@ -206,13 +207,13 @@ export class TelegramCommandService {
     };
   }
 
-  private async scan(platformUserId: string, args: string[]): Promise<CommandResult> {
+  private async scan(platformUserId: string, args: string[], operationKey:string): Promise<CommandResult> {
     const [draftId, code, quantity] = args;
     if (!draftId || !code || !quantity) return { ok: false, reply: 'Gunakan: /scan <draftId> <barcode|sku> <jumlah>' };
     const count = Number(quantity);
     if (!Number.isFinite(count)) return { ok: false, reply: 'Jumlah harus berupa angka.' };
     const identity = await this.mobileOps.assertPermission(platformUserId, 'inventory.opname');
-    const saved = await this.mobileOps.addScan(this.asUser(identity), draftId, { barcode: code, quantity: count });
+    const saved = await this.mobileOps.addScan(this.asUser(identity), draftId, { operationKey, barcode: code, quantity: count });
     return { ok: true, reply: `Tercatat. Draft ${saved.id}: ${saved.lineCount} baris, ${saved.totalUnits} unit.` };
   }
 

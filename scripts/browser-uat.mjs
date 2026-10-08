@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { runAllRoleBrowserUat } from './lib/all-role-browser-uat.mjs';
 import { runP6cdBrowserUat } from './lib/p6cd-browser-uat.mjs';
 import os from 'node:os';
 import path from 'node:path';
@@ -251,20 +252,29 @@ class Cdp {
         }
       }
       if (!message.id || !this.pending.has(message.id)) return;
-      const { resolve, reject } = this.pending.get(message.id); this.pending.delete(message.id);
+      const { resolve, reject, timer } = this.pending.get(message.id); this.pending.delete(message.id); clearTimeout(timer);
       if (message.error) reject(new Error(message.error.message || 'CDP error')); else resolve(message.result);
     });
   }
   call(method, params = {}) {
     const id = ++this.id;
-    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.ws.send(JSON.stringify({ id, method, params })); });
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 30000);
+      this.pending.set(id, { resolve, reject, timer });
+      try { this.ws.send(JSON.stringify({ id, method, params })); }
+      catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error); }
+    });
   }
   on(method, handler) {
     if (!this.listeners.has(method)) this.listeners.set(method, new Set());
     this.listeners.get(method).add(handler);
     return () => this.listeners.get(method)?.delete(handler);
   }
-  close() { try { this.ws.close(); } catch {} }
+  close() {
+    for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(new Error('CDP connection closed.')); }
+    this.pending.clear();
+    try { this.ws.close(); } catch {}
+  }
 }
 
 async function waitExpression(cdp, expression, label, timeoutMs = 30000) {
@@ -1445,7 +1455,7 @@ await waitExpression(cdp, `(() => {
 
     const p5PosScreenshots = [];
     for (const view of p5VisualSurfaceMap.pos?.views || []) {
-      const clicked = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.posWorkspaceNav button')].find((node) => { const text=(node.textContent||'').toLowerCase(); return (${JSON.stringify(view)}==='sale'&&text.includes('penjualan'))||(${JSON.stringify(view)}==='shift'&&text.includes('shift'))||(${JSON.stringify(view)}==='returns'&&text.includes('retur'))||(${JSON.stringify(view)}==='sync'&&text.includes('sinkronisasi')); }); if(!target)return false; target.click(); return true; })()`);
+      const clicked = await evaluateValue(cdp, `(() => { const target=[...document.querySelectorAll('.posWorkspaceNav button')].find((node) => { const text=(node.textContent||'').toLowerCase(); return (${JSON.stringify(view)}==='sale'&&text.includes('penjualan'))||(${JSON.stringify(view)}==='shift'&&text.includes('shift'))||(${JSON.stringify(view)}==='returns'&&text.includes('retur'))||(${JSON.stringify(view)}==='sync'&&text.includes('sinkronisasi'))||(${JSON.stringify(view)}==='ppob'&&text.includes('ppob')); }); if(!target)return false; target.click(); return true; })()`);
       if (!clicked) throw new Error(`P5 POS workspace tidak dapat dibuka: ${view}`);
       await waitExpression(cdp, `document.querySelector('[data-visual-product="pos"]')?.getAttribute('data-visual-view') === ${JSON.stringify(view)}`, `P5 POS visual ${view}`);
       await assertViewportIntegrity(cdp, `P5 POS ${view}`, 1440, 900);
@@ -1495,6 +1505,8 @@ await waitExpression(cdp, `(() => {
       };
       evidence.checks.push(p5ScreenshotMatrix);
     }
+
+    await runAllRoleBrowserUat({cdp,apiUrl,adminUrl,posUrl,employeeUrl,token:loginBody.accessToken,evidence,http,evaluateValue,waitExpression,navigateAdminContext,assertResponsiveMatrix,assertViewportIntegrity,captureSuccessScreenshot});
 
     // A page that renders while throwing an uncaught JS exception is not a browser-UAT PASS.
     await sleep(500);

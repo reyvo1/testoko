@@ -188,16 +188,22 @@ test('H1 fiscal final close requires a recorded reason', () => {
 test('H2 irreversible finance mutations are confirmed', () => {
   const ui = admin('modules/accounting.tsx');
   // post writes to the general ledger with no undo path from this screen.
-  const fn = ui.slice(ui.indexOf('function requestFinanceAction'));
+  const start = ui.indexOf('function requestFinanceAction');
+  assert.ok(start >= 0, 'finance confirmation entry point must exist');
+  const end = ui.indexOf('\n  async function ', start);
+  assert.ok(end > start, 'finance confirmation function boundary must exist');
+  const fn = ui.slice(start, end);
   assert.match(
-    fn.slice(0, 400),
+    fn,
     /setFinanceDialog\(\{ transaction, action, notes: '' \}\)/,
     'every finance action, including post and approve, must open the confirmation dialog',
   );
   assert.ok(
-    !/void financeAction\(transaction, action\);\s*\}/.test(fn.slice(0, 400)),
+    !/\b(?:financeAction|api)\s*\(/.test(fn),
     'approve/post must not bypass the confirmation dialog',
   );
+  assert.match(fn, /canAll\(FINANCE_ACTION_PERMISSION\[action\]\)/);
+  assert.match(fn, /canAccessApiPath\(identity,[\s\S]*'POST'\)/);
 });
 
 test('C3 payroll has a reachable operator path for components and rule sets', () => {
@@ -462,7 +468,7 @@ test('D3 controls are hidden, not merely disabled, for distinct lifecycle steps'
   assert.match(window, /canAll\('payroll\.approve'\) &&/, 'the payroll approve step must be conditionally rendered, not merely disabled');
   assert.ok(!/canAll\('payroll\.approve'\)[^<]{0,40}disabled/.test(window), 'the approve step must not be implemented as disabled-only');
   const oc = admin('modules/operations-control.tsx');
-  assert.match(oc, /canAll\('gate_pass\.approve'\) \? <button/, 'gate pass approval must be conditionally rendered');
+  assert.match(oc, /canAll\('gate_pass\.approve'\) && canAccessApiPath\(identity, `\/operations-control\/gate-passes\/\$\{g.id\}\/approve`, 'POST'\) \? <button/, 'gate pass approval must be conditionally rendered behind both permission and actual controller role authority');
 });
 
 test('P0 dashboard money formatting can never render Rp NaN', () => {

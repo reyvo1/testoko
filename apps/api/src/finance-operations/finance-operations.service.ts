@@ -778,11 +778,13 @@ export class FinanceOperationsService {
     await this.assertRequestedScope(this.prisma, user, scope, requestedCompanyId, requestedBranchId);
     const limit = parsePageLimit(limitValue);
     const cursor = decodeCursor<{ transactionDate: string; id: string }>(cursorValue);
+    if (cursor && (typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 200 || typeof cursor.transactionDate !== 'string' || !Number.isFinite(Date.parse(cursor.transactionDate)))) throw new BadRequestException('Cursor transaksi keuangan tidak valid.');
     const validatedStatus = validatedFinanceStatus(status);
     const rows = await this.prisma.operationalFinanceTransaction.findMany({
       where: {
         companyId: scope.companyId,
         branchId: scope.branchId,
+        ...(user.roles?.includes('ADMIN') && !user.roles.some(role => ['SUPER_ADMIN','OWNER','FINANCE','AUDITOR'].includes(role)) ? { createdById: user.sub } : {}),
         ...(type ? { type } : {}),
         ...(validatedStatus ? { status: validatedStatus as never } : {}),
         ...(cursor ? { OR: [

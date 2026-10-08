@@ -1,3 +1,4 @@
+import { isPersonnelSelfOnly } from '@toko360/contracts/personnel-authority.cjs';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type AttendanceRecord, type Employee, type EmployeePayrollComponent, type EmployeeSocialSecurityProfile, type EmployeeTaxProfile, type SocialSecurityRuleSet, type TaxRuleSet } from '@prisma/client';
@@ -81,6 +82,7 @@ export class PayrollService {
   ) {}
 
   private requireTenantScope(user: AuthUser): TenantScope {
+    if(isPersonnelSelfOnly(user))throw new ForbiddenException({code:'PERSONNEL_SELF_SERVICE_REQUIRED',message:'Data payroll cabang memerlukan kewenangan pengelola. Gunakan slip gaji pribadi di Portal Karyawan.'});
     if (!user.companyId || !user.branchId) {
       throw new ForbiddenException({ code: 'TENANT_CONTEXT_REQUIRED', message: 'Pengguna belum memiliki company dan branch yang valid.' });
     }
